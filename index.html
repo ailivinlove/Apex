@@ -1,45 +1,414 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Relational N-Back — Voice + Visual (semantic magnitudes)</title>
+<style>
+  :root{--bg:#0b0d10;--fg:#e6fbff;--a:#00ccff;--mut:#8fe7ff}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:16px}
+  .wrap{max-width:1000px;margin:0 auto}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .col{flex:1 1 300px}
+  .box{background:#101418;border:1px solid rgba(0,200,255,.25);border-radius:14px;padding:12px}
+  .title{font-weight:800;letter-spacing:.3px;margin-bottom:6px}
+  .btn{background:#0b0d10;color:var(--a);border:1px solid var(--a);border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  label{font-size:12px;color:var(--mut);display:block;margin:6px 0}
+  input[type=range],select{width:100%}
+  .kbd{border:1px solid rgba(255,255,255,.25);padding:2px 6px;border-radius:6px;background:#0b0d10}
+  .mut{color:var(--mut);font-size:12px}
+  /* transcript */
+  #premiseText{margin-top:12px;min-height:72px;background:#0e1113;border:1px solid rgba(0,200,255,.25);border-radius:12px;padding:10px;font-size:18px;line-height:1.6}
+  #premiseText .rel{padding:0 4px;border-radius:6px}
+  #premiseText .rel.active{background:rgba(0,200,255,.18);outline:1px solid rgba(0,200,255,.45)}
+  #premiseText .sep{opacity:.65}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <div class="col">
+      <div class="box">
+        <div class="title">Timing</div>
+        <label>N-back level: <span id="nVal">1</span></label>
+        <input id="n" type="range" min="1" max="10" value="1">
+        <label>Trials per block: <span id="tVal">40</span></label>
+        <input id="trials" type="range" min="10" max="200" step="5" value="40">
+        <label>Trial duration (ms): <span id="dVal">5000</span></label>
+        <input id="dur" type="range" min="1500" max="15000" step="250" value="5000">
+        <label>Pause between relations in the same premise (ms): <span id="pVal">1000</span></label>
+        <input id="pauseTime" type="range" min="0" max="6000" step="50" value="1000">
+        <label>Target match rate: <span id="rVal">25%</span></label>
+        <input id="rate" type="range" min="5" max="60" step="5" value="25">
+        <div class="mut">Matches are generated <b>only</b> by vector logic (magnitude+direction+structure); labels/text never affect matching.</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="box">
+        <div class="title">Voice</div>
+        <label>Language</label>
+        <select id="voiceLang"></select>
+        <label>Voice (female-only where detectable)</label>
+        <select id="voice"></select>
+        <label>Rate: <span id="rateVal">1.00</span></label>
+        <input id="vRate" type="range" min="0.6" max="1.6" step="0.05" value="1.0">
+        <label>Pitch: <span id="pitchVal">1.00</span></label>
+        <input id="vPitch" type="range" min="0.5" max="2" step="0.1" value="1.0">
+        <label>Volume: <span id="vVolVal">1.00</span></label>
+        <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.0">
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="testVoice" class="btn" type="button">Test voice</button>
+          <button id="preloadVoices" class="btn" type="button">Preload voices</button>
+        </div>
+        <div class="mut">Language is set on each utterance; the chosen voice stays constant for the whole block.</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="box">
+        <div class="title">Controls / Status</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <button id="start" class="btn">▶ Start</button>
+          <button id="pause" class="btn" disabled>⏸ Pause</button>
+          <button id="reset" class="btn" disabled>🔄 Reset</button>
+          <button id="hit" class="btn" disabled>✓ Match (<span class="kbd">M</span>)</button>
+          <button id="skip" class="btn" disabled>⏭ Skip</button>
+        </div>
+        <div class="mut" style="margin-top:8px">
+          Trial <span id="idx">0</span>/<span id="max">40</span> • Planned: <span id="ptype">—</span> • Actual: <span id="isMatch">—</span>
+        </div>
+        <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="box" style="margin-top:12px">
+    <div class="title">Premise (spoken + visual)</div>
+    <div id="premiseText" aria-live="polite">—</div>
+  </div>
+</div>
+
+<script>
+/* ========== helpers ========== */
+const $ = id => document.getElementById(id);
+const wait = ms => new Promise(r=>setTimeout(r,ms));
+
+/* ========== semantic magnitudes (no numbers) ========== */
+const MAG_WORD = {1:'near', 2:'mid', 3:'far'}; // canonical, unique in audio
+// Directions (8 compass + vertical)
+const DIRS = {
+  north:{x:0,y:-1}, south:{x:0,y:1}, east:{x:1,y:0}, west:{x:-1,y:0},
+  northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1}
+};
+const HORIZ = ['north','south','east','west','northeast','northwest','southeast','southwest'];
+
+/* ========== voice (female-only filter where possible) ========== */
+let VOICE=null, LANG=''; let voicesReady=false;
+const FEMALE_HINTS = /\b(female|zira|aria|samantha|karen|tessa|moira|victoria|serena|emma|amy|zoe|ella|mia|ava|isla|natalie|olivia|jenny)\b/i;
+const voiceKey = v => v.voiceURI || (v.name+'|'+v.lang);
+const friendly = new Map();
+const FEMALE_NAME_POOL = {
+  'en-AU':['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
+  'en-GB':['Sophie','Olivia','Amelia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
+  'en-US':['Amy','Emma','Ava','Mia','Sophia','Isabella','Olivia','Ella','Zoe','Grace'],
+  'default':['Amy','Zoe','Ella','Mia','Isla','Ava','Sophie','Lily','Ruby','Grace','Chloe','Eva','Nina','Maya','Bella']
+};
+function listLanguages(){
+  const all = speechSynthesis.getVoices();
+  const langs = [...new Set(all.map(v=>v.lang))].sort((a,b)=>a.localeCompare(b));
+  const sel = $('voiceLang'); sel.innerHTML='';
+  langs.forEach(L=>{ const o=document.createElement('option'); o.value=L; o.textContent=L; sel.appendChild(o); });
+  const enAU = langs.find(l=>l.toLowerCase()==='en-au');
+  const enAny = langs.find(l=>/^en[-_]/i.test(l));
+  LANG = enAU || enAny || langs[0] || 'en-AU';
+  sel.value = LANG;
+}
+function assignFriendly(list){
+  const pool = FEMALE_NAME_POOL[LANG] || FEMALE_NAME_POOL.default;
+  let idx=0;
+  list.forEach(v=>{
+    const k=voiceKey(v);
+    if(!friendly.has(k)){
+      const base=pool[idx%pool.length];
+      const cyc=Math.floor(idx/pool.length);
+      friendly.set(k, cyc ? `${base} ${cyc+1}` : base);
+      idx++;
+    }
+  });
+}
+function populateVoices(){
+  const sel = $('voice');
+  const all = speechSynthesis.getVoices();
+  let inLang = all.filter(v=>v.lang===LANG);
+  const females = inLang.filter(v => FEMALE_HINTS.test((v.name+' '+v.voiceURI).toLowerCase()));
+  const list = females.length ? females : inLang;
+  assignFriendly(list);
+  const prev = VOICE && voiceKey(VOICE);
+  sel.innerHTML='';
+  list.forEach(v=>{ const o=document.createElement('option'); o.value=voiceKey(v); o.textContent=friendly.get(o.value)||'Voice'; sel.appendChild(o); });
+  let chosen = list[0] || null; if(prev){ const keep=list.find(v=>voiceKey(v)===prev); if(keep) chosen=keep; }
+  VOICE=chosen; if(chosen) sel.value=voiceKey(chosen);
+}
+function refreshVoicesUI(){
+  if(!('speechSynthesis' in window)) return;
+  if(speechSynthesis.getVoices().length){
+    if(!$('voiceLang').options.length) listLanguages();
+    populateVoices();
+    voicesReady=true;
+  }
+}
+function ensureVoices(timeoutMs=1500){
+  return new Promise(resolve=>{
+    if(voicesReady){ resolve(); return; }
+    const done = ()=>{ voicesReady=true; resolve(); };
+    let to=setTimeout(done, timeoutMs);
+    const handler=()=>{ clearTimeout(to); speechSynthesis.onvoiceschanged=null; refreshVoicesUI(); done(); };
+    speechSynthesis.onvoiceschanged = handler;
+    refreshVoicesUI();
+  });
+}
+if('speechSynthesis' in window){
+  if(speechSynthesis.getVoices().length) refreshVoicesUI();
+  speechSynthesis.onvoiceschanged = ()=>{ refreshVoicesUI(); };
+}
+$('voiceLang').addEventListener('change', ()=>{ LANG=$('voiceLang').value; populateVoices(); });
+$('voice').addEventListener('change', ()=>{ const k=$('voice').value; const v=speechSynthesis.getVoices().find(v=>voiceKey(v)===k); if(v) VOICE=v; });
+$('vRate').oninput = e=> $('rateVal').textContent = (+e.target.value).toFixed(2);
+$('vPitch').oninput = e=> $('pitchVal').textContent = (+e.target.value).toFixed(2);
+$('vVol').oninput = e=> $('vVolVal').textContent = (+e.target.value).toFixed(2);
+function speak(text){
+  return new Promise(res=>{
+    const u=new SpeechSynthesisUtterance(text);
+    if(VOICE){ u.voice=VOICE; u.lang=VOICE.lang; } else if(LANG){ u.lang=LANG; }
+    u.rate=+$('vRate').value; u.pitch=+$('vPitch').value; u.volume=+$('vVol').value;
+    u.onend=res; u.onerror=res;
+    speechSynthesis.speak(u);
+  });
+}
+$('testVoice').onclick = ()=> speak('Test voice. Example: O three is near south of P nine.');
+$('preloadVoices').onclick = ()=> ensureVoices(1200);
+
+/* ========== logic engine (vector semantics) ========== */
+const NUMS=['1','2','3'];
+const REL_TEXT=[
+  ...NUMS.map(n=>`${n} above`), ...NUMS.map(n=>`${n} below`),
+  ...HORIZ.flatMap(d=>NUMS.map(n=>`${n} ${d}`))
+];
+const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function token(){ return LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9)); }
+function uniqueTokens(k){ const s=new Set(); while(s.size<k) s.add(token()); return [...s]; }
+
+function normalizeRelation(text){
+  const s=String(text).trim().toLowerCase();
+  const m=s.match(/\b(one|two|three|1|2|3)\s+(above|below|north(?:east|west)?|south(?:east|west)?|east|west)\b/);
+  if(!m) return null; let n=m[1];
+  if(n==='one')n=1; else if(n==='two')n=2; else if(n==='three')n=3; else n=+n;
+  const d=m[2]; if(d==='above') return {x:0,y:0,z:+n};
+  if(d==='below') return {x:0,y:0,z:-n};
+  const base=DIRS[d]; return {x:base.x*n,y:base.y*n,z:0};
+}
+function relationsEquivalent(a,b){ return a&&b&&a.x===b.x&&a.y===b.y&&a.z===b.z; }
+
+function extractPremiseRelations(sentence){
+  const parts=sentence.split(/\s+and\s+/i); const rels=[];
+  for(const part of parts){
+    const m=part.match(/([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)/i);
+    if(m){ const[,a,rel,b]=m; const R=normalizeRelation(rel); if(R) rels.push({from:a,to:b,rel:R}); }
+  } return rels;
+}
+function canonicalStructure(sentence){
+  const rels=extractPremiseRelations(sentence); const seen=new Map(); let next=0; const order=['A','B','C','D','E'];
+  const canon=rels.map(({from,to,rel})=>{ if(!seen.has(from)) seen.set(from,order[next++]); if(!seen.has(to)) seen.set(to,order[next++]); return {from:seen.get(from),to:seen.get(to),rel}; });
+  canon.sort((p,q)=> (p.from+p.to+JSON.stringify(p.rel)).localeCompare(q.from+q.to+JSON.stringify(q.rel)));
+  return canon;
+}
+function sentencesCompatible(a,b){
+  const ca=canonicalStructure(a), cb=canonicalStructure(b); if(ca.length!==cb.length) return false;
+  for(let i=0;i<ca.length;i++){ const pa=ca[i], pb=cb[i]; if(pa.from!==pb.from||pa.to!==pb.to) return false; if(!relationsEquivalent(pa.rel,pb.rel)) return false; }
+  return true;
+}
+function randomPremise(){
+  const [A,B,C]=uniqueTokens(3);
+  const r1=REL_TEXT[Math.floor(Math.random()*REL_TEXT.length)];
+  const r2=REL_TEXT[Math.floor(Math.random()*REL_TEXT.length)];
+  const r3=REL_TEXT[Math.floor(Math.random()*REL_TEXT.length)];
+  switch(Math.floor(Math.random()*4)){
+    case 0: return `${A} is ${r1} of ${B} and ${B} is ${r2} of ${C}`;
+    case 1: return `${A} is ${r1} of ${B} and ${C} is ${r2} of ${A}`;
+    case 2: return `${A} is ${r1} of ${B} and ${C} is ${r2} of ${B} and ${A} is ${r3} of ${C}`;
+    default: return `${A} is ${r1} of ${B} and ${C} is ${r2} of ${A} and ${B} is ${r3} of ${C}`;
+  }
+}
+function compatibleWith(sentence){
+  const rels=extractPremiseRelations(sentence);
+  const uniq=[...new Set(rels.flatMap(r=>[r.from,r.to]))].length;
+  const labels=uniqueTokens(uniq); const seen=new Map(); let i=0;
+  const rebuilt=rels.map(r=>{ if(!seen.has(r.from)) seen.set(r.from,labels[i++]); if(!seen.has(r.to)) seen.set(r.to,labels[i++]); return {from:seen.get(r.from),to:seen.get(r.to),rel:r.rel}; });
+  return rebuilt.map(e=>`${e.from} is ${denormalize(e.rel)} of ${e.to}`).join(' and ');
+}
+function denormalize(rel){
+  const {x,y,z}=rel;
+  if(z!==0) return `${Math.abs(z)} ${z>0?'above':'below'}`;
+  const n=Math.max(Math.abs(x),Math.abs(y))||1;
+  const sx=x>0?'east':x<0?'west':''; const sy=y>0?'south':y<0?'north':'';
+  const dir=sy&&sx?sy+sx:(sx||sy||'north');
+  return `${n} ${dir}`;
+}
+
+/* ========== speaking & transcript (semantic) ========== */
 function sayToken(tok){
-  // e.g., "O3" -> "O three"
-  const m = tok.match(/^([A-Z])(\d)$/);
-  if (!m) return tok;
-  const num = ({1:'one',2:'two',3:'three'})[m[2]] || m[2];
-  return `${m[1]} ${num}`;
+  const m=tok.match(/^([A-Z])(\d+)$/); if(!m) return tok;
+  const map={'1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine'};
+  const digits=m[2].split('').map(d=>map[d]||d).join(' ');
+  return `${m[1]} ${digits}`;
 }
-
-function toUnitPhrase(magnitude, dirWord) {
-  // dirWord is one of: above, below, north, south, east, west, northeast, northwest, southeast, southwest
-  const isVertical = (dirWord === 'above' || dirWord === 'below');
-  const unitWord = isVertical ? 'level' : 'cell';
-  const magWord = ({'1':'one','2':'two','3':'three'})[String(magnitude)] || String(magnitude);
-  const plural = (magWord === 'one') ? '' : 's';
-  // Speak diagonals as two words (“north east”), clearer in TTS
-  const spokenDir = dirWord.replace(/northwest/i,'north west')
-                           .replace(/northeast/i,'north east')
-                           .replace(/southwest/i,'south west')
-                           .replace(/southeast/i,'south east');
-  return `${magWord} ${unitWord}${plural} ${spokenDir}`;
+function speakableRelation(rel){ // rel like "3 south", "2 northeast", "1 above"
+  const m = rel.match(/\b(1|2|3)\s+(above|below|north(?:east|west)?|south(?:east|west)?|east|west)\b/i);
+  if(!m) return rel;
+  const n = +m[1], d = m[2].toLowerCase();
+  const mag = MAG_WORD[n]; // near/mid/far
+  // split diagonals for clarity
+  const dir = d.replace('northeast','north east').replace('northwest','north west')
+               .replace('southeast','south east').replace('southwest','south west');
+  return `${mag} ${dir}`;
 }
-
-function verbalizeSentence(sentence){
-  // Input looks like: "O3 is 3 south of P9 and J7 is 1 above of O3 and P9 is 2 northeast of J7"
-  // We’ll convert ONLY the relation phrase "<N> <dir>" into "<N> cell(s)/level(s) <dir>"
-  // and read tokens like "O3" as "O three".
-  const parts = sentence.split(/\s+and\s+/i).map(p => p.trim());
-
-  return parts.map(part => {
-    // 1) Expand grid tokens (O3 -> O three)
-    let spoken = part.replace(/([A-Z]\d)/g, m => sayToken(m));
-
-    // 2) Inject units into the relation phrase "<N> <dir>"
-    //    Capture: magnitude + direction word
-    spoken = spoken.replace(
-      /\b(1|2|3)\s+(above|below|north(?:east|west)?|south(?:east|west)?|east|west)\b/i,
-      (_, mag, dir) => toUnitPhrase(mag, dir.toLowerCase())
-    );
-
-    // 3) Ensure preposition is natural (“above”/“below” already ok; diagonals kept as two words)
-    // (Nothing else needed; we’ve already normalized diagonals inside toUnitPhrase.)
-
+function verbalizeSentenceSemantic(s){
+  // example input: "O3 is 3 south of P9 and J7 is 1 above of O3 and P9 is 2 northeast of J7"
+  const parts = s.split(/\s+and\s+/i).map(p=>p.trim());
+  return parts.map(p=>{
+    // tokens like O3, P9 → "O three", "P nine"
+    let spoken = p.replace(/([A-Z]\d+)/g, m=>sayToken(m));
+    // relation magnitude words
+    spoken = spoken.replace(/\b(1|2|3)\s+(above|below|north(?:east|west)?|south(?:east|west)?|east|west)\b/gi, (m0,n,dir)=>{
+      const mag = MAG_WORD[+n];
+      const cleanDir = dir.toLowerCase().replace('northeast','north east').replace('northwest','north west')
+        .replace('southeast','south east').replace('southwest','south west');
+      return `${mag} ${cleanDir}`;
+    });
     return spoken;
   });
 }
+function buildPremiseVisual(raw){
+  const parts=raw.split(/\s+and\s+/i).map(p=>p.trim());
+  const el=$('premiseText'); el.innerHTML='';
+  parts.forEach((part,i)=>{
+    const sp=document.createElement('span'); sp.className='rel'; sp.textContent=part; el.appendChild(sp);
+    if(i<parts.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
+  });
+  return parts;
+}
+function setActivePart(i){ [...$('premiseText').querySelectorAll('.rel')].forEach((n,idx)=>n.classList.toggle('active', idx===i)); }
+
+/* ========== gameplay loop ========== */
+let N=1, MAX=40, DUR=5000, REL_PAUSE=1000, RATE=25;
+let idx=0, running=false, paused=false, trialTimer=null, waitTimer=null;
+const history=[], planned=[]; let correct=0, errors=0;
+let spokenParts=null, clauseIdx=0;
+
+function planSequence(){ planned.length=0; for(let i=0;i<MAX;i++){ planned.push(i>=N && Math.random()*100<RATE); } }
+function isActualMatch(i){ return i>=N && sentencesCompatible(history[i-N], history[i]); }
+
+async function speakPremise(){
+  const tStart = performance.now();
+  while(running && !paused && clauseIdx < spokenParts.length){
+    setActivePart(clauseIdx);
+    await speak(spokenParts[clauseIdx] + '.');
+    if(!running || paused) return;
+    if(clauseIdx < spokenParts.length-1){
+      await new Promise(res=>{ waitTimer=setTimeout(()=>{waitTimer=null; res();}, REL_PAUSE); });
+      if(!running || paused) return;
+    }
+    clauseIdx++;
+  }
+  setActivePart(-1);
+  const elapsed = performance.now() - tStart;
+  const remaining = Math.max(0, DUR - elapsed);
+  trialTimer = setTimeout(()=>{ if(running && !paused){ idx++; updateUI(); runTrial(); } }, remaining);
+}
+
+function runTrial(){
+  if(!running || paused) return;
+  if(idx>=MAX){ stop(); return; }
+  const wantMatch = planned[idx] && idx>=N;
+  let s;
+  if(wantMatch){ s = compatibleWith(history[idx-N]); }
+  else{
+    s = randomPremise();
+    if(idx>=N){ let tries=0; while(sentencesCompatible(history[idx-N], s) && tries<40){ s=randomPremise(); tries++; } }
+  }
+  history[idx]=s;
+
+  // Visual: original text with numbers; Audio: semantic magnitudes
+  buildPremiseVisual(s);
+  const semanticClauses = verbalizeSentenceSemantic(s);
+  spokenParts = semanticClauses;
+  clauseIdx = 0;
+  speakPremise();
+}
+
+function start(){
+  if(running) return;
+  running=true; paused=false; cancelSpeech();
+  planSequence(); idx=0; correct=0; errors=0; updateUI();
+  $('pause').disabled=false; $('reset').disabled=false; $('hit').disabled=false; $('skip').disabled=false;
+  $('voiceLang').disabled=true; $('voice').disabled=true;
+  runTrial();
+}
+function stop(){
+  running=false; paused=false;
+  clearTimeout(trialTimer); trialTimer=null;
+  clearTimeout(waitTimer); waitTimer=null;
+  cancelSpeech();
+  $('pause').disabled=true; $('skip').disabled=true;
+  $('voiceLang').disabled=false; $('voice').disabled=false;
+}
+function togglePause(){
+  if(!running && !paused) return;
+  if(!paused){
+    paused=true; clearTimeout(trialTimer); trialTimer=null; clearTimeout(waitTimer); waitTimer=null; cancelSpeech();
+    $('pause').textContent='▶ Resume';
+  }else{
+    paused=false; $('pause').textContent='⏸ Pause';
+    if(spokenParts && clauseIdx < spokenParts.length){ speakPremise(); } else { runTrial(); }
+  }
+}
+function reset(){
+  stop(); $('start').disabled=false; $('pause').textContent='⏸ Pause';
+  idx=0; correct=0; errors=0; $('premiseText').textContent='—'; updateUI();
+}
+function registerHit(){ if(!running) return; const truth=isActualMatch(idx); if(truth) correct++; else errors++; updateUI(); }
+function skip(){ if(!running) return; clearTimeout(trialTimer); clearTimeout(waitTimer); cancelSpeech(); idx++; updateUI(); runTrial(); }
+function updateUI(){
+  $('idx').textContent=idx; $('max').textContent=MAX;
+  $('ptype').textContent = planned[idx] && idx>=N ? 'planned MATCH' : 'planned NON-match';
+  $('isMatch').textContent = idx>=N ? String(isActualMatch(idx)).toUpperCase() : '—';
+  $('corr').textContent=correct; $('err').textContent=errors;
+  $('nVal').textContent=N; $('tVal').textContent=MAX; $('dVal').textContent=DUR; $('pVal').textContent=REL_PAUSE; $('rVal').textContent=RATE+'%';
+}
+
+/* ========== controls & start robustness ========== */
+function cancelSpeech(){ try{ speechSynthesis.cancel(); }catch(_){} }
+$('start').onclick = async ()=>{
+  if('speechSynthesis' in window) await ensureVoices(1200);
+  if(!VOICE && 'speechSynthesis' in window){ const vs=speechSynthesis.getVoices(); VOICE = vs[0] || null; }
+  start();
+};
+$('pause').onclick = togglePause;
+$('reset').onclick = reset;
+$('hit').onclick = registerHit;
+$('skip').onclick = skip;
+window.addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='m') registerHit(); });
+
+$('n').oninput=e=>{ N=+e.target.value; $('nVal').textContent=N; };
+$('trials').oninput=e=>{ MAX=+e.target.value; $('tVal').textContent=MAX; $('max').textContent=MAX; };
+$('dur').oninput=e=>{ DUR=+e.target.value; $('dVal').textContent=DUR; };
+$('pauseTime').oninput=e=>{ REL_PAUSE=+e.target.value; $('pVal').textContent=REL_PAUSE; };
+$('rate').oninput=e=>{ RATE=+e.target.value; $('rVal').textContent=RATE+'%'; };
+
+updateUI();
+</script>
+</body>
+</html>
