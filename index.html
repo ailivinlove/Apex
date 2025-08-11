@@ -2,244 +2,383 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>Relational N‑Back — Logic‑Only (8‑Direction + Vertical) — Voice + Visual Mode</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Relational N-Back — Voice + Visual (strict logic)</title>
 <style>
-  body { font-family: system-ui, sans-serif; background: #0b0d10; color: #e6fbff; margin: 0; padding: 16px; }
-  .btn { background: #0b0d10; color: #00ccff; border: 1px solid #00ccff; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; margin-right:4px; }
-  #premiseDisplay { margin-top: 16px; font-size: 1.2em; line-height: 1.4; min-height: 60px; }
-  .relationPart { padding: 2px 4px; border-radius: 4px; }
-  .relationPart.active { background: rgba(0,200,255,0.2); border: 1px solid rgba(0,200,255,0.5); }
-  /* Visual transcript */
-  #premiseDisplay{margin-top:16px;font-size:1.15rem;line-height:1.5;min-height:64px;background:#0e1113;border:1px solid rgba(0,200,255,.25);padding:10px;border-radius:10px}
-  .relationPart{padding:2px 6px;border-radius:6px}
-  .relationPart.active{background:rgba(0,200,255,.18);outline:1px solid rgba(0,200,255,.35)}
+  :root{--bg:#0b0d10;--fg:#e6fbff;--a:#00ccff;--mut:#8fe7ff}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg);margin:0;padding:16px}
+  .wrap{max-width:1000px;margin:0 auto}
+  .row{display:flex;gap:12px;flex-wrap:wrap}
+  .col{flex:1 1 300px}
+  .box{background:#101418;border:1px solid rgba(0,200,255,.25);border-radius:14px;padding:12px}
+  .title{font-weight:800;letter-spacing:.3px;margin-bottom:6px}
+  .btn{background:#0b0d10;color:var(--a);border:1px solid var(--a);border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  label{font-size:12px;color:var(--mut);display:block;margin:6px 0}
+  input[type=range],select{width:100%}
+  .kbd{border:1px solid rgba(255,255,255,.25);padding:2px 6px;border-radius:6px;background:#0b0d10}
+  /* transcript */
+  #premiseText{margin-top:12px;min-height:72px;background:#0e1113;border:1px solid rgba(0,200,255,.25);border-radius:12px;padding:10px;font-size:18px;line-height:1.6}
+  #premiseText .rel{padding:0 4px;border-radius:6px}
+  #premiseText .rel.active{background:rgba(0,200,255,.18);outline:1px solid rgba(0,200,255,.45)}
+  #premiseText .sep{opacity:.65}
+  .mut{color:var(--mut);font-size:12px}
 </style>
 </head>
 <body>
-<div>
-  <button id="start" class="btn">▶ Start</button>
-  <button id="pause" class="btn" disabled>⏸ Pause</button>
-  <button id="reset" class="btn" disabled>🔄 Reset</button>
-  <button id="hit" class="btn" disabled>✓ Match (M)</button>
-  <label for="nLevel" style="margin-left:8px">N‑back level:</label>
-  <input id="nLevel" type="number" value="1" min="1" style="width:50px">
-  <label for="trialsPerBlock" style="margin-left:8px">Trials per block:</label>
-  <input id="trialsPerBlock" type="number" value="40" min="1" style="width:60px">
-  <label for="trialMs" style="margin-left:8px">Trial duration (ms):</label>
-  <input id="trialMs" type="number" value="5000" min="1000" step="250" style="width:80px">
-  <label for="pauseMs" style="margin-left:8px">Pause between relations (ms):</label>
-  <input id="pauseMs" type="number" value="1000" min="0" step="100" style="width:80px">
-  <label for="targetRate" style="margin-left:8px">Target match rate (%):</label>
-  <input id="targetRate" type="number" value="25" min="0" max="100" style="width:60px">
-  <label for="voiceSelect" style="margin-left:8px">Voice:</label>
-  <select id="voiceSelect"></select>
-  <label for="rateControl">Rate:</label>
-  <input id="rateControl" type="number" value="1.00" min="0.5" max="2" step="0.05" style="width:60px">
-  <label for="pitchControl">Pitch:</label>
-  <input id="pitchControl" type="number" value="1.00" min="0" max="2" step="0.05" style="width:60px">
-  <label for="volumeControl">Volume:</label>
-  <input id="volumeControl" type="number" value="1.00" min="0" max="1" step="0.05" style="width:60px">
-</div>
-<div id="premiseDisplay"></div>
+<div class="wrap">
+  <div class="row">
+    <div class="col">
+      <div class="box">
+        <div class="title">Timing</div>
+        <label>N-back level: <span id="nVal">1</span></label>
+        <input id="n" type="range" min="1" max="10" value="1">
+        <label>Trials per block: <span id="tVal">40</span></label>
+        <input id="trials" type="range" min="10" max="200" step="5" value="40">
+        <label>Trial duration (ms): <span id="dVal">5000</span></label>
+        <input id="dur" type="range" min="1500" max="15000" step="250" value="5000">
+        <label>Pause between relations in the same premise (ms): <span id="pVal">1000</span></label>
+        <input id="pauseTime" type="range" min="0" max="6000" step="50" value="1000">
+        <label>Target match rate: <span id="rVal">25%</span></label>
+        <input id="rate" type="range" min="5" max="60" step="5" value="25">
+        <div class="mut">Matches are generated <b>only</b> by vector logic (number+direction); labels/text never affect matching.</div>
+      </div>
+    </div>
 
-<!-- Visual transcript below -->
-<div id="premiseDisplay" aria-live="polite">—</div>
+    <div class="col">
+      <div class="box">
+        <div class="title">Voice</div>
+        <label>Language</label>
+        <select id="voiceLang"></select>
+        <label>Voice (female-only, single-name)</label>
+        <select id="voice"></select>
+        <label>Rate: <span id="rateVal">1.00</span></label>
+        <input id="vRate" type="range" min="0.6" max="1.6" step="0.05" value="1.0">
+        <label>Pitch: <span id="pitchVal">1.00</span></label>
+        <input id="vPitch" type="range" min="0.5" max="2" step="0.1" value="1.0">
+        <label>Volume: <span id="vVolVal">1.00</span></label>
+        <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.0">
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="testVoice" class="btn" type="button">Test voice</button>
+        </div>
+        <div class="mut">Tip: pick a local voice (e.g., English (Australia)). Language is set on each utterance.</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="box">
+        <div class="title">Controls / Status</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
+          <button id="start" class="btn">▶ Start</button>
+          <button id="pause" class="btn" disabled>⏸ Pause</button>
+          <button id="reset" class="btn" disabled>🔄 Reset</button>
+          <button id="hit" class="btn" disabled>✓ Match (<span class="kbd">M</span>)</button>
+          <button id="skip" class="btn" disabled>⏭ Skip</button>
+        </div>
+        <div class="mut" style="margin-top:8px">Trial <span id="idx">0</span>/<span id="max">40</span> • Planned: <span id="ptype">—</span> • Actual: <span id="isMatch">—</span></div>
+        <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="box" style="margin-top:12px">
+    <div class="title">Premise (spoken + visual)</div>
+    <div id="premiseText" aria-live="polite">—</div>
+  </div>
+</div>
 
 <script>
+/* ========= helpers ========= */
 const $ = id => document.getElementById(id);
-let selectedVoice = null;
-const FRIENDLY_POOL = ['Amy','Chloe','Ella','Grace','Isla','Kara','Maya','Olive','Piper','Ruby','Tess','Uma','Zoe'];
-const voiceKey = v => v.voiceURI || (v.name + '|' + v.lang);
-let friendlyByKey = new Map();
+const wait = ms => new Promise(r=>setTimeout(r,ms));
 
-// ===== Runtime state for pause/resume =====
-let isRunning = false;
-let isPaused = false;
-let trialIndex = 0;
-let currentParts = null;
-let nextClauseIdx = 0;
-let trialStartTs = 0;
-let relationWaitTimeoutId = null;
-let trialTimeoutId = null;
+/* ========= voice: female-only, language-aware ========= */
+let VOICE=null, LANG='';
 
-function assignFriendlyNames(voices){
-  const females = voices.filter(v => v.name.toLowerCase().includes('female') || /fem/i.test(v.name) || /woman|girl/i.test(v.name) || true);
-  const sorted = [...females].sort((a,b)=> (a.lang||'').localeCompare(b.lang||'') || (a.name||'').localeCompare(b.name||''));
-  let idx = 0;
-  sorted.forEach(v => {
-    const key = voiceKey(v);
-    if (!friendlyByKey.has(key)){
-      const base = FRIENDLY_POOL[idx % FRIENDLY_POOL.length];
-      const cycles = Math.floor(idx / FRIENDLY_POOL.length);
-      friendlyByKey.set(key, cycles ? base + ' ' + (cycles+1) : base);
+const FEMALE_NAME_POOL = {
+  'en-AU': ['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
+  'en-GB': ['Sophie','Olivia','Amelia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
+  'en-US': ['Amy','Emma','Ava','Mia','Sophia','Isabella','Olivia','Ella','Zoe','Grace'],
+  'default': ['Amy','Zoe','Ella','Mia','Isla','Ava','Sophie','Lily','Ruby','Grace','Chloe','Eva','Nina','Maya','Bella']
+};
+const FEMALE_HINTS = /\b(female|zira|jenny|aria|samantha|karen|katherine|tessa|moira|victoria|serena|natasha|emma|amy|zoe|ella|mia|ava|isla)\b/i;
+const voiceKey = v => v.voiceURI || (v.name+'|'+v.lang);
+const friendly = new Map();
+
+function listLanguages(){
+  const all = speechSynthesis.getVoices();
+  const langs = [...new Set(all.map(v=>v.lang))].sort((a,b)=>a.localeCompare(b));
+  const sel = $('voiceLang'); sel.innerHTML='';
+  langs.forEach(L=>{ const o=document.createElement('option'); o.value=L; o.textContent=L; sel.appendChild(o); });
+  const enAU = langs.find(l=>l.toLowerCase()==='en-au');
+  const enAny = langs.find(l=>/^en[-_]/i.test(l));
+  LANG = enAU || enAny || langs[0] || 'en-AU';
+  sel.value = LANG;
+}
+
+function assignFriendlyNames(list){
+  const pool = FEMALE_NAME_POOL[LANG] || FEMALE_NAME_POOL.default;
+  let idx=0;
+  list.forEach(v=>{
+    const k=voiceKey(v);
+    if(!friendly.has(k)){
+      const base = pool[idx % pool.length];
+      const cyc = Math.floor(idx / pool.length);
+      friendly.set(k, cyc ? `${base} ${cyc+1}` : base);
       idx++;
     }
   });
 }
 
 function populateVoices(){
-  const select = $('voiceSelect');
-  const voices = speechSynthesis.getVoices();
-  assignFriendlyNames(voices);
-  select.innerHTML = '';
-  voices.forEach(v => {
-    const key = voiceKey(v);
-    if (!friendlyByKey.has(key)) return;
-    const opt = document.createElement('option');
-    opt.value = key;
-    opt.textContent = friendlyByKey.get(key);
-    opt.dataset.lang = v.lang;
-    select.appendChild(opt);
+  const sel = $('voice');
+  const all = speechSynthesis.getVoices();
+  let inLang = all.filter(v=>v.lang===LANG);
+  // female-only first; if none detected, fall back to all in language
+  const females = inLang.filter(v => FEMALE_HINTS.test((v.name+' '+v.voiceURI).toLowerCase()));
+  const list = females.length ? females : inLang;
+  assignFriendlyNames(list);
+  const prev = VOICE && voiceKey(VOICE);
+  sel.innerHTML='';
+  list.forEach(v=>{
+    const o=document.createElement('option');
+    o.value = voiceKey(v);
+    o.textContent = friendly.get(o.value) || 'Voice';
+    sel.appendChild(o);
   });
-  selectedVoice = voices.find(v=>v.lang.startsWith('en-AU') && friendlyByKey.has(voiceKey(v))) || voices.find(v=>friendlyByKey.has(voiceKey(v)));
-  if (selectedVoice) select.value = voiceKey(selectedVoice);
+  let chosen = list[0] || null;
+  if(prev){ const keep = list.find(v=>voiceKey(v)===prev); if(keep) chosen=keep; }
+  VOICE = chosen;
+  if(chosen) sel.value = voiceKey(chosen);
 }
 
-if ('speechSynthesis' in window){
-  if (speechSynthesis.getVoices().length) populateVoices();
-  speechSynthesis.onvoiceschanged = () => { populateVoices(); $('voiceSelect').disabled = isRunning; };
-}
-
-$('voiceSelect').addEventListener('change', () => {
-  const key = $('voiceSelect').value;
-  const v = speechSynthesis.getVoices().find(v => voiceKey(v) === key);
-  if (v) selectedVoice = v;
-});
-
-function speak(text, voiceSnap){
-  return new Promise(resolve => {
-    if (!('speechSynthesis' in window)) { resolve(); return; }
-    const utter = new SpeechSynthesisUtterance(text);
-    if (voiceSnap) { utter.voice = voiceSnap; utter.lang = voiceSnap.lang || utter.lang; }
-    // Defensive defaults if rate/pitch/volume inputs aren't present
-    const rEl=$('rateControl'), pEl=$('pitchControl'), vEl=$('volumeControl');
-    utter.rate = rEl? parseFloat(rEl.value)||1.0 : 1.0;
-    utter.pitch = pEl? parseFloat(pEl.value)||1.0 : 1.0;
-    utter.volume = vEl? parseFloat(vEl.value)||1.0 : 1.0;
-    utter.onend = resolve; utter.onerror = resolve;
-    window.speechSynthesis.speak(utter);
-  });
-}
-function cancelSpeech(){ try{ speechSynthesis.cancel(); }catch(_){} }
-
-function updatePremiseDisplay(parts) {
-  const container = $('premiseDisplay');
-  container.innerHTML = '';
-  parts.forEach((part, idx) => {
-    const span = document.createElement('span');
-    span.className = 'relationPart';
-    span.textContent = part;
-    container.appendChild(span);
-    if (idx < parts.length - 1) container.appendChild(document.createTextNode(' and '));
-  });
-}
-function setActiveClause(i){
-  document.querySelectorAll('.relationPart').forEach((s, idx)=>s.classList.toggle('active', idx===i));
-}
-function waitMs(ms){
-  return new Promise(res=>{ relationWaitTimeoutId = setTimeout(()=>{ relationWaitTimeoutId=null; res(); }, ms); });
-}
-async function speakRemainingClauses(perRelationDelayMs, voiceSnap){
-  while (currentParts && nextClauseIdx < currentParts.length){
-    if (!isRunning || isPaused) return;
-    setActiveClause(nextClauseIdx);
-    await speak(currentParts[nextClauseIdx], voiceSnap);
-    if (!isRunning || isPaused) return;
-    if (nextClauseIdx < currentParts.length - 1){
-      await waitMs(perRelationDelayMs);
-      if (!isRunning || isPaused) return;
-    }
-    nextClauseIdx++;
+function refreshVoices(){
+  if(!('speechSynthesis' in window)) return;
+  if(speechSynthesis.getVoices().length){
+    if(!$('voiceLang').options.length) listLanguages();
+    populateVoices();
   }
-  setActiveClause(-1);
 }
+if('speechSynthesis' in window){
+  if(speechSynthesis.getVoices().length) refreshVoices();
+  speechSynthesis.onvoiceschanged = ()=>{ const wasRunning=running; refreshVoices(); $('voiceLang').disabled=!!wasRunning; $('voice').disabled=!!wasRunning; };
+}
+$('voiceLang').addEventListener('change', ()=>{ LANG=$('voiceLang').value; populateVoices(); });
+$('voice').addEventListener('change', ()=>{ const k=$('voice').value; const v=speechSynthesis.getVoices().find(v=>voiceKey(v)===k); if(v) VOICE=v; });
+$('vRate').oninput = e=> $('rateVal').textContent = (+e.target.value).toFixed(2);
+$('vPitch').oninput = e=> $('pitchVal').textContent = (+e.target.value).toFixed(2);
+$('vVol').oninput = e=> $('vVolVal').textContent = (+e.target.value).toFixed(2);
 
-const DIRS = ['north','south','east','west','northeast','northwest','southeast','southwest'];
-const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function speak(text){
+  return new Promise(res=>{
+    const u = new SpeechSynthesisUtterance(text);
+    if(VOICE){ u.voice = VOICE; u.lang = VOICE.lang; } else if(LANG){ u.lang = LANG; }
+    u.rate=+$('vRate').value; u.pitch=+$('vPitch').value; u.volume=+$('vVol').value;
+    u.onend=()=>res(); u.onerror=()=>res();
+    speechSynthesis.speak(u);
+  });
+}
+$('testVoice').onclick = ()=> speak('This is a test. C three is one west of O six. O six is one east of Q six.');
+
+/* ========= logic engine (vector semantics) ========= */
+const DIRS={north:{x:0,y:-1},south:{x:0,y:1},east:{x:1,y:0},west:{x:-1,y:0},northeast:{x:1,y:-1},northwest:{x:-1,y:-1},southeast:{x:1,y:1},southwest:{x:-1,y:1}};
+const NUMS=['1','2','3'];
+const HORZ=['north','south','east','west','northeast','northwest','southeast','southwest'];
+const REL_TEXT=[...NUMS.map(n=>`${n} above`),...NUMS.map(n=>`${n} below`),...HORZ.flatMap(d=>NUMS.map(n=>`${n} ${d}`))];
+const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function token(){ return LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9)); }
-function generatePremiseParts(){
-  const A = token(), B = token(), C = token();
-  const d1 = DIRS[Math.floor(Math.random()*DIRS.length)];
-  const d2 = DIRS[Math.floor(Math.random()*DIRS.length)];
-  return [`${A} is 1 ${d1} of ${B}`, `${B} is 1 ${d2} of ${C}`];
+function uniqueTokens(k){ const s=new Set(); while(s.size<k) s.add(token()); return [...s]; }
+
+function normalizeRelation(text){
+  const s=String(text).trim().toLowerCase();
+  const m=s.match(/\b(one|two|three|1|2|3)\s+(above|below|north(?:east|west)?|south(?:east|west)?|east|west)\b/);
+  if(!m) return null; let n=m[1];
+  if(n==='one')n=1; else if(n==='two')n=2; else if(n==='three')n=3; else n=+n;
+  const d=m[2]; if(d==='above') return {type:'vector',x:0,y:0,z:+n};
+  if(d==='below') return {type:'vector',x:0,y:0,z:-n};
+  const base=DIRS[d]; return {type:'vector',x:base.x*n,y:base.y*n,z:0};
+}
+function relationsEquivalent(a,b){ return a&&b&&a.x===b.x&&a.y===b.y&&a.z===b.z; }
+
+function extractPremiseRelations(sentence){
+  const parts=sentence.split(/\s+and\s+/i); const rels=[];
+  for(const part of parts){
+    const m=part.match(/([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)/i);
+    if(m){ const[,a,rel,b]=m; const R=normalizeRelation(rel); if(R) rels.push({from:a,to:b,rel:R}); }
+  } return rels;
+}
+function canonicalStructure(sentence){
+  const rels=extractPremiseRelations(sentence); const seen=new Map(); let next=0; const order=['A','B','C','D','E'];
+  const canon=rels.map(({from,to,rel})=>{ if(!seen.has(from)) seen.set(from,order[next++]); if(!seen.has(to)) seen.set(to,order[next++]); return {from:seen.get(from),to:seen.get(to),rel}; });
+  canon.sort((p,q)=> (p.from+p.to+JSON.stringify(p.rel)).localeCompare(q.from+q.to+JSON.stringify(q.rel)));
+  return canon;
+}
+function sentencesCompatible(a,b){
+  const ca=canonicalStructure(a), cb=canonicalStructure(b); if(ca.length!==cb.length) return false;
+  for(let i=0;i<ca.length;i++){ const pa=ca[i], pb=cb[i]; if(pa.from!==pb.from||pa.to!==pb.to) return false; if(!relationsEquivalent(pa.rel,pb.rel)) return false; }
+  return true;
+}
+function randomPremise(){
+  const [A,B,C]=uniqueTokens(3);
+  const r1=REL_TEXT[Math.floor(Math.random()*REL_TEXT.length)];
+  const r2=REL_TEXT[Math.floor(Math.random()*REL_TEXT.length)];
+  const r3=REL_TEXT[Math.floor(Math.random()*REL_TEXT.length)];
+  switch(Math.floor(Math.random()*4)){
+    case 0: return `${A} is ${r1} of ${B} and ${B} is ${r2} of ${C}`;
+    case 1: return `${A} is ${r1} of ${B} and ${C} is ${r2} of ${A}`;
+    case 2: return `${A} is ${r1} of ${B} and ${C} is ${r2} of ${B} and ${A} is ${r3} of ${C}`;
+    default: return `${A} is ${r1} of ${B} and ${C} is ${r2} of ${A} and ${B} is ${r3} of ${C}`;
+  }
+}
+function compatibleWith(sentence){
+  const rels=extractPremiseRelations(sentence);
+  const uniq=[...new Set(rels.flatMap(r=>[r.from,r.to]))].length;
+  const labels=uniqueTokens(uniq); const seen=new Map(); let i=0;
+  const rebuilt=rels.map(r=>{ if(!seen.has(r.from)) seen.set(r.from,labels[i++]); if(!seen.has(r.to)) seen.set(r.to,labels[i++]); return {from:seen.get(r.from),to:seen.get(r.to),rel:r.rel}; });
+  return rebuilt.map(e=>`${e.from} is ${denormalize(e.rel)} of ${e.to}`).join(' and ');
+}
+function denormalize(rel){
+  const {x,y,z}=rel;
+  if(z!==0) return `${Math.abs(z)} ${z>0?'above':'below'}`;
+  const n=Math.max(Math.abs(x),Math.abs(y))||1;
+  const sx=x>0?'east':x<0?'west':''; const sy=y>0?'south':y<0?'north':'';
+  const dir=sy&&sx?sy+sx:(sx||sy||'north');
+  return `${n} ${dir}`;
 }
 
-let isRunning = false, trialIndex = 0, paused = false;
-async function runNextTrial(){
-  if (!isRunning || isPaused) return;
-  const pauseMs = parseInt($('pauseMs').value, 10) || 0;
-  const trialMs = parseInt($('trialMs').value, 10) || 3000;
-  const voiceSnap = selectedVoice;
+/* ========= speaking + transcript ========= */
+function sayToken(tok){
+  const m=tok.match(/^([A-Z])(\d)$/); if(!m) return tok;
+  const num=({1:'one',2:'two',3:'three'})[m[2]]||m[2];
+  return `${m[1]} ${num}`;
+}
+function verbalizeSentence(s){
+  return s.split(/\s+and\s+/i).map(p=>p.trim())
+    .map(p=>p.replace(/\b(\d)\b/g,d=>({1:'one',2:'two',3:'three'}[d]||d))
+              .replace(/([A-Z]\d)/g, m=>sayToken(m))
+              .replace(/\bnortheast\b/gi,'north east')
+              .replace(/\bnorthwest\b/gi,'north west')
+              .replace(/\bsoutheast\b/gi,'south east')
+              .replace(/\bsouthwest\b/gi,'south west'));
+}
+function buildPremiseVisual(raw){
+  const parts=raw.split(/\s+and\s+/i).map(p=>p.trim());
+  const el=$('premiseText'); el.innerHTML='';
+  parts.forEach((part,i)=>{
+    const sp=document.createElement('span'); sp.className='rel'; sp.textContent=part; el.appendChild(sp);
+    if(i<parts.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
+  });
+  return parts;
+}
+function setActivePart(i){ [...$('premiseText').querySelectorAll('.rel')].forEach((n,idx)=>n.classList.toggle('active', idx===i)); }
 
-  currentParts = generatePremiseParts();
-  nextClauseIdx = 0;
-  trialStartTs = performance.now();
+/* ========= scheduler / gameplay ========= */
+let N=1, MAX=40, DUR=5000, REL_PAUSE=1000, RATE=25;
+let idx=0, running=false, paused=false, trialTimer=null, waitTimer=null;
+const history=[], planned=[]; let correct=0, errors=0;
 
-  await speakRemainingClauses(pauseMs, voiceSnap);
-  if (!isRunning || isPaused) return;
-  const elapsed = performance.now() - trialStartTs;
-  const remain = Math.max(0, trialMs - elapsed);
-  trialTimeoutId = setTimeout(()=>{ if (isRunning && !isPaused){ trialIndex++; runNextTrial(); } }, remain);
+// resume support
+let currentParts=null, spokenParts=null, clauseIdx=0;
+
+function planSequence(){ planned.length=0; for(let i=0;i<MAX;i++){ planned.push(i>=N && Math.random()*100<RATE); } }
+function isActualMatch(i){ return i>=N && sentencesCompatible(history[i-N], history[i]); }
+
+async function speakPremise(){
+  const voiceSnap = VOICE; // lock voice for entire premise
+  const tStart = performance.now();
+  while(running && !paused && clauseIdx < spokenParts.length){
+    setActivePart(clauseIdx);
+    await speak(spokenParts[clauseIdx] + '.');
+    if(!running || paused) return;
+    if(clauseIdx < spokenParts.length-1){
+      await new Promise(res=>{ waitTimer=setTimeout(()=>{waitTimer=null; res();}, REL_PAUSE); });
+      if(!running || paused) return;
+    }
+    clauseIdx++;
+  }
+  setActivePart(-1);
+  const elapsed = performance.now() - tStart;
+  const remaining = Math.max(0, DUR - elapsed);
+  trialTimer = setTimeout(()=>{ if(running && !paused){ idx++; updateUI(); runTrial(); } }, remaining);
 }
 
-$('start').onclick = () => {
-  // Enable controls
-  const pauseBtn=$('pause'), resetBtn=$('reset'), hitBtn=$('hit');
-  if (pauseBtn) pauseBtn.disabled=false; if (resetBtn) resetBtn.disabled=false; if (hitBtn) hitBtn.disabled=false;
-  // Choose a voice if none yet (but don't block start if none)
-  if (!selectedVoice && 'speechSynthesis' in window){
-    const vs = speechSynthesis.getVoices();
-    selectedVoice = vs && vs.length ? vs[0] : null;
+function runTrial(){
+  if(!running || paused) return;
+  if(idx>=MAX){ stop(); return; }
+  const wantMatch = planned[idx] && idx>=N;
+  let s;
+  if(wantMatch){ s = compatibleWith(history[idx-N]); }
+  else{
+    s = randomPremise();
+    if(idx>=N){ let tries=0; while(sentencesCompatible(history[idx-N], s) && tries<40){ s=randomPremise(); tries++; } }
   }
-  // Clear any old timers/state and start
-  if (relationWaitTimeoutId) { clearTimeout(relationWaitTimeoutId); relationWaitTimeoutId=null; }
-  if (trialTimeoutId) { clearTimeout(trialTimeoutId); trialTimeoutId=null; }
-  isPaused = false; isRunning = true; trialIndex = 0; currentParts=null; nextClauseIdx=0; trialStartTs=0;
-  runNextTrial();
-};
+  history[idx]=s;
+  currentParts = buildPremiseVisual(s);
+  spokenParts = verbalizeSentence(s);
+  clauseIdx = 0;
+  speakPremise();
+}
 
-$('pause').onclick = () => { paused = !paused; if (!paused) runNextTrial(); };
-$('reset').onclick = () => { isRunning = false; paused = false; trialIndex = 0; $('hit').disabled = true; $('pause').disabled = true; $('reset').disabled = true; $('premiseDisplay').innerHTML=''; };
-
-$('hit').onclick = () => { console.log('Match pressed'); };
-$('pause').onclick = () => {
-  if (!isRunning && !isPaused) return;
-  if (!isPaused){
-    // Enter paused state
-    isPaused = true; isRunning = false;
-    cancelSpeech();
-    if (relationWaitTimeoutId) { clearTimeout(relationWaitTimeoutId); relationWaitTimeoutId=null; }
-    if (trialTimeoutId) { clearTimeout(trialTimeoutId); trialTimeoutId=null; }
-    $('pause').textContent = '▶ Resume';
-  } else {
-    // Resume
-    isPaused = false; isRunning = true;
-    $('pause').textContent = '⏸ Pause';
-    const pauseMs = parseInt($('pauseMs').value, 10) || 0;
-    const trialMs = parseInt($('trialMs').value, 10) || 3000;
-    const voiceSnap = selectedVoice;
-    (async ()=>{
-      await speakRemainingClauses(pauseMs, voiceSnap);
-      if (!isRunning || isPaused) return;
-      const elapsed = performance.now() - trialStartTs;
-      const remain = Math.max(0, trialMs - elapsed);
-      trialTimeoutId = setTimeout(()=>{ if (isRunning && !isPaused){ trialIndex++; runNextTrial(); } }, remain);
-    })();
-  }
-};
-$('reset').onclick = () => {
-  isPaused = false; isRunning = false;
+function start(){
+  if(running) return;
+  running=true; paused=false; cancelSpeech();
+  planSequence(); idx=0; correct=0; errors=0; updateUI();
+  $('pause').disabled=false; $('reset').disabled=false; $('hit').disabled=false; $('skip').disabled=false;
+  $('voiceLang').disabled=true; $('voice').disabled=true;
+  runTrial();
+}
+function stop(){
+  running=false; paused=false;
+  clearTimeout(trialTimer); trialTimer=null;
+  clearTimeout(waitTimer); waitTimer=null;
   cancelSpeech();
-  if (relationWaitTimeoutId) { clearTimeout(relationWaitTimeoutId); relationWaitTimeoutId=null; }
-  if (trialTimeoutId) { clearTimeout(trialTimeoutId); trialTimeoutId=null; }
-  trialIndex = 0; currentParts = null; nextClauseIdx = 0; trialStartTs = 0;
-  $('premiseDisplay').innerHTML = '';
-  document.querySelectorAll('.relationPart').forEach(s=>s.classList.remove('active'));
-  $('pause').textContent = '⏸ Pause';
-  $('pause').disabled = true; $('reset').disabled = true; $('hit').disabled = true;
+  $('pause').disabled=true; $('skip').disabled=true;
+  $('voiceLang').disabled=false; $('voice').disabled=false;
+}
+function togglePause(){
+  if(!running && !paused) return;
+  if(!paused){
+    paused=true; clearTimeout(trialTimer); trialTimer=null; clearTimeout(waitTimer); waitTimer=null; cancelSpeech();
+    $('pause').textContent='▶ Resume';
+  }else{
+    paused=false; $('pause').textContent='⏸ Pause';
+    if(spokenParts && clauseIdx < spokenParts.length){ speakPremise(); } else { runTrial(); }
+  }
+}
+function reset(){
+  stop(); $('start').disabled=false; $('pause').textContent='⏸ Pause';
+  idx=0; correct=0; errors=0; $('premiseText').textContent='—'; updateUI();
+}
+function registerHit(){ if(!running) return; const truth=isActualMatch(idx); if(truth) correct++; else errors++; updateUI(); }
+function skip(){ if(!running) return; clearTimeout(trialTimer); clearTimeout(waitTimer); cancelSpeech(); idx++; updateUI(); runTrial(); }
+
+function updateUI(){
+  $('idx').textContent=idx; $('max').textContent=MAX;
+  $('ptype').textContent = planned[idx] && idx>=N ? 'planned MATCH' : 'planned NON-match';
+  $('isMatch').textContent = idx>=N ? String(isActualMatch(idx)).toUpperCase() : '—';
+  $('corr').textContent=correct; $('err').textContent=errors;
+  $('nVal').textContent=N; $('tVal').textContent=MAX; $('dVal').textContent=DUR; $('pVal').textContent=REL_PAUSE; $('rVal').textContent=RATE+'%';
+}
+
+/* ========= events ========= */
+$('start').onclick = ()=>{ // robust start
+  if(!VOICE && 'speechSynthesis' in window){ const vs=speechSynthesis.getVoices(); VOICE = vs[0] || null; }
+  start();
 };
-window.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm') $('hit').click(); });
+$('pause').onclick = togglePause;
+$('reset').onclick = reset;
+$('hit').onclick = registerHit;
+$('skip').onclick = skip;
+window.addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='m') registerHit(); });
+
+$('n').oninput=e=>{ N=+e.target.value; $('nVal').textContent=N; };
+$('trials').oninput=e=>{ MAX=+e.target.value; $('tVal').textContent=MAX; $('max').textContent=MAX; };
+$('dur').oninput=e=>{ DUR=+e.target.value; $('dVal').textContent=DUR; };
+$('pauseTime').oninput=e=>{ REL_PAUSE=+e.target.value; $('pVal').textContent=REL_PAUSE; };
+$('rate').oninput=e=>{ RATE=+e.target.value; $('rVal').textContent=RATE+'%'; };
+
+updateUI();
 </script>
 </body>
 </html>
