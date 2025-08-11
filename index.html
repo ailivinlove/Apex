@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Relational N-Back — Voice + Visual (strict logic)</title>
+<title>Relational N-Back — Voice + Visual (stable start)</title>
 <style>
   :root{--bg:#0b0d10;--fg:#e6fbff;--a:#00ccff;--mut:#8fe7ff}
   *{box-sizing:border-box}
@@ -38,7 +38,7 @@
         <input id="trials" type="range" min="10" max="200" step="5" value="40">
         <label>Trial duration (ms): <span id="dVal">5000</span></label>
         <input id="dur" type="range" min="1500" max="15000" step="250" value="5000">
-        <label>Pause between relations in the same premise (ms): <span id="pVal">1000</span></label>
+        <label>Pause between relations (ms): <span id="pVal">1000</span></label>
         <input id="pauseTime" type="range" min="0" max="6000" step="50" value="1000">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="5" max="60" step="5" value="25">
@@ -51,7 +51,7 @@
         <div class="title">Voice</div>
         <label>Language</label>
         <select id="voiceLang"></select>
-        <label>Voice (female-only, single-name)</label>
+        <label>Voice (female-only where available)</label>
         <select id="voice"></select>
         <label>Rate: <span id="rateVal">1.00</span></label>
         <input id="vRate" type="range" min="0.6" max="1.6" step="0.05" value="1.0">
@@ -61,6 +61,7 @@
         <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.0">
         <div style="display:flex;gap:8px;margin-top:8px">
           <button id="testVoice" class="btn" type="button">Test voice</button>
+          <button id="preloadVoices" class="btn" type="button">Preload voices</button>
         </div>
         <div class="mut">Tip: pick a local voice (e.g., English (Australia)). Language is set on each utterance.</div>
       </div>
@@ -89,22 +90,23 @@
 </div>
 
 <script>
-/* ========= helpers ========= */
+/* ===== helpers ===== */
 const $ = id => document.getElementById(id);
 const wait = ms => new Promise(r=>setTimeout(r,ms));
 
-/* ========= voice: female-only, language-aware ========= */
-let VOICE=null, LANG='';
+/* ===== voice (robust start) ===== */
+let VOICE=null, LANG='';        // chosen voice & language
+let voicesReady=false;
 
-const FEMALE_NAME_POOL = {
-  'en-AU': ['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
-  'en-GB': ['Sophie','Olivia','Amelia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
-  'en-US': ['Amy','Emma','Ava','Mia','Sophia','Isabella','Olivia','Ella','Zoe','Grace'],
-  'default': ['Amy','Zoe','Ella','Mia','Isla','Ava','Sophie','Lily','Ruby','Grace','Chloe','Eva','Nina','Maya','Bella']
-};
-const FEMALE_HINTS = /\b(female|zira|jenny|aria|samantha|karen|katherine|tessa|moira|victoria|serena|natasha|emma|amy|zoe|ella|mia|ava|isla)\b/i;
+const FEMALE_HINTS = /\b(female|zira|aria|samantha|karen|tessa|moira|victoria|serena|emma|amy|zoe|ella|mia|ava|isla|natalie|olivia|jenny)\b/i;
 const voiceKey = v => v.voiceURI || (v.name+'|'+v.lang);
 const friendly = new Map();
+const FEMALE_NAME_POOL = {
+  'en-AU':['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
+  'en-GB':['Sophie','Olivia','Amelia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
+  'en-US':['Amy','Emma','Ava','Mia','Sophia','Isabella','Olivia','Ella','Zoe','Grace'],
+  'default':['Amy','Zoe','Ella','Mia','Isla','Ava','Sophie','Lily','Ruby','Grace','Chloe','Eva','Nina','Maya','Bella']
+};
 
 function listLanguages(){
   const all = speechSynthesis.getVoices();
@@ -117,15 +119,15 @@ function listLanguages(){
   sel.value = LANG;
 }
 
-function assignFriendlyNames(list){
+function assignFriendly(list){
   const pool = FEMALE_NAME_POOL[LANG] || FEMALE_NAME_POOL.default;
   let idx=0;
   list.forEach(v=>{
     const k=voiceKey(v);
     if(!friendly.has(k)){
-      const base = pool[idx % pool.length];
-      const cyc = Math.floor(idx / pool.length);
-      friendly.set(k, cyc ? `${base} ${cyc+1}` : base);
+      const base=pool[idx%pool.length];
+      const cyc=Math.floor(idx/pool.length);
+      friendly.set(k, cyc? `${base} ${cyc+1}`: base);
       idx++;
     }
   });
@@ -135,34 +137,41 @@ function populateVoices(){
   const sel = $('voice');
   const all = speechSynthesis.getVoices();
   let inLang = all.filter(v=>v.lang===LANG);
-  // female-only first; if none detected, fall back to all in language
   const females = inLang.filter(v => FEMALE_HINTS.test((v.name+' '+v.voiceURI).toLowerCase()));
   const list = females.length ? females : inLang;
-  assignFriendlyNames(list);
+  assignFriendly(list);
   const prev = VOICE && voiceKey(VOICE);
   sel.innerHTML='';
-  list.forEach(v=>{
-    const o=document.createElement('option');
-    o.value = voiceKey(v);
-    o.textContent = friendly.get(o.value) || 'Voice';
-    sel.appendChild(o);
-  });
-  let chosen = list[0] || null;
-  if(prev){ const keep = list.find(v=>voiceKey(v)===prev); if(keep) chosen=keep; }
-  VOICE = chosen;
-  if(chosen) sel.value = voiceKey(chosen);
+  list.forEach(v=>{ const o=document.createElement('option'); o.value=voiceKey(v); o.textContent=friendly.get(o.value) || 'Voice'; sel.appendChild(o); });
+  let chosen = list[0] || null; if(prev){ const keep=list.find(v=>voiceKey(v)===prev); if(keep) chosen=keep; }
+  VOICE=chosen; if(chosen) sel.value=voiceKey(chosen);
 }
 
-function refreshVoices(){
+function refreshVoicesUI(){
   if(!('speechSynthesis' in window)) return;
   if(speechSynthesis.getVoices().length){
     if(!$('voiceLang').options.length) listLanguages();
     populateVoices();
+    voicesReady=true;
   }
 }
+
+// Preload helper (waits for voices or times out)
+function ensureVoices(timeoutMs=1500){
+  return new Promise(resolve=>{
+    if(voicesReady){ resolve(); return; }
+    const done = ()=>{ voicesReady=true; resolve(); };
+    let to=setTimeout(done, timeoutMs);
+    const handler=()=>{ clearTimeout(to); speechSynthesis.onvoiceschanged=null; refreshVoicesUI(); done(); };
+    speechSynthesis.onvoiceschanged = handler;
+    // also poke once now
+    refreshVoicesUI();
+  });
+}
+
 if('speechSynthesis' in window){
-  if(speechSynthesis.getVoices().length) refreshVoices();
-  speechSynthesis.onvoiceschanged = ()=>{ const wasRunning=running; refreshVoices(); $('voiceLang').disabled=!!wasRunning; $('voice').disabled=!!wasRunning; };
+  if(speechSynthesis.getVoices().length) refreshVoicesUI();
+  speechSynthesis.onvoiceschanged = ()=>{ refreshVoicesUI(); };
 }
 $('voiceLang').addEventListener('change', ()=>{ LANG=$('voiceLang').value; populateVoices(); });
 $('voice').addEventListener('change', ()=>{ const k=$('voice').value; const v=speechSynthesis.getVoices().find(v=>voiceKey(v)===k); if(v) VOICE=v; });
@@ -172,16 +181,17 @@ $('vVol').oninput = e=> $('vVolVal').textContent = (+e.target.value).toFixed(2);
 
 function speak(text){
   return new Promise(res=>{
-    const u = new SpeechSynthesisUtterance(text);
-    if(VOICE){ u.voice = VOICE; u.lang = VOICE.lang; } else if(LANG){ u.lang = LANG; }
+    const u=new SpeechSynthesisUtterance(text);
+    if(VOICE){ u.voice=VOICE; u.lang=VOICE.lang; } else if(LANG){ u.lang=LANG; }
     u.rate=+$('vRate').value; u.pitch=+$('vPitch').value; u.volume=+$('vVol').value;
-    u.onend=()=>res(); u.onerror=()=>res();
+    u.onend=res; u.onerror=res;
     speechSynthesis.speak(u);
   });
 }
-$('testVoice').onclick = ()=> speak('This is a test. C three is one west of O six. O six is one east of Q six.');
+$('testVoice').onclick = ()=> speak('Test voice. C three is one west of O six. O six is one east of Q six.');
+$('preloadVoices').onclick = ()=> ensureVoices(1200);
 
-/* ========= logic engine (vector semantics) ========= */
+/* ===== logic engine (vector semantics) ===== */
 const DIRS={north:{x:0,y:-1},south:{x:0,y:1},east:{x:1,y:0},west:{x:-1,y:0},northeast:{x:1,y:-1},northwest:{x:-1,y:-1},southeast:{x:1,y:1},southwest:{x:-1,y:1}};
 const NUMS=['1','2','3'];
 const HORZ=['north','south','east','west','northeast','northwest','southeast','southwest'];
@@ -195,9 +205,9 @@ function normalizeRelation(text){
   const m=s.match(/\b(one|two|three|1|2|3)\s+(above|below|north(?:east|west)?|south(?:east|west)?|east|west)\b/);
   if(!m) return null; let n=m[1];
   if(n==='one')n=1; else if(n==='two')n=2; else if(n==='three')n=3; else n=+n;
-  const d=m[2]; if(d==='above') return {type:'vector',x:0,y:0,z:+n};
-  if(d==='below') return {type:'vector',x:0,y:0,z:-n};
-  const base=DIRS[d]; return {type:'vector',x:base.x*n,y:base.y*n,z:0};
+  const d=m[2]; if(d==='above') return {x:0,y:0,z:+n};
+  if(d==='below') return {x:0,y:0,z:-n};
+  const base=DIRS[d]; return {x:base.x*n,y:base.y*n,z:0};
 }
 function relationsEquivalent(a,b){ return a&&b&&a.x===b.x&&a.y===b.y&&a.z===b.z; }
 
@@ -247,12 +257,8 @@ function denormalize(rel){
   return `${n} ${dir}`;
 }
 
-/* ========= speaking + transcript ========= */
-function sayToken(tok){
-  const m=tok.match(/^([A-Z])(\d)$/); if(!m) return tok;
-  const num=({1:'one',2:'two',3:'three'})[m[2]]||m[2];
-  return `${m[1]} ${num}`;
-}
+/* ===== transcript & speech ===== */
+function sayToken(tok){ const m=tok.match(/^([A-Z])(\d)$/); if(!m) return tok; const num=({1:'one',2:'two',3:'three'}[m[2]]||m[2]); return `${m[1]} ${num}`; }
 function verbalizeSentence(s){
   return s.split(/\s+and\s+/i).map(p=>p.trim())
     .map(p=>p.replace(/\b(\d)\b/g,d=>({1:'one',2:'two',3:'three'}[d]||d))
@@ -273,19 +279,18 @@ function buildPremiseVisual(raw){
 }
 function setActivePart(i){ [...$('premiseText').querySelectorAll('.rel')].forEach((n,idx)=>n.classList.toggle('active', idx===i)); }
 
-/* ========= scheduler / gameplay ========= */
+/* ===== gameplay loop (robust start) ===== */
 let N=1, MAX=40, DUR=5000, REL_PAUSE=1000, RATE=25;
 let idx=0, running=false, paused=false, trialTimer=null, waitTimer=null;
 const history=[], planned=[]; let correct=0, errors=0;
 
-// resume support
+// resume state
 let currentParts=null, spokenParts=null, clauseIdx=0;
 
 function planSequence(){ planned.length=0; for(let i=0;i<MAX;i++){ planned.push(i>=N && Math.random()*100<RATE); } }
 function isActualMatch(i){ return i>=N && sentencesCompatible(history[i-N], history[i]); }
 
 async function speakPremise(){
-  const voiceSnap = VOICE; // lock voice for entire premise
   const tStart = performance.now();
   while(running && !paused && clauseIdx < spokenParts.length){
     setActivePart(clauseIdx);
@@ -352,7 +357,6 @@ function reset(){
 }
 function registerHit(){ if(!running) return; const truth=isActualMatch(idx); if(truth) correct++; else errors++; updateUI(); }
 function skip(){ if(!running) return; clearTimeout(trialTimer); clearTimeout(waitTimer); cancelSpeech(); idx++; updateUI(); runTrial(); }
-
 function updateUI(){
   $('idx').textContent=idx; $('max').textContent=MAX;
   $('ptype').textContent = planned[idx] && idx>=N ? 'planned MATCH' : 'planned NON-match';
@@ -361,8 +365,11 @@ function updateUI(){
   $('nVal').textContent=N; $('tVal').textContent=MAX; $('dVal').textContent=DUR; $('pVal').textContent=REL_PAUSE; $('rVal').textContent=RATE+'%';
 }
 
-/* ========= events ========= */
-$('start').onclick = ()=>{ // robust start
+/* ===== controls ===== */
+function cancelSpeech(){ try{ speechSynthesis.cancel(); }catch(_){} }
+$('start').onclick = async ()=>{
+  // Make sure voices are ready enough to start; never block forever
+  if('speechSynthesis' in window) await ensureVoices(1200);
   if(!VOICE && 'speechSynthesis' in window){ const vs=speechSynthesis.getVoices(); VOICE = vs[0] || null; }
   start();
 };
