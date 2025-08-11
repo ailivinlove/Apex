@@ -36,9 +36,10 @@ input[type=range],select{ width:100% }
         <label>Trials per block: <span id="tVal">40</span></label>
         <input id="trials" type="range" min="10" max="200" step="5" value="40">
         <label>Trial duration (ms): <span id="dVal">5000</span></label>
-        <input id="dur" type="range" min="1500" max="15000" step="250" value="5000">
+        <!-- max raised to 120000 -->
+        <input id="dur" type="range" min="1500" max="120000" step="250" value="5000">
         <label>Pause between relations in the same premise (ms): <span id="pVal">1000</span></label>
-        <!-- max increased from 6000 to 30000 -->
+        <!-- max raised to 30000 in previous step -->
         <input id="pauseTime" type="range" min="0" max="30000" step="50" value="1000">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="5" max="60" step="5" value="25">
@@ -413,10 +414,25 @@ $('hit').onclick=registerHit;
 $('skip').onclick=skip;
 window.addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='m') registerHit(); });
 
+// Timing sliders — keep trial duration sensible vs. pause
 $('n').oninput=e=>{ N=+e.target.value; $('nVal').textContent=N; };
 $('trials').oninput=e=>{ MAX=+e.target.value; $('tVal').textContent=MAX; $('max').textContent=MAX; };
-$('dur').oninput=e=>{ DUR=+e.target.value; $('dVal').textContent=DUR; };
-$('pauseTime').oninput=e=>{ REL_PAUSE=+e.target.value; $('pVal').textContent=REL_PAUSE; };
+$('dur').oninput=e=>{
+  const val=+e.target.value;
+  const minNeeded = REL_PAUSE + 500; // tiny cushion so a single pause isn't longer than trial
+  DUR = Math.max(val, minNeeded);
+  $('dVal').textContent=DUR;
+  if (DUR !== val) { $('dur').value = DUR; } // reflect auto-bump if we had to enforce
+};
+$('pauseTime').oninput=e=>{
+  REL_PAUSE=+e.target.value; $('pVal').textContent=REL_PAUSE;
+  const minNeeded = REL_PAUSE + 500;
+  if (DUR < minNeeded){
+    DUR = minNeeded;
+    $('dur').value = DUR;
+    $('dVal').textContent = DUR;
+  }
+};
 $('rate').oninput=e=>{ RATE=+e.target.value; $('rVal').textContent=RATE+'%'; };
 
 document.addEventListener('DOMContentLoaded', ()=>{ initVoices().catch(()=>{}); });
