@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Relational N-Back — Logic‑Only N‑Match (Voice + Visual)</title>
+<title>Relational N-Back — Logic-Only N-Match (Voice + Visual)</title>
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
@@ -31,7 +31,7 @@ input[type=range],select{ width:100% }
     <div class="col">
       <div class="box">
         <div class="title">Timing</div>
-        <label>N‑back level: <span id="nVal">1</span></label>
+        <label>N-back level: <span id="nVal">1</span></label>
         <input id="n" type="range" min="1" max="10" value="1">
         <label>Trials per block: <span id="tVal">40</span></label>
         <input id="trials" type="range" min="10" max="200" step="5" value="40">
@@ -41,9 +41,10 @@ input[type=range],select{ width:100% }
         <input id="pauseTime" type="range" min="0" max="6000" step="50" value="1000">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="5" max="60" step="5" value="25">
-        <div class="mut">N‑matches are computed <b>only</b> from relational logic (structure + vectors). Labels/text never affect matching.</div>
+        <div class="mut">N-matches are computed <b>only</b> from relational logic (structure + vectors). Labels/text never affect matching.</div>
       </div>
     </div>
+
     <div class="col">
       <div class="box">
         <div class="title">Voice</div>
@@ -56,14 +57,15 @@ input[type=range],select{ width:100% }
         <label>Pitch: <span id="pitchVal">1.22</span></label>
         <input id="vPitch" type="range" min="0.7" max="2" step="0.01" value="1.22">
         <label>Volume: <span id="vVolVal">1.00</span></label>
-        <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.00">
+        <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.0">
         <div style="display:flex;gap:8px;margin-top:8px">
           <button id="testVoice" class="btn" type="button">Test voice</button>
           <button id="preloadVoices" class="btn" type="button">Preload voices</button>
         </div>
-        <div class="mut" id="voiceHint">Tip: pick a local region (e.g., Australia) for clear pronunciation.</div>
+        <div class="mut">Tip: pick a local region (e.g., Australia) for clear pronunciation.</div>
       </div>
     </div>
+
     <div class="col">
       <div class="box">
         <div class="title">Controls / Status</div>
@@ -81,469 +83,390 @@ input[type=range],select{ width:100% }
       </div>
     </div>
   </div>
+
   <div class="box" style="margin-top:12px">
     <div class="title">Premise (spoken + visual)</div>
     <div id="premiseText" aria-live="polite">—</div>
   </div>
 </div>
+
 <script>
-// Shortcuts
+// ====== Small utilities ======
 const $ = id => document.getElementById(id);
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-// Voice config and helpers
-let VOICE = null;
-let voicesReady = false;
-let userRateChanged = false;
-let userPitchChanged = false;
+// ====== Voice system (robust, non-blocking) ======
+let VOICE=null, voicesReady=false;
+let userRateChanged=false, userPitchChanged=false;
 
-const REGION_NAMES = {
-  AU:'Australia', GB:'United Kingdom', UK:'United Kingdom', US:'United States',
-  CA:'Canada', NZ:'New Zealand', IE:'Ireland', IN:'India', ZA:'South Africa',
-  PH:'Philippines', SG:'Singapore', HK:'Hong Kong', NG:'Nigeria'
+const REGION_NAMES={AU:'Australia',GB:'United Kingdom',UK:'United Kingdom',US:'United States',CA:'Canada',NZ:'New Zealand',IE:'Ireland',IN:'India',ZA:'South Africa',PH:'Philippines',SG:'Singapore',HK:'Hong Kong',NG:'Nigeria'};
+const regionCode=lang=>(String(lang).match(/^[a-z]{2,3}[-_]?([A-Z]{2})/)||[])[1]||'';
+const regionName=lang=>REGION_NAMES[regionCode(lang)]||(/^en\b/i.test(lang)?'Global English':'Other Region');
+
+// Hidden heuristic to prefer feminine voices (UI remains neutral)
+const POS=/\b(female|zira|aria|ava|jenny|jessa|samantha|kendra|joanna|olivia|zoe|ella|mia|isla|karen|tessa|moira|hazel|serena|victoria|natasha|catherine|susan|allison|amy|emma|maya|sophia|isabella)\b/i;
+const NEG=/\b(male|daniel|george|michael|mark|tom|fred|brian|kevin|liam|adam|andy|ben|bruce|charles|david|chris|eric|frank|jack|john|luke|matt|mike|nathan|paul|peter|ryan|steve|tim)\b/i;
+const vKey=v=>v.voiceURI||(v.name+'|'+v.lang);
+function feminineScore(v){const s=(v.name+' '+v.voiceURI).toLowerCase();let k=0;if(POS.test(s))k+=4;if(/female/.test(s))k+=5;if(NEG.test(s))k-=7;return k;}
+
+const FRIENDLY_POOL={
+ 'Australia':['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
+ 'United Kingdom':['Sophie','Amelia','Olivia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
+ 'United States':['Amy','Emma','Ava','Mia','Sophia','Isabella','Olivia','Ella','Zoe','Grace'],
+ 'Canada':['Sophie','Chloe','Amelia','Maya','Ella','Zoe','Olivia','Emma','Ava','Mia'],
+ 'Ireland':['Aoife','Saoirse','Niamh','Aisling','Ciara','Orla','Molly','Katie','Ella','Chloe'],
+ 'New Zealand':['Aria','Isla','Olivia','Ava','Emily','Sophie','Mia','Zoe','Ella','Grace'],
+ 'South Africa':['Tessa','Leah','Olivia','Mia','Ava','Ella','Zoe','Grace','Ruby','Chloe'],
+ 'India':['Aisha','Anaya','Diya','Ira','Kavya','Kiara','Maya','Riya','Sara','Ishita'],
+ 'Philippines':['Althea','Ariana','Bianca','Clara','Elena','Hannah','Isabella','Julia','Mika','Sofia'],
+ 'Singapore':['Alyssa','Cheryl','Clara','Elise','Hazel','Jade','Mei','Nicole','Sabrina','Tara'],
+ 'Hong Kong':['Anna','Cathy','Iris','Joyce','Lily','Mandy','Nina','Queenie','Vicky','Yuki'],
+ 'Nigeria':['Ada','Amara','Chioma','Ifunanya','Ijeoma','Kachi','Nkem','Nkechi','Ola','Zainab'],
+ 'Global English':['Amy','Ella','Zoe','Mia','Ava','Sophie','Lily','Ruby','Grace','Chloe'],
+ 'Other Region':['Amy','Ella','Zoe','Mia','Ava','Sophie','Lily','Ruby','Grace','Chloe']
 };
-const regionCode = lang => (String(lang).match(/^[a-z]{2,3}[-_]?([A-Z]{2})/)||[])[1] || '';
-const regionName = lang => REGION_NAMES[regionCode(lang)] || (/^en\b/i.test(lang) ? 'Global English' : 'Other Region');
+const friendlyByKey=new Map();
 
-const POS = /\b(female|zira|aria|ava|jenny|jessa|samantha|kendra|joanna|olivia|zoe|ella|mia|isla|karen|tessa|moira|hazel|serena|victoria|natasha|catherine|susan|allison|amy|emma|maya|sophia|isabella)\b/i;
-const NEG = /\b(male|daniel|george|michael|mark|tom|fred|brian|kevin|liam|adam|andy|ben|bruce|charles|david|chris|eric|frank|jack|john|luke|matt|mike|nathan|paul|peter|ryan|steve|tim)\b/i;
-const vKey = v => v.voiceURI || (v.name + '|' + v.lang);
-
-function feminineScore(v) {
-  const s = (v.name + ' ' + v.voiceURI).toLowerCase();
-  let score = 0;
-  if (POS.test(s)) score += 4;
-  if (/female/.test(s)) score += 5;
-  if (NEG.test(s)) score -= 7;
-  return score;
-}
-
-// Friendly names per region for UI (internally uses these names only)
-const FRIENDLY_POOL = {
-  'Australia':['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
-  'United Kingdom':['Sophie','Amelia','Olivia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
-  'United States':['Amy','Emma','Ava','Mia','Sophia','Isabella','Olivia','Ella','Zoe','Grace'],
-  'Canada':['Sophie','Chloe','Amelia','Maya','Ella','Zoe','Olivia','Emma','Ava','Mia'],
-  'Ireland':['Aoife','Saoirse','Niamh','Aisling','Ciara','Orla','Molly','Katie','Ella','Chloe'],
-  'New Zealand':['Aria','Isla','Olivia','Ava','Emily','Sophie','Mia','Zoe','Ella','Grace'],
-  'South Africa':['Tessa','Leah','Olivia','Mia','Ava','Ella','Zoe','Grace','Ruby','Chloe'],
-  'India':['Aisha','Anaya','Diya','Ira','Kavya','Kiara','Maya','Riya','Sara','Ishita'],
-  'Philippines':['Althea','Ariana','Bianca','Clara','Elena','Hannah','Isabella','Julia','Mika','Sofia'],
-  'Singapore':['Alyssa','Cheryl','Clara','Elise','Hazel','Jade','Mei','Nicole','Sabrina','Tara'],
-  'Hong Kong':['Anna','Cathy','Iris','Joyce','Lily','Mandy','Nina','Queenie','Vicky','Yuki'],
-  'Nigeria':['Ada','Amara','Chioma','Ifunanya','Ijeoma','Kachi','Nkem','Nkechi','Ola','Zainab'],
-  'Global English':['Amy','Ella','Zoe','Mia','Ava','Sophie','Lily','Ruby','Grace','Chloe'],
-  'Other Region':['Amy','Ella','Zoe','Mia','Ava','Sophie','Lily','Ruby','Grace','Chloe']
-};
-const friendlyNames = new Map();
-
-// Load voices robustly (wake engine, wait for event, poll if needed)
-async function loadVoices(maxWait=6000) {
-  if (!('speechSynthesis' in window)) return [];
-  try {
-    const u = new SpeechSynthesisUtterance('');
-    u.volume = 0; u.rate = 10;
-    speechSynthesis.speak(u);
-  } catch (_) {}
-  const start = performance.now();
-  return new Promise(resolve => {
-    const poll = setInterval(() => {
-      const vs = speechSynthesis.getVoices();
-      if (vs.length) {
-        clearInterval(poll);
-        resolve(vs);
-      } else if (performance.now() - start > maxWait) {
-        clearInterval(poll);
-        resolve(vs);
-      }
-    }, 100);
-    speechSynthesis.onvoiceschanged = () => {
-      clearInterval(poll);
-      resolve(speechSynthesis.getVoices());
-    };
+async function loadVoices(maxWait=6000){
+  if(!('speechSynthesis' in window)) return [];
+  // wake engine with silent utterance (does not block Start)
+  try{const u=new SpeechSynthesisUtterance('');u.volume=0;u.rate=10;speechSynthesis.speak(u);}catch(_){}
+  const start=performance.now();
+  return new Promise(resolve=>{
+    const poll=setInterval(()=>{
+      const v=speechSynthesis.getVoices();
+      if(v.length || performance.now()-start>maxWait){clearInterval(poll);resolve(v);}
+    },100);
+    speechSynthesis.onvoiceschanged=()=>{clearInterval(poll);resolve(speechSynthesis.getVoices());};
   });
 }
 
-async function initVoices() {
-  if (voicesReady) return;
-  const vs = await loadVoices();
-  if (!vs.length) {
-    $('voiceHint').textContent = 'No voices detected. Use Preload voices or try another browser.';
-    return;
-  }
-  // Build region options
-  const regions = [...new Set(vs.map(v => regionName(v.lang)))].sort();
-  $('regionSelect').innerHTML = '';
-  regions.forEach(r => {
-    const opt = document.createElement('option');
-    opt.value = r; opt.textContent = r;
-    $('regionSelect').appendChild(opt);
-  });
-  // Default region preference
-  $('regionSelect').value = ['Australia','United Kingdom','United States'].find(p => regions.includes(p)) || regions[0];
-  // Populate voices for selected region
-  populateVoices(vs, $('regionSelect').value);
-  $('regionSelect').onchange = () => populateVoices(vs, $('regionSelect').value);
-  voicesReady = true;
+function buildRegionOptions(voices){
+  const regions=[...new Set(voices.map(v=>regionName(v.lang)))].sort();
+  const sel=$('regionSelect'); sel.innerHTML='';
+  regions.forEach(r=>{const o=document.createElement('option');o.value=r;o.textContent=r;sel.appendChild(o);});
+  sel.value=['Australia','United Kingdom','United States'].find(r=>regions.includes(r))||regions[0]||'';
 }
 
-function populateVoices(vs, region) {
-  const list = vs.filter(v => regionName(v.lang) === region);
-  const ranked = list.map(v => ({v, score: feminineScore(v)})).sort((a,b) => b.score - a.score);
-  const fem = ranked.filter(x => x.score > 0).map(x => x.v);
-  const final = fem.length ? fem : list;
-  const pool = FRIENDLY_POOL[region] || FRIENDLY_POOL['Other Region'];
-  let i = 0;
-  final.forEach(v => {
-    const key = vKey(v);
-    if (!friendlyNames.has(key)) {
-      const base = pool[i % pool.length];
-      const cyc = Math.floor(i / pool.length);
-      friendlyNames.set(key, cyc ? `${base} ${cyc+1}` : base);
+function populateVoicesForRegion(voices){
+  const region=$('regionSelect').value;
+  const list=voices.filter(v=>regionName(v.lang)===region);
+  const ranked=list.map(v=>({v,score:feminineScore(v)})).sort((a,b)=>b.score-a.score);
+  const fem=ranked.filter(x=>x.score>0).map(x=>x.v);
+  const final=fem.length?fem:list;
+
+  const pool=FRIENDLY_POOL[region]||FRIENDLY_POOL['Other Region'];
+  let i=0;
+  final.forEach(v=>{
+    const key=vKey(v);
+    if(!friendlyByKey.has(key)){
+      const base=pool[i%pool.length], cyc=Math.floor(i/pool.length);
+      friendlyByKey.set(key, cyc?`${base} ${cyc+1}`:base);
       i++;
     }
   });
-  $('voice').innerHTML = '';
-  final.forEach(v => {
-    const opt = document.createElement('option');
-    opt.value = vKey(v);
-    opt.textContent = friendlyNames.get(vKey(v)) || 'Voice';
-    opt.title = `${v.name} — ${region}`;
-    $('voice').appendChild(opt);
+
+  const sel=$('voice'); sel.innerHTML='';
+  final.forEach(v=>{
+    const o=document.createElement('option');
+    o.value=vKey(v);
+    o.textContent=friendlyByKey.get(vKey(v))||'Voice';
+    o.title=`${v.name} — ${region}`;
+    sel.appendChild(o);
   });
-  const best = fem[0] || final[0] || null;
-  if (best) {
-    $('voice').value = vKey(best);
-    VOICE = best;
-    applyDefaults();
-  }
+
+  const best=fem[0]||final[0]||null;
+  if(best){ sel.value=vKey(best); VOICE=best; applySexyDefaultsIfUntouched(); }
 }
 
-function applyDefaults() {
-  if (!userRateChanged) {
-    $('vRate').value = 0.92;
-    $('rateVal').textContent = '0.92';
-  }
-  if (!userPitchChanged) {
-    $('vPitch').value = 1.22;
-    $('pitchVal').textContent = '1.22';
-  }
+async function initVoices(){
+  if(voicesReady) return;
+  const voices=await loadVoices();
+  if(!voices.length){ return; } // no voices exposed; game still runs visually
+  buildRegionOptions(voices);
+  populateVoicesForRegion(voices);
+  $('regionSelect').onchange=()=>populateVoicesForRegion(voices);
+  $('voice').onchange=()=>{
+    const key=$('voice').value;
+    const v=voices.find(v=>vKey(v)===key);
+    if(v){ VOICE=v; }
+  };
+  voicesReady=true;
 }
 
-// Binding slider update to mark user changes
-$('vRate').oninput = e => { userRateChanged = true; $('rateVal').textContent = (+e.target.value).toFixed(2); };
-$('vPitch').oninput = e => { userPitchChanged = true; $('pitchVal').textContent = (+e.target.value).toFixed(2); };
-$('vVol').oninput   = e => { $('vVolVal').textContent = (+e.target.value).toFixed(2); };
+function applySexyDefaultsIfUntouched(){
+  if(!userRateChanged){ $('vRate').value=0.92; $('rateVal').textContent='0.92'; }
+  if(!userPitchChanged){ $('vPitch').value=1.22; $('pitchVal').textContent='1.22'; }
+}
 
-// Preload voices on demand
-$('preloadVoices').onclick = initVoices;
-
-// Test voice
-$('testVoice').onclick = async () => {
-  if (!voicesReady) await initVoices();
-  await speak('Testing voice. Example: G six is one level below V four. I nine is two levels above V four.');
+$('preloadVoices').onclick=initVoices;
+$('testVoice').onclick=async()=>{
+  await initVoices();
+  await speak('Voice check. Example: G six is one level below V four. I nine is two levels above V four.');
 };
 
-// Speech function
-function speak(text) {
-  return new Promise(resolve => {
-    if (!VOICE || !('speechSynthesis' in window)) {
-      resolve(); return;
-    }
-    const u = new SpeechSynthesisUtterance(text);
-    u.voice = VOICE;
-    u.lang = VOICE.lang;
-    u.rate = +$('vRate').value;
-    u.pitch = +$('vPitch').value;
-    u.volume = +$('vVol').value;
-    u.onend = resolve;
-    u.onerror = resolve;
-    speechSynthesis.speak(u);
+function speak(text){
+  return new Promise(res=>{
+    if(!VOICE || !('speechSynthesis' in window)){ res(); return; }
+    const u=new SpeechSynthesisUtterance(text);
+    u.voice=VOICE; u.lang=VOICE.lang;
+    u.rate=+$('vRate').value; u.pitch=+$('vPitch').value; u.volume=+$('vVol').value;
+    u.onend=res; u.onerror=res; speechSynthesis.speak(u);
   });
 }
-function cancelSpeech() { try { speechSynthesis.cancel(); } catch (_) {} }
+function cancelSpeech(){ try{ speechSynthesis.cancel(); }catch(_){} }
+$('vRate').oninput=e=>{ userRateChanged=true; $('rateVal').textContent=(+e.target.value).toFixed(2); };
+$('vPitch').oninput=e=>{ userPitchChanged=true; $('pitchVal').textContent=(+e.target.value).toFixed(2); };
+$('vVol').oninput=e=>{ $('vVolVal').textContent=(+e.target.value).toFixed(2); };
 
-// Game state
-const historyArr = [];
-const planArr = [];
-let NLevel = 1;
-let MaxTrials = 40;
-let trialDuration = 5000;
-let relationPause = 1000;
-let targetRate = 25;
-let currentIndex = 0;
-let running = false;
-let paused = false;
-let waitHandle = null;
-let remainderHandle = null;
-let correctCount = 0;
-let errorCount = 0;
-let spokenClauses = null;
-let clauseIndex = 0;
-let trialStartTime = 0;
+// ====== Relational logic engine (complete + ordered) ======
+const DIRS={
+  north:{x:0,y:-1}, south:{x:0,y:1}, east:{x:1,y:0}, west:{x:-1,y:0},
+  northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1}
+};
+const HORIZ=Object.keys(DIRS);
+const LEVELS=[1,2,3];
+const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const token=()=> LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9));
+function uniqueTokens(k){ const s=new Set(); while(s.size<k) s.add(token()); return [...s]; }
 
-// Plan block
-function planBlock() {
-  planArr.length = 0;
-  for (let i = 0; i < MaxTrials; i++) {
-    planArr.push(i >= NLevel && Math.random()*100 < targetRate);
+function clauseString(from, rel, to){
+  if(rel.z && rel.z!==0){
+    const n=Math.abs(rel.z), word=n===1?'one level':n===2?'two levels':'three levels';
+    return `${from} is ${word} ${rel.z>0?'above':'below'} ${to}`;
+  } else {
+    const dir=(rel.x===0&&rel.y===-1)?'north':
+              (rel.x===0&&rel.y=== 1)?'south':
+              (rel.x===1&&rel.y=== 0)?'east':
+              (rel.x===-1&&rel.y===0)?'west':
+              (rel.x===1&&rel.y===-1)?'northeast':
+              (rel.x===-1&&rel.y===-1)?'northwest':
+              (rel.x===1&&rel.y=== 1)?'southeast':'southwest';
+    return `${from} is ${dir} of ${to}`;
   }
 }
-
-// Determine if actual match
-function isActualMatch(i) {
-  return i >= NLevel && sentencesCompatible(historyArr[i - NLevel], historyArr[i]);
-}
-
-// Generate random premise (two or three clauses)
-function generateRandomPremise() {
-  const [A,B,C,D] = uniqueTokens(4);
-  const pickRel = () => {
-    if (Math.random() < 0.6) {
-      const d = HORIZ[Math.floor(Math.random()*HORIZ.length)];
-      return { k: 'h', d };
-    } else {
-      const n = LEVELS[Math.floor(Math.random()*LEVELS.length)];
-      const up = Math.random() < 0.5;
-      return { k: 'v', n, up };
-    }
-  };
-  const clause = (X, rel, Y) => {
-    if (rel.k === 'h') {
-      return `${X} is ${rel.d} of ${Y}`;
-    } else {
-      return `${X} is ${rel.n} ${rel.n===1?'level':'levels'} ${rel.up?'above':'below'} ${Y}`;
-    }
-  };
-  const r1 = pickRel();
-  const r2 = pickRel();
-  const r3 = pickRel();
-  switch (Math.floor(Math.random()*4)) {
-    case 0: return `${clause(A,r1,B)} and ${clause(B,r2,C)}`;
-    case 1: return `${clause(A,r1,B)} and ${clause(C,r2,A)}`;
-    case 2: return `${clause(A,r1,B)} and ${clause(C,r2,B)} and ${clause(A,r3,C)}`;
-    default: return `${clause(A,r1,B)} and ${clause(C,r2,A)} and ${clause(B,r3,C)}`;
+function normalizeRelation(relPhrase){
+  const s=String(relPhrase).trim().toLowerCase();
+  let mv=s.match(/\b(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\b/);
+  if(mv){
+    let n=mv[1]; if(n==='one')n=1; else if(n==='two')n=2; else if(n==='three')n=3; else n=+n;
+    const up=mv[2]==='above';
+    return {x:0,y:0,z: up? n : -n};
   }
+  let mh=s.match(/\b(north(?:east|west)?|south(?:east|west)?|east|west)\b/);
+  if(mh){ const b=DIRS[mh[1]]; return {x:b.x,y:b.y,z:0}; }
+  return null;
+}
+function extractPremiseRelations(sentence){
+  const parts=sentence.split(/\s+and\s+/i).map(p=>p.trim());
+  const rels=[];
+  for(const part of parts){
+    let m=part.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+([A-Z]\d+)$/i);
+    if(m){ const R=normalizeRelation(`${m[2]} ${m[3]}`); if(R){ rels.push({from:m[1],to:m[4],rel:R}); continue; } }
+    m=part.match(/^([A-Z]\d+)\s+is\s+(north(?:east|west)?|south(?:east|west)?|east|west)\s+of\s+([A-Z]\d+)$/i);
+    if(m){ const R=normalizeRelation(m[2]); if(R){ rels.push({from:m[1],to:m[3],rel:R}); continue; } }
+    m=part.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+of\s+([A-Z]\d+)$/i);
+    if(m){ const R=normalizeRelation(`${m[2]} ${m[3]}`); if(R){ rels.push({from:m[1],to:m[4],rel:R}); continue; } }
+  }
+  return rels;
+}
+function canonicalStructure(sentence){
+  const rels=extractPremiseRelations(sentence);
+  const seen=new Map(); let i=0; const order='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+  const canon=rels.map(({from,to,rel})=>{
+    if(!seen.has(from)) seen.set(from,order[i++]);
+    if(!seen.has(to))   seen.set(to,order[i++]);
+    return {from:seen.get(from),to:seen.get(to),rel};
+  });
+  canon.sort((a,b)=>{
+    const A=a.from+a.to+JSON.stringify(a.rel);
+    const B=b.from+b.to+JSON.stringify(b.rel);
+    return A.localeCompare(B);
+  });
+  return canon;
+}
+function sayToken(tok){
+  const m=tok.match(/^([A-Z])(\d+)$/); if(!m) return tok;
+  const map={'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine'};
+  return `${m[1]} ${m[2].split('').map(d=>map[d]||d).join(' ')}`;
+}
+function splitDiag(dir){ return dir.replace(/northeast/gi,'north east').replace(/northwest/gi,'north west').replace(/southeast/gi,'south east').replace(/southwest/gi,'south west'); }
+function verbalizeClause(clause){
+  let m=clause.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+([A-Z]\d+)$/i);
+  if(m){
+    const left=sayToken(m[1]);
+    const n=+({one:1,two:2,three:3}[m[2].toLowerCase()] ?? m[2]);
+    const word=n===1?'one level':n===2?'two levels':'three levels';
+    const right=sayToken(m[4]);
+    return `${left} is ${word} ${m[3].toLowerCase()} ${right}`;
+  }
+  m=clause.match(/^([A-Z]\d+)\s+is\s+(north(?:east|west)?|south(?:east|west)?|east|west)\s+of\s+([A-Z]\d+)$/i);
+  if(m){ return `${sayToken(m[1])} is ${splitDiag(m[2])} of ${sayToken(m[3])}`; }
+  return clause;
+}
+function verbalizeSentence(s){ return s.split(/\s+and\s+/i).map(p=>verbalizeClause(p.trim())); }
+
+// Random & compatible builders
+function randomPremise(){
+  const [A,B,C]=uniqueTokens(3);
+  const pick=()=> Math.random()<0.6
+     ? {k:'h',d:HORIZ[Math.floor(Math.random()*HORIZ.length)]}
+     : {k:'v',n:LEVELS[Math.floor(Math.random()*LEVELS.length)],up:Math.random()<0.5};
+  const c=(X,r,Y)=> r.k==='h' ? `${X} is ${r.d} of ${Y}` : `${X} is ${r.n} ${r.n===1?'level':'levels'} ${r.up?'above':'below'} ${Y}`;
+  const r1=pick(), r2=pick();
+  return `${c(A,r1,B)} and ${c(B,r2,C)}`;
+}
+function buildCompatible(sentence){
+  const rels=extractPremiseRelations(sentence);
+  const uniq=[...new Set(rels.flatMap(r=>[r.from,r.to]))].length;
+  const labels=uniqueTokens(uniq);
+  const map=new Map(); let i=0;
+  const parts=rels.map(({from,to,rel})=>{
+    if(!map.has(from)) map.set(from,labels[i++]);
+    if(!map.has(to))   map.set(to,labels[i++]);
+    return clauseString(map.get(from),rel,map.get(to));
+  });
+  for(let j=parts.length-1;j>0;j--){ const k=Math.floor(Math.random()*(j+1)); [parts[j],parts[k]]=[parts[k],parts[j]]; }
+  return parts.join(' and ');
 }
 
-// Speak clauses sequentially with pauses
-async function speakClauses() {
-  if (!spokenClauses) return;
-  if (!trialStartTime) trialStartTime = performance.now();
-  while (running && !paused && clauseIndex < spokenClauses.length) {
-    setActivePart(clauseIndex);
-    await speak(spokenClauses[clauseIndex] + '.');
-    if (!running || paused) return;
-    if (clauseIndex < spokenClauses.length - 1) {
-      await new Promise(res => {
-        waitHandle = setTimeout(() => { waitHandle = null; res(); }, relationPause);
-      });
-      if (!running || paused) return;
+// ====== Gameplay (continuous; Start always works) ======
+let N=1, MAX=40, DUR=5000, REL_PAUSE=1000, RATE=25;
+let idx=0, running=false, paused=false;
+let waitTimer=null, remainderTimer=null;
+const history=[], planned=[];
+let correct=0, errors=0;
+let spokenParts=null, clauseIdx=0, trialStart=0;
+
+function planSequence(){ planned.length=0; for(let i=0;i<MAX;i++){ planned.push(i>=N && Math.random()*100<RATE); } }
+function isActualMatch(i){ return i>=N && sentencesCompatible(history[i-N], history[i]); }
+
+function buildPremiseVisual(raw){
+  const parts=raw.split(/\s+and\s+/i).map(p=>p.trim());
+  const el=$('premiseText'); el.innerHTML='';
+  parts.forEach((part,i)=>{
+    const sp=document.createElement('span'); sp.className='rel'; sp.textContent=part; el.appendChild(sp);
+    if(i<parts.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
+  });
+  return parts;
+}
+function setActivePart(i){ [...$('premiseText').querySelectorAll('.rel')].forEach((n,idx)=>n.classList.toggle('active', idx===i)); }
+
+async function speakPremise(){
+  if(!spokenParts) return;
+  if(!trialStart) trialStart=performance.now();
+  while(running && !paused && clauseIdx<spokenParts.length){
+    setActivePart(clauseIdx);
+    await speak(spokenParts[clauseIdx]+'.');
+    if(!running || paused) return;
+    if(clauseIdx<spokenParts.length-1){
+      await new Promise(res=>{ waitTimer=setTimeout(()=>{waitTimer=null; res(); }, REL_PAUSE); });
+      if(!running || paused) return;
     }
-    clauseIndex++;
+    clauseIdx++;
   }
   setActivePart(-1);
-  const elapsed = performance.now() - trialStartTime;
-  const rem = Math.max(0, trialDuration - elapsed);
-  await new Promise(res => {
-    remainderHandle = setTimeout(() => { remainderHandle = null; res(); }, rem);
-  });
+  const elapsed=performance.now()-trialStart;
+  const remaining=Math.max(0, DUR-elapsed);
+  await new Promise(res=>{ remainderTimer=setTimeout(()=>{remainderTimer=null; res(); }, remaining); });
 }
 
-// Determine next sentence (match vs non-match)
-function nextSentence() {
-  const wantMatch = planArr[currentIndex] && currentIndex >= NLevel;
-  if (wantMatch) {
-    return buildCompatible(historyArr[currentIndex - NLevel]);
-  }
-  let s; let tries = 0;
-  do {
-    s = generateRandomPremise();
-    tries++;
-  } while (currentIndex >= NLevel && sentencesCompatible(historyArr[currentIndex - NLevel], s) && tries < 200);
-  if (currentIndex >= NLevel && sentencesCompatible(historyArr[currentIndex - NLevel], s)) {
-    const rels = extractPremiseRelations(s);
-    if (rels.length) {
-      const r0 = rels[0];
-      if (r0.rel.z !== 0) {
-        r0.rel.z *= -1;
-      } else {
-        r0.rel.x *= -1; r0.rel.y *= -1;
-      }
-      s = rels.map(r => clauseString(r.from, r.rel, r.to)).join(' and ');
-    }
-  }
+function nextPremiseString(){
+  const want=planned[idx] && idx>=N;
+  if(want) return buildCompatible(history[idx-N]);
+  let s, tries=0;
+  do{ s=randomPremise(); tries++; } while(idx>=N && sentencesCompatible(history[idx-N], s) && tries<200);
   return s;
 }
 
-// Run a single trial and schedule the next
-async function runTrial() {
-  if (!running || paused) return;
-  if (currentIndex >= MaxTrials) { stopGame(); return; }
-  const s = nextSentence();
-  historyArr[currentIndex] = s;
+async function runTrial(){
+  if(!running || paused) return;
+  if(idx>=MAX){ stop(); return; }
+  const s=nextPremiseString();
+  history[idx]=s;
   buildPremiseVisual(s);
-  spokenClauses = verbalizeSentence(s);
-  clauseIndex = 0;
-  trialStartTime = performance.now();
-  await speakClauses();
-  if (!running || paused) return;
-  currentIndex++;
-  updateUI();
+  spokenParts=verbalizeSentence(s);
+  clauseIdx=0; trialStart=performance.now();
+  await speakPremise();
+  if(!running || paused) return;
+  idx++; updateUI(); runTrial();
+}
+
+function start(){
+  if(running) return;
+  running=true; paused=false; cancelSpeech();
+  planSequence(); idx=0; correct=0; errors=0; updateUI();
+  $('pause').disabled=false; $('reset').disabled=false; $('hit').disabled=false; $('skip').disabled=false;
+  $('regionSelect').disabled=true; $('voice').disabled=true;
+  // Start immediately, even if voices are still warming up
   runTrial();
 }
-
-// Start the game
-function startGame() {
-  if (running) return;
-  running = true;
-  paused = false;
+function stop(){
+  running=false; paused=false;
+  clearTimeout(waitTimer); waitTimer=null;
+  clearTimeout(remainderTimer); remainderTimer=null;
+  trialStart=0; spokenParts=null; clauseIdx=0;
   cancelSpeech();
-  planBlock();
-  currentIndex = 0;
-  correctCount = 0;
-  errorCount = 0;
-  updateUI();
-  $('pause').disabled = false;
-  $('reset').disabled = false;
-  $('hit').disabled = false;
-  $('skip').disabled = false;
-  $('regionSelect').disabled = true;
-  $('voice').disabled = true;
-  runTrial();
+  $('pause').disabled=true; $('skip').disabled=true;
+  $('regionSelect').disabled=false; $('voice').disabled=false;
 }
-
-// Stop the game
-function stopGame() {
-  running = false;
-  paused = false;
-  clearTimeout(waitHandle);
-  clearTimeout(remainderHandle);
-  waitHandle = null;
-  remainderHandle = null;
-  trialStartTime = 0;
-  spokenClauses = null;
-  clauseIndex = 0;
-  cancelSpeech();
-  $('pause').disabled = true;
-  $('skip').disabled = true;
-  $('regionSelect').disabled = false;
-  $('voice').disabled = false;
-}
-
-// Pause/resume toggle
-function pauseGame() {
-  if (!running && !paused) return;
-  if (!paused) {
-    paused = true;
-    clearTimeout(waitHandle);
-    clearTimeout(remainderHandle);
-    waitHandle = null;
-    remainderHandle = null;
-    cancelSpeech();
-    $('pause').textContent = '▶ Resume';
+function togglePause(){
+  if(!running && !paused) return;
+  if(!paused){
+    paused=true; clearTimeout(waitTimer); waitTimer=null; clearTimeout(remainderTimer); remainderTimer=null; cancelSpeech();
+    $('pause').textContent='▶ Resume';
   } else {
-    paused = false;
-    $('pause').textContent = '⏸ Pause';
-    if (spokenClauses && clauseIndex < spokenClauses.length) {
-      speakClauses().then(() => {
-        if (running && !paused) {
-          currentIndex++;
-          updateUI();
-          runTrial();
-        }
-      });
+    paused=false; $('pause').textContent='⏸ Pause';
+    if(spokenParts && clauseIdx<spokenParts.length){
+      speakPremise().then(()=>{ if(running && !paused){ idx++; updateUI(); runTrial(); } });
     } else {
-      const elapsed = performance.now() - trialStartTime;
-      const rem = Math.max(0, trialDuration - elapsed);
-      remainderHandle = setTimeout(() => {
-        if (running && !paused) {
-          currentIndex++;
-          updateUI();
-          runTrial();
-        }
-      }, rem);
+      const elapsed=performance.now()-trialStart;
+      const remaining=Math.max(0, DUR-elapsed);
+      remainderTimer=setTimeout(()=>{ if(running && !paused){ idx++; updateUI(); runTrial(); } }, remaining);
     }
   }
 }
-
-// Reset game to initial state
-function resetGame() {
-  stopGame();
-  $('start').disabled = false;
-  $('pause').textContent = '⏸ Pause';
-  currentIndex = 0;
-  correctCount = 0;
-  errorCount = 0;
-  $('premiseText').textContent = '—';
-  updateUI();
+function reset(){
+  stop(); $('start').disabled=false; $('pause').textContent='⏸ Pause';
+  idx=0; correct=0; errors=0; $('premiseText').textContent='—'; updateUI();
+}
+function registerHit(){ if(!running) return; if(isActualMatch(idx)) correct++; else errors++; updateUI(); }
+function skip(){ if(!running) return; clearTimeout(waitTimer); clearTimeout(remainderTimer); cancelSpeech(); idx++; updateUI(); runTrial(); }
+function updateUI(){
+  $('idx').textContent=idx; $('max').textContent=MAX;
+  $('ptype').textContent = planned[idx] && idx>=N ? 'planned MATCH' : 'planned NON-match';
+  $('isMatch').textContent = idx>=N ? String(isActualMatch(idx)).toUpperCase() : '—';
+  $('corr').textContent=correct; $('err').textContent=errors;
+  $('nVal').textContent=N; $('tVal').textContent=MAX; $('dVal').textContent=DUR; $('pVal').textContent=REL_PAUSE; $('rVal').textContent=RATE+'%';
 }
 
-// Register a match attempt (M key or Match button)
-function markMatch() {
-  if (!running) return;
-  const truth = isActualMatch(currentIndex);
-  if (truth) correctCount++; else errorCount++;
-  updateUI();
-}
-
-// Skip current trial
-function skipCurrent() {
-  if (!running) return;
-  clearTimeout(waitHandle);
-  clearTimeout(remainderHandle);
-  cancelSpeech();
-  currentIndex++;
-  updateUI();
-  runTrial();
-}
-
-// Update UI elements
-function updateUI() {
-  $('idx').textContent = currentIndex;
-  $('max').textContent = MaxTrials;
-  $('ptype').textContent = planArr[currentIndex] && currentIndex >= NLevel ? 'planned MATCH' : 'planned NON-match';
-  $('isMatch').textContent = currentIndex >= NLevel ? String(isActualMatch(currentIndex)).toUpperCase() : '—';
-  $('corr').textContent = correctCount;
-  $('err').textContent = errorCount;
-  $('nVal').textContent = NLevel;
-  $('tVal').textContent = MaxTrials;
-  $('dVal').textContent = trialDuration;
-  $('pVal').textContent = relationPause;
-  $('rVal').textContent = targetRate + '%';
-}
-
-// Voice test uses a simple example, but we pre-load voices asynchronously.
-function applySexyDefaultsIfUntouched() {
-  if (!userRateChanged) { $('vRate').value = 0.92; $('rateVal').textContent = '0.92'; }
-  if (!userPitchChanged) { $('vPitch').value = 1.22; $('pitchVal').textContent = '1.22'; }
-}
-
-// Bind UI controls
-$('start').onclick = async () => {
-  await initVoices();
-  if (!VOICE && speechSynthesis.getVoices().length) {
-    const region = $('regionSelect').value;
-    const all = speechSynthesis.getVoices().filter(v => regionName(v.lang) === region);
-    VOICE = all.map(v => ({v, score:feminineScore(v)})).sort((a,b) => b.score - a.score)[0]?.v || all[0];
-    applyDefaults();
+// ====== Bindings ======
+$('start').onclick = async ()=>{
+  // Kick off voice loading in background; don't block Start
+  initVoices().catch(()=>{});
+  // If we already have voices, tie selection to current region
+  if(!VOICE && 'speechSynthesis' in window && speechSynthesis.getVoices().length){
+    const region=$('regionSelect').value;
+    const all=speechSynthesis.getVoices().filter(v=>regionName(v.lang)===region);
+    const best=all.map(v=>({v,score:feminineScore(v)})).sort((a,b)=>b.score-a.score)[0]?.v || all[0] || null;
+    if(best){ VOICE=best; applySexyDefaultsIfUntouched(); }
   }
-  startGame();
+  start();
 };
-$('pause').onclick = pauseGame;
-$('reset').onclick = resetGame;
-$('hit').onclick = markMatch;
-$('skip').onclick = skipCurrent;
-window.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm') markMatch(); });
+$('pause').onclick=togglePause;
+$('reset').onclick=reset;
+$('hit').onclick=registerHit;
+$('skip').onclick=skip;
+window.addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='m') registerHit(); });
 
-$('n').oninput = e => { NLevel = +e.target.value; $('nVal').textContent = NLevel; };
-$('trials').oninput = e => { MaxTrials = +e.target.value; $('tVal').textContent = MaxTrials; $('max').textContent = MaxTrials; };
-$('dur').oninput = e => { trialDuration = +e.target.value; $('dVal').textContent = trialDuration; };
-$('pauseTime').oninput = e => { relationPause = +e.target.value; $('pVal').textContent = relationPause; };
-$('rate').oninput = e => { targetRate = +e.target.value; $('rVal').textContent = targetRate + '%'; };
+$('n').oninput=e=>{ N=+e.target.value; $('nVal').textContent=N; };
+$('trials').oninput=e=>{ MAX=+e.target.value; $('tVal').textContent=MAX; $('max').textContent=MAX; };
+$('dur').oninput=e=>{ DUR=+e.target.value; $('dVal').textContent=DUR; };
+$('pauseTime').oninput=e=>{ REL_PAUSE=+e.target.value; $('pVal').textContent=REL_PAUSE; };
+$('rate').oninput=e=>{ RATE=+e.target.value; $('rVal').textContent=RATE+'%'; };
 
-// Initialize voices on page load
-document.addEventListener('DOMContentLoaded', initVoices);
+// Preload voices when allowed; never blocks Start
+document.addEventListener('DOMContentLoaded', ()=>{ initVoices().catch(()=>{}); });
 </script>
 </body>
 </html>
