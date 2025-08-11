@@ -50,20 +50,20 @@
       <div class="box">
         <div class="title">Voice</div>
         <label>Country / Region</label>
-        <select id="regionSelect"></select>
+        <select id="regionSelect"><option>Loading…</option></select>
         <label>Voice</label>
-        <select id="voice"></select>
-        <label>Rate: <span id="rateVal">0.95</span></label>
-        <input id="vRate" type="range" min="0.7" max="1.6" step="0.05" value="0.95">
-        <label>Pitch: <span id="pitchVal">1.20</span></label>
-        <input id="vPitch" type="range" min="0.7" max="2" step="0.05" value="1.20">
+        <select id="voice"><option>Loading…</option></select>
+        <label>Rate: <span id="rateVal">0.92</span></label>
+        <input id="vRate" type="range" min="0.7" max="1.6" step="0.01" value="0.92">
+        <label>Pitch: <span id="pitchVal">1.22</span></label>
+        <input id="vPitch" type="range" min="0.7" max="2" step="0.01" value="1.22">
         <label>Volume: <span id="vVolVal">1.00</span></label>
         <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.0">
         <div style="display:flex;gap:8px;margin-top:8px">
           <button id="testVoice" class="btn" type="button">Test voice</button>
           <button id="preloadVoices" class="btn" type="button">Preload voices</button>
         </div>
-        <div class="mut">Choose a local region (e.g., Australia) for the clearest pronunciation.</div>
+        <div class="mut">Tip: pick a local region (e.g., Australia) for clear pronunciation.</div>
       </div>
     </div>
 
@@ -110,8 +110,8 @@ const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function token(){ return LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9)); }
 function uniqueTokens(k){ const s=new Set(); while(s.size<k) s.add(token()); return [...s]; }
 
-/* ===== voice: region list with full names + feminine prioritization (hidden) ===== */
-let VOICE=null, voicesReady=false;
+/* ===== voice: region list with full names + hidden feminine prioritization ===== */
+let VOICE=null, voicesReady=false, userTweakedRate=false, userTweakedPitch=false;
 
 // Map BCP-47 region code -> full country/region
 const REGION_NAMES = {
@@ -127,7 +127,7 @@ function regionNameFromLang(lang){
   return 'Other Region';
 }
 
-// Hidden “more feminine” heuristics
+// Hidden feminine heuristics (selection only; UI stays neutral)
 const FEMALE_POS = /\b(female|woman|zira|aria|ava|jenny|jessa|samantha|salli|kendra|joanna|lisa|olivia|zoe|ella|mia|isla|karen|tessa|moira|hazel|serena|victoria|natasha|catherine|katherine|susan|allison|noelle|lina|sara|sarah|amy|emma|maya|sophia|isabella)\b/i;
 const MALE_NEG   = /\b(male|man|daniel|david|george|michael|mark|tom|alex|fred|allan|sam\b|brian|kevin|liam|adam|andy|ben|bruce|charles|chris|eric|frank|jack|john|jordan|luke|matt|mike|nathan|paul|peter|ryan|steve|steven|tim)\b/i;
 function feminineScore(v){
@@ -142,7 +142,6 @@ function feminineScore(v){
   return score;
 }
 
-// Friendly single-name labels (internal; UI shows just the name)
 const FRIENDLY_POOL = {
   'Australia':['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
   'United Kingdom':['Sophie','Amelia','Olivia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
@@ -190,12 +189,11 @@ function buildRegionOptions(){
 function populateVoicesForRegion(){
   const region = $('regionSelect').value;
   const all = speechSynthesis.getVoices().filter(v=>regionNameFromLang(v.lang)===region);
-  // Rank by femininity; prefer positive scores; fall back to all if none scored
+  // Rank by feminine score; prefer positives; fall back to all
   const ranked = all.map(v=>({v,score:feminineScore(v)})).sort((a,b)=>b.score-a.score);
   const fem = ranked.filter(x=>x.score>0).map(x=>x.v);
   const list = fem.length? fem : all;
 
-  // Friendly single-name labels (UI only shows the name, no gender hints)
   const pool = FRIENDLY_POOL[region] || FRIENDLY_POOL['Other Region'];
   let i=0;
   list.forEach(v=>{
@@ -213,13 +211,12 @@ function populateVoicesForRegion(){
     const o=document.createElement('option');
     o.value=vKey(v);
     o.textContent = friendlyByKey.get(vKey(v)) || 'Voice';
-    o.title = `${v.name} — ${region}`;  // tooltip only
+    o.title = `${v.name} — ${region}`; // neutral tooltip
     sel.appendChild(o);
   });
 
-  // Choose best feminine by default
   const best = fem[0] || list[0] || null;
-  if(best){ sel.value=vKey(best); VOICE=best; applySexyDefaults(); }
+  if(best){ sel.value=vKey(best); VOICE=best; applySexyDefaultsIfUntouched(); }
 }
 
 function refreshVoiceUI(){
@@ -239,12 +236,11 @@ function ensureVoices(timeoutMs=1500){
   });
 }
 
-/* Hidden: “sexier” defaults (slightly slower, a touch higher pitch) */
-function applySexyDefaults(){
-  // Only nudge if user hasn't moved sliders yet
-  if($('vRate').value==='0.95' && $('vPitch').value==='1.20'){
-    // already set; nothing to do
-  }
+/* Hidden: “sexier” default voicing (subtle) */
+function applySexyDefaultsIfUntouched(){
+  // only nudge if the user hasn't changed sliders yet
+  if(!userTweakedRate){ $('vRate').value = 0.92; $('rateVal').textContent = '0.92'; }
+  if(!userTweakedPitch){ $('vPitch').value = 1.22; $('pitchVal').textContent = '1.22'; }
 }
 
 if('speechSynthesis' in window){
@@ -255,11 +251,11 @@ $('regionSelect').addEventListener('change', populateVoicesForRegion);
 $('voice').addEventListener('change', ()=>{
   const k=$('voice').value;
   const v=speechSynthesis.getVoices().find(v=>vKey(v)===k);
-  if(v){ VOICE=v; applySexyDefaults(); }
+  if(v){ VOICE=v; applySexyDefaultsIfUntouched(); }
 });
-$('vRate').oninput = e=> $('rateVal').textContent = (+e.target.value).toFixed(2);
-$('vPitch').oninput = e=> $('pitchVal').textContent = (+e.target.value).toFixed(2);
-$('vVol').oninput   = e=> $('vVolVal').textContent = (+e.target.value).toFixed(2);
+$('vRate').addEventListener('input', e=>{ userTweakedRate=true; $('rateVal').textContent = (+e.target.value).toFixed(2); });
+$('vPitch').addEventListener('input', e=>{ userTweakedPitch=true; $('pitchVal').textContent = (+e.target.value).toFixed(2); });
+$('vVol').addEventListener('input', e=>{ $('vVolVal').textContent = (+e.target.value).toFixed(2); });
 
 function cancelSpeech(){ try{ speechSynthesis.cancel(); }catch(_){} }
 function speak(text){
@@ -551,7 +547,7 @@ $('start').onclick = async ()=>{
     const region = $('regionSelect').value;
     const all = speechSynthesis.getVoices().filter(v=>regionNameFromLang(v.lang)===region);
     const best = all.map(v=>({v,score:feminineScore(v)})).sort((a,b)=>b.score-a.score)[0]?.v || all[0] || null;
-    VOICE = best; applySexyDefaults();
+    VOICE = best; applySexyDefaultsIfUntouched();
   }
   start();
 };
