@@ -52,17 +52,17 @@ input[type=range],select{ width:100% }
         <select id="regionSelect"></select>
         <label>Voice</label>
         <select id="voice"></select>
-        <label>Rate: <span id="rateVal">0.92</span></label>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="testVoice" class="btn" type="button">Test voice</button>
+          <button id="preloadVoices" class="btn" type="button">Preload voices</button>
+        </div>
+        <label style="margin-top:8px">Rate: <span id="rateVal">0.92</span></label>
         <input id="vRate" type="range" min="0.7" max="1.6" step="0.01" value="0.92">
         <label>Pitch: <span id="pitchVal">1.22</span></label>
         <input id="vPitch" type="range" min="0.7" max="2" step="0.01" value="1.22">
         <label>Volume: <span id="vVolVal">1.00</span></label>
         <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.0">
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <button id="testVoice" class="btn" type="button">Test voice</button>
-          <button id="preloadVoices" class="btn" type="button">Preload voices</button>
-        </div>
-        <div class="mut">Tip: pick a local region (e.g., Australia) for clear pronunciation.</div>
+        <div id="voiceHint" class="mut" style="margin-top:6px"></div>
       </div>
     </div>
 
@@ -91,11 +91,11 @@ input[type=range],select{ width:100% }
 </div>
 
 <script>
-// ========== Helpers ==========
+// ===== Helpers =====
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-// ========== Voice (robust, non-blocking) ==========
+// ===== Voice system (female-only, silent filtering, non-blocking) =====
 let VOICE=null, voicesReady=false;
 let userRateChanged=false, userPitchChanged=false;
 
@@ -103,10 +103,19 @@ const REGION_NAMES={AU:'Australia',GB:'United Kingdom',UK:'United Kingdom',US:'U
 const regionCode=lang=>(String(lang).match(/^[a-z]{2,3}[-_]?([A-Z]{2})/)||[])[1]||'';
 const regionName=lang=>REGION_NAMES[regionCode(lang)]||(/^en\b/i.test(lang)?'Global English':'Other Region');
 
-const POS=/\b(female|zira|aria|ava|jenny|jessa|samantha|kendra|joanna|olivia|zoe|ella|mia|isla|karen|tessa|moira|hazel|serena|victoria|natasha|catherine|susan|allison|amy|emma|maya|sophia|isabella)\b/i;
-const NEG=/\b(male|daniel|george|michael|mark|tom|fred|brian|kevin|liam|adam|andy|ben|bruce|charles|david|chris|eric|frank|jack|john|luke|matt|mike|nathan|paul|peter|ryan|steve|tim)\b/i;
+// Hidden heuristics (never shown to player)
+const POS=/\b(female|zira|aria|ava|jenny|jessa|samantha|kendra|joanna|olivia|zoe|ella|mia|isla|karen|tessa|moira|hazel|serena|victoria|natasha|catherine|susan|allison|amy|emma|maya|sophia|isabella|grace|chloe|ruby|lily|sarah|sara|sienna|isabelle|isobel|lola|eva|bella|amelia|freya|evie|holly|phoebe|ellie|nina|nicole|taylor|melissa|katrina|shelly)\b/i;
+const NEG=/\b(male|man|sir|daniel|george|michael|mark|tom|fred|brian|kevin|liam|adam|andy|ben|bruce|charles|david|chris|eric|frank|jack|john|luke|matt|mike|nathan|paul|peter|ryan|steve|tim|alex\b|alexander|brandon|carlos|carl|don|ed|edward|henry|ian|james|jason|jeff|jordan|jose|juan|lewis|martin|neil|noah|oscar|patrick|philip|phillip|richard|robert|sam|samuel|scott|sean|shane|stephen|stuart|terry|tony|victor|warren|will|william)\b/i;
 const vKey=v=>v.voiceURI||(v.name+'|'+v.lang);
-function feminineScore(v){const s=(v.name+' '+v.voiceURI).toLowerCase();let k=0;if(POS.test(s))k+=4;if(/female/.test(s))k+=5;if(NEG.test(s))k-=7;return k;}
+function feminineScore(v){const s=(v.name+' '+v.voiceURI).toLowerCase(); let k=0; if(POS.test(s))k+=5; if(/female/.test(s))k+=7; if(NEG.test(s))k-=15; return k;}
+function femaleOnly(list){
+  return list.filter(v=>{
+    const s=(v.name+' '+v.voiceURI).toLowerCase();
+    if(NEG.test(s)) return false;           // hard exclude
+    const score=feminineScore(v);
+    return score>=3 || /female/.test(s);    // allow only clearly-feminine voices
+  });
+}
 
 const FRIENDLY_POOL={
  'Australia':['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
@@ -146,14 +155,19 @@ function buildRegionOptions(voices){
 }
 function populateVoicesForRegion(voices){
   const region=$('regionSelect').value;
-  const list=voices.filter(v=>regionName(v.lang)===region);
-  const ranked=list.map(v=>({v,score:feminineScore(v)})).sort((a,b)=>b.score-a.score);
-  const fem=ranked.filter(x=>x.score>0).map(x=>x.v);
-  const final=fem.length?fem:list;
-
+  const list=femaleOnly(voices.filter(v=>regionName(v.lang)===region));
+  const sel=$('voice'); sel.innerHTML='';
+  if(!list.length){
+    VOICE=null;
+    $('voiceHint').textContent='No suitable voices detected for this region. Try “Preload voices” or pick another region.';
+    return;
+  }
+  $('voiceHint').textContent='';
+  // Rank by “feminine” score (kept private), assign friendly names
+  const ranked=list.map(v=>({v,score:feminineScore(v)})).sort((a,b)=>b.score-a.score).map(x=>x.v);
   const pool=FRIENDLY_POOL[region]||FRIENDLY_POOL['Other Region'];
   let i=0;
-  final.forEach(v=>{
+  ranked.forEach(v=>{
     const key=vKey(v);
     if(!friendlyByKey.has(key)){
       const base=pool[i%pool.length], cyc=Math.floor(i/pool.length);
@@ -161,23 +175,20 @@ function populateVoicesForRegion(voices){
       i++;
     }
   });
-
-  const sel=$('voice'); sel.innerHTML='';
-  final.forEach(v=>{
+  ranked.forEach(v=>{
     const o=document.createElement('option');
     o.value=vKey(v);
     o.textContent=friendlyByKey.get(vKey(v))||'Voice';
     o.title=`${v.name} — ${region}`;
     sel.appendChild(o);
   });
-
-  const best=fem[0]||final[0]||null;
-  if(best){ sel.value=vKey(best); VOICE=best; applySexyDefaultsIfUntouched(); }
+  const best=ranked[0];
+  if(best){ sel.value=vKey(best); VOICE=best; applyGentleDefaults(); }
 }
 async function initVoices(){
   if(voicesReady) return;
   const voices=await loadVoices();
-  if(!voices.length){ voicesReady=true; return; }
+  if(!voices.length){ voicesReady=true; $('voiceHint').textContent='No voices detected. Try “Preload voices” or another browser.'; return; }
   buildRegionOptions(voices);
   populateVoicesForRegion(voices);
   $('regionSelect').onchange=()=>populateVoicesForRegion(voices);
@@ -188,12 +199,15 @@ async function initVoices(){
   };
   voicesReady=true;
 }
-function applySexyDefaultsIfUntouched(){
+function applyGentleDefaults(){
   if(!userRateChanged){ $('vRate').value=0.92; $('rateVal').textContent='0.92'; }
   if(!userPitchChanged){ $('vPitch').value=1.22; $('pitchVal').textContent='1.22'; }
 }
 $('preloadVoices').onclick=initVoices;
-$('testVoice').onclick=async()=>{ await initVoices(); await speak('Voice check. Example: C three is north of H seven.'); };
+$('testVoice').onclick=async()=>{
+  await initVoices();
+  await speak('Voice check. Example: G six is one level below V four. I nine is two levels above V four.');
+};
 function speak(text){
   return new Promise(res=>{
     if(!VOICE || !('speechSynthesis' in window)){ res(); return; }
@@ -208,7 +222,7 @@ $('vRate').oninput=e=>{ userRateChanged=true; $('rateVal').textContent=(+e.targe
 $('vPitch').oninput=e=>{ userPitchChanged=true; $('pitchVal').textContent=(+e.target.value).toFixed(2); };
 $('vVol').oninput=e=>{ $('vVolVal').textContent=(+e.target.value).toFixed(2); };
 
-// ========== Relational logic (strict isomorphism) ==========
+// ===== Logic engine (strict relational isomorphism) =====
 const DIRS={
   north:{x:0,y:-1}, south:{x:0,y:1}, east:{x:1,y:0}, west:{x:-1,y:0},
   northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1}
@@ -248,7 +262,6 @@ function parsePremise(sentence){
 }
 function edgeKey(e){ return `${e.u}->${e.v}|${e.rel.x},${e.rel.y},${e.rel.z}`; }
 function edgesToString(edges){ return edges.map(edgeKey).sort().join('||'); }
-// Simple permutations generator (n ≤ ~6 here)
 function permutations(arr){
   const res=[]; const used=Array(arr.length).fill(false); const path=[];
   (function dfs(){
@@ -259,25 +272,20 @@ function permutations(arr){
   })();
   return res;
 }
-// Core: are two sentences logically identical up to relabeling?
 function sentencesCompatible(a,b){
   const A=parsePremise(a), B=parsePremise(b);
   if(A.edges.length!==B.edges.length) return false;
   if(A.nodes.length!==B.nodes.length) return false;
-  // Normalize A edges string once
-  const Akey = edgesToString(A.edges);
-  const nodesA = A.nodes.slice().sort();
-  const nodesB = B.nodes.slice().sort();
-  // Try all bijections B->A
+  const Akey=edgesToString(A.edges);
+  const nodesA=A.nodes.slice().sort(), nodesB=B.nodes.slice().sort();
   for(const perm of permutations(nodesA)){
-    const map=new Map(); // Bnode -> Anode
+    const map=new Map();
     for(let i=0;i<nodesB.length;i++) map.set(nodesB[i], perm[i]);
-    const mappedEdges = B.edges.map(e=>({u:map.get(e.u), v:map.get(e.v), rel:e.rel}));
-    if(edgesToString(mappedEdges)===Akey) return true;
+    const mapped=B.edges.map(e=>({u:map.get(e.u),v:map.get(e.v),rel:e.rel}));
+    if(edgesToString(mapped)===Akey) return true;
   }
   return false;
 }
-
 function clauseString(from, rel, to){
   if(rel.z && rel.z!==0){
     const n=Math.abs(rel.z), word=n===1?'one level':n===2?'two levels':'three levels';
@@ -310,7 +318,7 @@ function buildCompatible(sentence){
   return parts.join(' and ');
 }
 
-// ========== Speech-friendly verbalization ==========
+// ===== Speech-friendly wording =====
 function sayToken(tok){
   const m=tok.match(/^([A-Z])(\d+)$/); if(!m) return tok;
   const map={'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine'};
@@ -332,13 +340,14 @@ function verbalizeClause(clause){
 }
 function verbalizeSentence(s){ return s.split(/\s+and\s+/i).map(p=>verbalizeClause(p.trim())); }
 
-// ========== Gameplay (continuous; Start always works) ==========
+// ===== Gameplay =====
 let N=1, MAX=40, DUR=5000, REL_PAUSE=1000, RATE=25;
 let idx=0, running=false, paused=false;
 let waitTimer=null, remainderTimer=null;
 const history=[], planned=[];
 let correct=0, errors=0;
 let spokenParts=null, clauseIdx=0, trialStart=0;
+let answeredForIdx=new Set();
 
 function planSequence(){ planned.length=0; for(let i=0;i<MAX;i++){ planned.push(i>=N && Math.random()*100<RATE); } }
 function isActualMatch(i){ return i>=N && sentencesCompatible(history[i-N], history[i]); }
@@ -379,7 +388,6 @@ function nextPremiseString(){
   let s, tries=0;
   do{ s=randomPremise(); tries++; } while(idx>=N && sentencesCompatible(history[idx-N], s) && tries<300);
   if(idx>=N && sentencesCompatible(history[idx-N], s)){
-    // force a non-match by flipping one relation
     const P=parsePremise(s);
     if(P.edges.length){
       const e=P.edges[0];
@@ -393,6 +401,7 @@ function nextPremiseString(){
 async function runTrial(){
   if(!running || paused) return;
   if(idx>=MAX){ stop(); return; }
+  answeredForIdx.delete(idx);
   const s=nextPremiseString();
   history[idx]=s;
   buildPremiseVisual(s);
@@ -440,7 +449,12 @@ function reset(){
   stop(); $('start').disabled=false; $('pause').textContent='⏸ Pause';
   idx=0; correct=0; errors=0; $('premiseText').textContent='—'; updateUI();
 }
-function registerHit(){ if(!running) return; if(isActualMatch(idx)) correct++; else errors++; updateUI(); }
+function registerHit(){
+  if(!running || answeredForIdx.has(idx)) return;
+  answeredForIdx.add(idx);
+  if(isActualMatch(idx)) correct++; else errors++;
+  updateUI();
+}
 function skip(){ if(!running) return; clearTimeout(waitTimer); clearTimeout(remainderTimer); cancelSpeech(); idx++; updateUI(); runTrial(); }
 function updateUI(){
   $('idx').textContent=idx; $('max').textContent=MAX;
@@ -450,14 +464,15 @@ function updateUI(){
   $('nVal').textContent=N; $('tVal').textContent=MAX; $('dVal').textContent=DUR; $('pVal').textContent=REL_PAUSE; $('rVal').textContent=RATE+'%';
 }
 
-// ========== Bindings ==========
+// ===== Bindings =====
 $('start').onclick = async ()=>{
   initVoices().catch(()=>{});
   if(!VOICE && 'speechSynthesis' in window && speechSynthesis.getVoices().length){
     const region=$('regionSelect').value;
     const all=speechSynthesis.getVoices().filter(v=>regionName(v.lang)===region);
-    const best=all.map(v=>({v,score:feminineScore(v)})).sort((a,b)=>b.score-a.score)[0]?.v || all[0] || null;
-    if(best){ VOICE=best; if(!userRateChanged||!userPitchChanged){ $('vRate').value=0.92; $('rateVal').textContent='0.92'; $('vPitch').value=1.22; $('pitchVal').textContent='1.22'; } }
+    const fem=femaleOnly(all);
+    const best=fem.sort((a,b)=>feminineScore(b)-feminineScore(a))[0] || null;
+    if(best){ VOICE=best; applyGentleDefaults(); }
   }
   start();
 };
@@ -467,23 +482,23 @@ $('hit').onclick=registerHit;
 $('skip').onclick=skip;
 window.addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='m') registerHit(); });
 
-// Timing sliders (keep trial ≥ pause+buffer)
+// Timing sliders (trial ≥ pause+buffer to avoid stalls)
 $('n').oninput=e=>{ N=+e.target.value; $('nVal').textContent=N; };
 $('trials').oninput=e=>{ MAX=+e.target.value; $('tVal').textContent=MAX; $('max').textContent=MAX; };
 $('dur').oninput=e=>{
-  const val=+e.target.value; const minNeeded = REL_PAUSE + 500;
-  DUR = Math.max(val, minNeeded);
+  const val=+e.target.value;
+  const minNeeded=REL_PAUSE+500;
+  DUR=Math.max(val,minNeeded);
   $('dVal').textContent=DUR;
-  if (DUR !== val) { $('dur').value = DUR; }
+  if(DUR!==val){ $('dur').value=DUR; }
 };
 $('pauseTime').oninput=e=>{
   REL_PAUSE=+e.target.value; $('pVal').textContent=REL_PAUSE;
-  const minNeeded = REL_PAUSE + 500;
-  if (DUR < minNeeded){ DUR = minNeeded; $('dur').value = DUR; $('dVal').textContent = DUR; }
+  const minNeeded=REL_PAUSE+500;
+  if(DUR<minNeeded){ DUR=minNeeded; $('dur').value=DUR; $('dVal').textContent=DUR; }
 };
 $('rate').oninput=e=>{ RATE=+e.target.value; $('rVal').textContent=RATE+'%'; };
 
-// Preload voices when allowed; never blocks Start
 document.addEventListener('DOMContentLoaded', ()=>{ initVoices().catch(()=>{}); });
 </script>
 </body>
