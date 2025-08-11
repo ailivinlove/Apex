@@ -36,10 +36,8 @@ input[type=range],select{ width:100% }
         <label>Trials per block: <span id="tVal">40</span></label>
         <input id="trials" type="range" min="10" max="200" step="5" value="40">
         <label>Trial duration (ms): <span id="dVal">5000</span></label>
-        <!-- max raised to 120000 -->
         <input id="dur" type="range" min="1500" max="120000" step="250" value="5000">
         <label>Pause between relations in the same premise (ms): <span id="pVal">1000</span></label>
-        <!-- max raised to 30000 in previous step -->
         <input id="pauseTime" type="range" min="0" max="30000" step="50" value="1000">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="5" max="60" step="5" value="25">
@@ -93,11 +91,11 @@ input[type=range],select{ width:100% }
 </div>
 
 <script>
-// ---------- Helpers ----------
+// ========== Helpers ==========
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-// ---------- Voice (robust, non-blocking) ----------
+// ========== Voice (robust, non-blocking) ==========
 let VOICE=null, voicesReady=false;
 let userRateChanged=false, userPitchChanged=false;
 
@@ -179,7 +177,7 @@ function populateVoicesForRegion(voices){
 async function initVoices(){
   if(voicesReady) return;
   const voices=await loadVoices();
-  if(!voices.length){ voicesReady=true; return; } // no voices? game still runs visually
+  if(!voices.length){ voicesReady=true; return; }
   buildRegionOptions(voices);
   populateVoicesForRegion(voices);
   $('regionSelect').onchange=()=>populateVoicesForRegion(voices);
@@ -195,7 +193,7 @@ function applySexyDefaultsIfUntouched(){
   if(!userPitchChanged){ $('vPitch').value=1.22; $('pitchVal').textContent='1.22'; }
 }
 $('preloadVoices').onclick=initVoices;
-$('testVoice').onclick=async()=>{ await initVoices(); await speak('Voice check. Example: G six is one level below V four. I nine is two levels above V four.'); };
+$('testVoice').onclick=async()=>{ await initVoices(); await speak('Voice check. Example: C three is north of H seven.'); };
 function speak(text){
   return new Promise(res=>{
     if(!VOICE || !('speechSynthesis' in window)){ res(); return; }
@@ -210,13 +208,75 @@ $('vRate').oninput=e=>{ userRateChanged=true; $('rateVal').textContent=(+e.targe
 $('vPitch').oninput=e=>{ userPitchChanged=true; $('pitchVal').textContent=(+e.target.value).toFixed(2); };
 $('vVol').oninput=e=>{ $('vVolVal').textContent=(+e.target.value).toFixed(2); };
 
-// ---------- Logic engine ----------
-const DIRS={ north:{x:0,y:-1}, south:{x:0,y:1}, east:{x:1,y:0}, west:{x:-1,y:0}, northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1} };
+// ========== Relational logic (strict isomorphism) ==========
+const DIRS={
+  north:{x:0,y:-1}, south:{x:0,y:1}, east:{x:1,y:0}, west:{x:-1,y:0},
+  northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1}
+};
 const HORIZ=Object.keys(DIRS);
 const LEVELS=[1,2,3];
 const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const token=()=> LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9));
 function uniqueTokens(k){ const s=new Set(); while(s.size<k) s.add(token()); return [...s]; }
+
+function parsePremise(sentence){
+  const parts=String(sentence).split(/\s+and\s+/i).map(p=>p.trim()).filter(Boolean);
+  const edges=[]; const nodes=new Set();
+  for(const part of parts){
+    // vertical: X is {1|2|3} (level[s]) (above|below) [of] Y
+    let m=part.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+(?:of\s+)?([A-Z]\d+)$/i);
+    if(m){
+      const from=m[1], to=m[4];
+      const nRaw=m[2].toLowerCase();
+      const n = nRaw==='one'?1 : nRaw==='two'?2 : nRaw==='three'?3 : +nRaw;
+      const z = m[3].toLowerCase()==='above' ? n : -n;
+      edges.push({u:from,v:to,rel:{x:0,y:0,z}});
+      nodes.add(from); nodes.add(to);
+      continue;
+    }
+    // horizontal: X is {dir} of Y
+    m=part.match(/^([A-Z]\d+)\s+is\s+(north(?:east|west)?|south(?:east|west)?|east|west)\s+of\s+([A-Z]\d+)$/i);
+    if(m){
+      const from=m[1], to=m[3], dir=m[2].toLowerCase();
+      const vec=DIRS[dir]; if(!vec) continue;
+      edges.push({u:from,v:to,rel:{x:vec.x,y:vec.y,z:0}});
+      nodes.add(from); nodes.add(to);
+      continue;
+    }
+  }
+  return {nodes:[...nodes], edges};
+}
+function edgeKey(e){ return `${e.u}->${e.v}|${e.rel.x},${e.rel.y},${e.rel.z}`; }
+function edgesToString(edges){ return edges.map(edgeKey).sort().join('||'); }
+// Simple permutations generator (n ≤ ~6 here)
+function permutations(arr){
+  const res=[]; const used=Array(arr.length).fill(false); const path=[];
+  (function dfs(){
+    if(path.length===arr.length){ res.push(path.slice()); return; }
+    for(let i=0;i<arr.length;i++){
+      if(used[i]) continue; used[i]=true; path.push(arr[i]); dfs(); path.pop(); used[i]=false;
+    }
+  })();
+  return res;
+}
+// Core: are two sentences logically identical up to relabeling?
+function sentencesCompatible(a,b){
+  const A=parsePremise(a), B=parsePremise(b);
+  if(A.edges.length!==B.edges.length) return false;
+  if(A.nodes.length!==B.nodes.length) return false;
+  // Normalize A edges string once
+  const Akey = edgesToString(A.edges);
+  const nodesA = A.nodes.slice().sort();
+  const nodesB = B.nodes.slice().sort();
+  // Try all bijections B->A
+  for(const perm of permutations(nodesA)){
+    const map=new Map(); // Bnode -> Anode
+    for(let i=0;i<nodesB.length;i++) map.set(nodesB[i], perm[i]);
+    const mappedEdges = B.edges.map(e=>({u:map.get(e.u), v:map.get(e.v), rel:e.rel}));
+    if(edgesToString(mappedEdges)===Akey) return true;
+  }
+  return false;
+}
 
 function clauseString(from, rel, to){
   if(rel.z && rel.z!==0){
@@ -227,71 +287,52 @@ function clauseString(from, rel, to){
     return `${from} is ${dir} of ${to}`;
   }
 }
-function normalizeRelation(relPhrase){
-  const s=String(relPhrase).trim().toLowerCase();
-  let mv=s.match(/\b(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\b/);
-  if(mv){ let n=mv[1]; if(n==='one')n=1; else if(n==='two')n=2; else if(n==='three')n=3; else n=+n; const up=mv[2]==='above'; return {x:0,y:0,z: up? n : -n}; }
-  let mh=s.match(/\b(north(?:east|west)?|south(?:east|west)?|east|west)\b/);
-  if(mh){ const b=DIRS[mh[1]]; return {x:b.x,y:b.y,z:0}; }
-  return null;
+function randomPremise(){
+  const [A,B,C]=uniqueTokens(3);
+  const pick=()=> Math.random()<0.6
+     ? {k:'h',d:HORIZ[Math.floor(Math.random()*HORIZ.length)]}
+     : {k:'v',n:LEVELS[Math.floor(Math.random()*LEVELS.length)],up:Math.random()<0.5};
+  const c=(X,r,Y)=> r.k==='h' ? `${X} is ${r.d} of ${Y}` : `${X} is ${r.n} ${r.n===1?'level':'levels'} ${r.up?'above':'below'} ${Y}`;
+  const r1=pick(), r2=pick();
+  return `${c(A,r1,B)} and ${c(B,r2,C)}`;
 }
-function extractPremiseRelations(sentence){
-  const parts=sentence.split(/\s+and\s+/i).map(p=>p.trim());
-  const rels=[];
-  for(const part of parts){
-    let m=part.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+([A-Z]\d+)$/i);
-    if(m){ const R=normalizeRelation(`${m[2]} ${m[3]}`); if(R){ rels.push({from:m[1],to:m[4],rel:R}); continue; } }
-    m=part.match(/^([A-Z]\d+)\s+is\s+(north(?:east|west)?|south(?:east|west)?|east|west)\s+of\s+([A-Z]\d+)$/i);
-    if(m){ const R=normalizeRelation(m[2]); if(R){ rels.push({from:m[1],to:m[3],rel:R}); continue; } }
-    m=part.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+of\s+([A-Z]\d+)$/i);
-    if(m){ const R=normalizeRelation(`${m[2]} ${m[3]}`); if(R){ rels.push({from:m[1],to:m[4],rel:R}); continue; } }
-  }
-  return rels;
-}
-function canonicalStructure(sentence){
-  const rels=extractPremiseRelations(sentence);
-  const seen=new Map(); let i=0; const order='ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-  const canon=rels.map(({from,to,rel})=>{
-    if(!seen.has(from)) seen.set(from,order[i++]);
-    if(!seen.has(to))   seen.set(to,order[i++]);
-    return {from:seen.get(from),to:seen.get(to),rel};
+function buildCompatible(sentence){
+  const {edges}=parsePremise(sentence);
+  const uniq=[...new Set(edges.flatMap(e=>[e.u,e.v]))].length;
+  const labels=uniqueTokens(uniq);
+  const map=new Map(); let i=0;
+  const parts=edges.map(({u,v,rel})=>{
+    if(!map.has(u)) map.set(u,labels[i++]);
+    if(!map.has(v)) map.set(v,labels[i++]);
+    return clauseString(map.get(u),rel,map.get(v));
   });
-  canon.sort((a,b)=> (a.from+a.to+JSON.stringify(a.rel)).localeCompare(b.from+b.to+JSON.stringify(b.rel)));
-  return canon;
+  for(let j=parts.length-1;j>0;j--){ const k=Math.floor(Math.random()*(j+1)); [parts[j],parts[k]]=[parts[k],parts[j]]; }
+  return parts.join(' and ');
 }
-function sayToken(tok){ const m=tok.match(/^([A-Z])(\d+)$/); if(!m) return tok; const map={'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine'}; return `${m[1]} ${m[2].split('').map(d=>map[d]||d).join(' ')}`; }
+
+// ========== Speech-friendly verbalization ==========
+function sayToken(tok){
+  const m=tok.match(/^([A-Z])(\d+)$/); if(!m) return tok;
+  const map={'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine'};
+  return `${m[1]} ${m[2].split('').map(d=>map[d]||d).join(' ')}`;
+}
 function splitDiag(dir){ return dir.replace(/northeast/gi,'north east').replace(/northwest/gi,'north west').replace(/southeast/gi,'south east').replace(/southwest/gi,'south west'); }
 function verbalizeClause(clause){
-  let m=clause.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+([A-Z]\d+)$/i);
-  if(m){ const left=sayToken(m[1]); const n=+({one:1,two:2,three:3}[m[2].toLowerCase()] ?? m[2]); const word=n===1?'one level':n===2?'two levels':'three levels'; const right=sayToken(m[4]); return `${left} is ${word} ${m[3].toLowerCase()} ${right}`; }
+  let m=clause.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+(?:of\s+)?([A-Z]\d+)$/i);
+  if(m){
+    const left=sayToken(m[1]);
+    const n=+({one:1,two:2,three:3}[m[2].toLowerCase()] ?? m[2]);
+    const word=n===1?'one level':n===2?'two levels':'three levels';
+    const right=sayToken(m[4]);
+    return `${left} is ${word} ${m[3].toLowerCase()} ${right}`;
+  }
   m=clause.match(/^([A-Z]\d+)\s+is\s+(north(?:east|west)?|south(?:east|west)?|east|west)\s+of\s+([A-Z]\d+)$/i);
   if(m){ return `${sayToken(m[1])} is ${splitDiag(m[2])} of ${sayToken(m[3])}`; }
   return clause;
 }
 function verbalizeSentence(s){ return s.split(/\s+and\s+/i).map(p=>verbalizeClause(p.trim())); }
 
-function randomPremise(){
-  const [A,B,C]=uniqueTokens(3);
-  const pick=()=> Math.random()<0.6 ? {k:'h',d:HORIZ[Math.floor(Math.random()*HORIZ.length)]} : {k:'v',n:LEVELS[Math.floor(Math.random()*LEVELS.length)],up:Math.random()<0.5};
-  const c=(X,r,Y)=> r.k==='h' ? `${X} is ${r.d} of ${Y}` : `${X} is ${r.n} ${r.n===1?'level':'levels'} ${r.up?'above':'below'} ${Y}`;
-  const r1=pick(), r2=pick();
-  return `${c(A,r1,B)} and ${c(B,r2,C)}`;
-}
-function buildCompatible(sentence){
-  const rels=extractPremiseRelations(sentence);
-  const uniq=[...new Set(rels.flatMap(r=>[r.from,r.to]))].length;
-  const labels=uniqueTokens(uniq);
-  const map=new Map(); let i=0;
-  const parts=rels.map(({from,to,rel})=>{
-    if(!map.has(from)) map.set(from,labels[i++]);
-    if(!map.has(to))   map.set(to,labels[i++]);
-    return clauseString(map.get(from),rel,map.get(to));
-  });
-  for(let j=parts.length-1;j>0;j--){ const k=Math.floor(Math.random()*(j+1)); [parts[j],parts[k]]=[parts[k],parts[j]]; }
-  return parts.join(' and ');
-}
-
-// ---------- Gameplay ----------
+// ========== Gameplay (continuous; Start always works) ==========
 let N=1, MAX=40, DUR=5000, REL_PAUSE=1000, RATE=25;
 let idx=0, running=false, paused=false;
 let waitTimer=null, remainderTimer=null;
@@ -331,13 +372,24 @@ async function speakPremise(){
   const remaining=Math.max(0, DUR-elapsed);
   await new Promise(res=>{ remainderTimer=setTimeout(()=>{remainderTimer=null; res(); }, remaining); });
 }
+
 function nextPremiseString(){
   const want=planned[idx] && idx>=N;
   if(want) return buildCompatible(history[idx-N]);
   let s, tries=0;
-  do{ s=randomPremise(); tries++; } while(idx>=N && sentencesCompatible(history[idx-N], s) && tries<200);
+  do{ s=randomPremise(); tries++; } while(idx>=N && sentencesCompatible(history[idx-N], s) && tries<300);
+  if(idx>=N && sentencesCompatible(history[idx-N], s)){
+    // force a non-match by flipping one relation
+    const P=parsePremise(s);
+    if(P.edges.length){
+      const e=P.edges[0];
+      if(e.rel.z){ e.rel.z*=-1; } else { e.rel.x*=-1; e.rel.y*=-1; }
+      s=P.edges.map(ed=>clauseString(ed.u, ed.rel, ed.v)).join(' and ');
+    }
+  }
   return s;
 }
+
 async function runTrial(){
   if(!running || paused) return;
   if(idx>=MAX){ stop(); return; }
@@ -350,13 +402,14 @@ async function runTrial(){
   if(!running || paused) return;
   idx++; updateUI(); runTrial();
 }
+
 function start(){
   if(running) return;
   running=true; paused=false; cancelSpeech();
   planSequence(); idx=0; correct=0; errors=0; updateUI();
   $('pause').disabled=false; $('reset').disabled=false; $('hit').disabled=false; $('skip').disabled=false;
   $('regionSelect').disabled=true; $('voice').disabled=true;
-  runTrial(); // start immediately; voice loads in background if needed
+  runTrial();
 }
 function stop(){
   running=false; paused=false;
@@ -397,7 +450,7 @@ function updateUI(){
   $('nVal').textContent=N; $('tVal').textContent=MAX; $('dVal').textContent=DUR; $('pVal').textContent=REL_PAUSE; $('rVal').textContent=RATE+'%';
 }
 
-// ---------- Bindings ----------
+// ========== Bindings ==========
 $('start').onclick = async ()=>{
   initVoices().catch(()=>{});
   if(!VOICE && 'speechSynthesis' in window && speechSynthesis.getVoices().length){
@@ -414,27 +467,23 @@ $('hit').onclick=registerHit;
 $('skip').onclick=skip;
 window.addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='m') registerHit(); });
 
-// Timing sliders — keep trial duration sensible vs. pause
+// Timing sliders (keep trial ≥ pause+buffer)
 $('n').oninput=e=>{ N=+e.target.value; $('nVal').textContent=N; };
 $('trials').oninput=e=>{ MAX=+e.target.value; $('tVal').textContent=MAX; $('max').textContent=MAX; };
 $('dur').oninput=e=>{
-  const val=+e.target.value;
-  const minNeeded = REL_PAUSE + 500; // tiny cushion so a single pause isn't longer than trial
+  const val=+e.target.value; const minNeeded = REL_PAUSE + 500;
   DUR = Math.max(val, minNeeded);
   $('dVal').textContent=DUR;
-  if (DUR !== val) { $('dur').value = DUR; } // reflect auto-bump if we had to enforce
+  if (DUR !== val) { $('dur').value = DUR; }
 };
 $('pauseTime').oninput=e=>{
   REL_PAUSE=+e.target.value; $('pVal').textContent=REL_PAUSE;
   const minNeeded = REL_PAUSE + 500;
-  if (DUR < minNeeded){
-    DUR = minNeeded;
-    $('dur').value = DUR;
-    $('dVal').textContent = DUR;
-  }
+  if (DUR < minNeeded){ DUR = minNeeded; $('dur').value = DUR; $('dVal').textContent = DUR; }
 };
 $('rate').oninput=e=>{ RATE=+e.target.value; $('rVal').textContent=RATE+'%'; };
 
+// Preload voices when allowed; never blocks Start
 document.addEventListener('DOMContentLoaded', ()=>{ initVoices().catch(()=>{}); });
 </script>
 </body>
