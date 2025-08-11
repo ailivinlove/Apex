@@ -6,101 +6,64 @@
 <title>Relational N‑Back — Logic‑Only (8‑Direction + Vertical) — Voice + Visual Mode</title>
 <style>
   body { font-family: system-ui, sans-serif; background: #0b0d10; color: #e6fbff; margin: 0; padding: 16px; }
-  .btn { background: #0b0d10; color: #00ccff; border: 1px solid #00ccff; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; }
+  .btn { background: #0b0d10; color: #00ccff; border: 1px solid #00ccff; border-radius: 10px; padding: 10px 14px; font-weight: 700; cursor: pointer; margin-right:4px; }
   #premiseDisplay { margin-top: 16px; font-size: 1.2em; line-height: 1.4; min-height: 60px; }
   .relationPart { padding: 2px 4px; border-radius: 4px; }
   .relationPart.active { background: rgba(0,200,255,0.2); border: 1px solid rgba(0,200,255,0.5); }
-  .muted { color:#8fe7ff; font-size:12px; }
-  label { margin-left:8px }
-  select, input[type=number] { background:#0b0d10; color:#e6fbff; border:1px solid #00ccff; border-radius:8px; padding:4px 6px; }
 </style>
 </head>
 <body>
 <div>
   <button id="start" class="btn">▶ Start</button>
+  <button id="pause" class="btn" disabled>⏸ Pause</button>
+  <button id="reset" class="btn" disabled>🔄 Reset</button>
   <button id="hit" class="btn" disabled>✓ Match (M)</button>
-
-  <label for="nLevel">N‑back level:</label>
+  <label for="nLevel" style="margin-left:8px">N‑back level:</label>
   <input id="nLevel" type="number" value="1" min="1" style="width:50px">
-
-  <label for="trialsPerBlock">Trials per block:</label>
+  <label for="trialsPerBlock" style="margin-left:8px">Trials per block:</label>
   <input id="trialsPerBlock" type="number" value="40" min="1" style="width:60px">
-
-  <label for="trialMs">Trial duration (ms):</label>
+  <label for="trialMs" style="margin-left:8px">Trial duration (ms):</label>
   <input id="trialMs" type="number" value="5000" min="1000" step="250" style="width:80px">
-
-  <label for="pauseMs">Pause between relations (ms):</label>
+  <label for="pauseMs" style="margin-left:8px">Pause between relations (ms):</label>
   <input id="pauseMs" type="number" value="1000" min="0" step="100" style="width:80px">
-
-  <label for="targetRate">Target match rate (%):</label>
+  <label for="targetRate" style="margin-left:8px">Target match rate (%):</label>
   <input id="targetRate" type="number" value="25" min="0" max="100" style="width:60px">
-
-  <!-- Voice controls -->
-  <label for="voiceLang">Language:</label>
-  <select id="voiceLang"></select>
-
-  <label for="voiceSelect">Voice:</label>
+  <label for="voiceSelect" style="margin-left:8px">Voice:</label>
   <select id="voiceSelect"></select>
-
   <label for="rateControl">Rate:</label>
   <input id="rateControl" type="number" value="1.00" min="0.5" max="2" step="0.05" style="width:60px">
   <label for="pitchControl">Pitch:</label>
   <input id="pitchControl" type="number" value="1.00" min="0" max="2" step="0.05" style="width:60px">
   <label for="volumeControl">Volume:</label>
   <input id="volumeControl" type="number" value="1.00" min="0" max="1" step="0.05" style="width:60px">
-  <button id="testVoice" class="btn" type="button">Test voice</button>
-  <div class="muted">Matches are generated only by vector logic (number+direction); labels/text never affect matching.</div>
 </div>
-
 <div id="premiseDisplay"></div>
-
 <script>
 const $ = id => document.getElementById(id);
-
-// ================= Voice selection (female-only, language-aware) =================
-let selectedVoice = null;       // Locked per premise
-let isRunning = false;
-
-// Female name pools by language (single-name labels only)
-const FEMALE_NAMES = {
-  'en-AU': ['Zoe','Isla','Mia','Sophie','Olivia','Charlotte','Ava','Amelia','Ella','Grace','Ruby','Lily','Evie','Abby'],
-  'en-GB': ['Sophie','Olivia','Amelia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia','Ella','Charlotte','Hannah'],
-  'en-US': ['Amy','Emma','Ava','Mia','Sophia','Isabella','Olivia','Ella','Zoe','Grace','Hailey','Natalie','Lily','Chloe'],
-  'default': ['Amy','Zoe','Ella','Mia','Isla','Ava','Sophie','Lily','Ruby','Grace','Chloe','Eva','Nina','Maya','Bella']
-};
-
-// Heuristics to detect feminine voices (the Web Speech API lacks a gender flag)
-const FEMALE_HINTS = /(female|zira|jenny|aria|samantha|karen|katherine|catherine|katie|jessica|olivia|susan|hazel|victoria|serena|natalie|emma|amy|zoe|ella|mia|ava|isla|siri|cortana)/i;
-function isLikelyFemale(voice){
-  const s = (voice.name + ' ' + voice.voiceURI).toLowerCase();
-  if (FEMALE_HINTS.test(s)) return true;
-  // Some engines expose only generic names; treat unknown as neutral
-  return false;
-}
-
+let selectedVoice = null;
+const FRIENDLY_POOL = ['Amy','Chloe','Ella','Grace','Isla','Kara','Maya','Olive','Piper','Ruby','Tess','Uma','Zoe'];
 const voiceKey = v => v.voiceURI || (v.name + '|' + v.lang);
-const friendlyByKey = new Map();
+let friendlyByKey = new Map();
 
-function listLanguages(){
-  const all = speechSynthesis.getVoices();
-  const langs = [...new Set(all.map(v => v.lang))].sort((a,b)=>a.localeCompare(b));
-  const sel = $('voiceLang');
-  sel.innerHTML = '';
-  langs.forEach(L => { const opt = document.createElement('option'); opt.value=L; opt.textContent=L; sel.appendChild(opt); });
-  // Prefer en-AU, else first English, else first
-  const enAU = langs.find(l => l.toLowerCase()==='en-au');
-  const enAny = langs.find(l => /^en[-_]/i.test(l));
-  sel.value = enAU || enAny || langs[0] || '';
-}
+// ===== Runtime state for pause/resume =====
+let isRunning = false;
+let isPaused = false;
+let trialIndex = 0;
+let currentParts = null;
+let nextClauseIdx = 0;
+let trialStartTs = 0;
+let relationWaitTimeoutId = null;
+let trialTimeoutId = null;
 
-function assignFriendlyNames(voices, lang){
-  const pool = FEMALE_NAMES[lang] || FEMALE_NAMES['default'];
+function assignFriendlyNames(voices){
+  const females = voices.filter(v => v.name.toLowerCase().includes('female') || /fem/i.test(v.name) || /woman|girl/i.test(v.name) || true);
+  const sorted = [...females].sort((a,b)=> (a.lang||'').localeCompare(b.lang||'') || (a.name||'').localeCompare(b.name||''));
   let idx = 0;
-  voices.forEach(v => {
+  sorted.forEach(v => {
     const key = voiceKey(v);
     if (!friendlyByKey.has(key)){
-      const base = pool[idx % pool.length];
-      const cycles = Math.floor(idx / pool.length);
+      const base = FRIENDLY_POOL[idx % FRIENDLY_POOL.length];
+      const cycles = Math.floor(idx / FRIENDLY_POOL.length);
       friendlyByKey.set(key, cycles ? base + ' ' + (cycles+1) : base);
       idx++;
     }
@@ -109,68 +72,49 @@ function assignFriendlyNames(voices, lang){
 
 function populateVoices(){
   const select = $('voiceSelect');
-  const lang = $('voiceLang').value;
-  const all = speechSynthesis.getVoices();
-  const candidatesInLang = all.filter(v => v.lang === lang);
-  const females = candidatesInLang.filter(isLikelyFemale);
-  const source = females.length ? females : candidatesInLang; // fallback if engine doesn’t label gender
-  assignFriendlyNames(source, lang);
-
-  const prevKey = selectedVoice && voiceKey(selectedVoice);
+  const voices = speechSynthesis.getVoices();
+  assignFriendlyNames(voices);
   select.innerHTML = '';
-  source.forEach(v => {
+  voices.forEach(v => {
+    const key = voiceKey(v);
+    if (!friendlyByKey.has(key)) return;
     const opt = document.createElement('option');
-    opt.value = voiceKey(v);
-    opt.textContent = friendlyByKey.get(opt.value) || 'Voice'; // single friendly name
+    opt.value = key;
+    opt.textContent = friendlyByKey.get(key);
+    opt.dataset.lang = v.lang;
     select.appendChild(opt);
   });
-  let chosen = source[0] || null;
-  if (prevKey){ const keep = source.find(v => voiceKey(v) === prevKey); if (keep) chosen = keep; }
-  selectedVoice = chosen;
-  if (chosen) select.value = voiceKey(chosen);
-}
-
-function refreshVoiceUI(){
-  if (!('speechSynthesis' in window)) return;
-  // Populate languages first time voices are available
-  if (speechSynthesis.getVoices().length){ if (!$('voiceLang').options.length) listLanguages(); populateVoices(); }
+  selectedVoice = voices.find(v=>v.lang.startsWith('en-AU') && friendlyByKey.has(voiceKey(v))) || voices.find(v=>friendlyByKey.has(voiceKey(v)));
+  if (selectedVoice) select.value = voiceKey(selectedVoice);
 }
 
 if ('speechSynthesis' in window){
-  if (speechSynthesis.getVoices().length) refreshVoiceUI();
-  speechSynthesis.onvoiceschanged = () => { const running = isRunning; refreshVoiceUI(); $('voiceLang').disabled = running; $('voiceSelect').disabled = running; };
+  if (speechSynthesis.getVoices().length) populateVoices();
+  speechSynthesis.onvoiceschanged = () => { populateVoices(); $('voiceSelect').disabled = isRunning; };
 }
 
-$('voiceLang').addEventListener('change', () => { populateVoices(); });
 $('voiceSelect').addEventListener('change', () => {
   const key = $('voiceSelect').value;
   const v = speechSynthesis.getVoices().find(v => voiceKey(v) === key);
-  if (v) selectedVoice = v; // lock to chosen voice
+  if (v) selectedVoice = v;
 });
 
-// ================= Speech wrapper (sets explicit language) =================
 function speak(text, voiceSnap){
   return new Promise(resolve => {
     if (!window.speechSynthesis) { resolve(); return; }
     const utter = new SpeechSynthesisUtterance(text);
-    if (voiceSnap) { utter.voice = voiceSnap; utter.lang = voiceSnap.lang; }
-    else if ($('voiceLang').value) { utter.lang = $('voiceLang').value; }
+    if (voiceSnap) utter.voice = voiceSnap;
     utter.rate = parseFloat($('rateControl').value);
     utter.pitch = parseFloat($('pitchControl').value);
     utter.volume = parseFloat($('volumeControl').value);
+    utter.lang = voiceSnap?.lang || 'en-AU';
     utter.onend = () => resolve();
     utter.onerror = () => resolve();
-    window.speechSynthesis.speak(utter);
+    speechSynthesis.speak(utter);
   });
 }
+function cancelSpeech(){ try{ speechSynthesis.cancel(); }catch(_){} }
 
-$('testVoice').addEventListener('click', () => {
-  const sample = 'C three is one west of O six, and O six is one east of Q six.';
-  const voiceSnap = selectedVoice; // do not swap mid‑utterance
-  speak(sample, voiceSnap);
-});
-
-// ================= Visual rendering =================
 function updatePremiseDisplay(parts) {
   const container = $('premiseDisplay');
   container.innerHTML = '';
@@ -182,19 +126,27 @@ function updatePremiseDisplay(parts) {
     if (idx < parts.length - 1) container.appendChild(document.createTextNode(' and '));
   });
 }
-
-async function playPremise(parts, perRelationDelayMs, voiceSnap) {
-  updatePremiseDisplay(parts);
-  const spans = document.querySelectorAll('.relationPart');
-  for (let i = 0; i < parts.length; i++) {
-    spans.forEach((s, idx) => s.classList.toggle('active', idx === i));
-    await speak(parts[i], voiceSnap);
-    if (i < parts.length - 1) await new Promise(res => setTimeout(res, perRelationDelayMs));
+function setActiveClause(i){
+  document.querySelectorAll('.relationPart').forEach((s, idx)=>s.classList.toggle('active', idx===i));
+}
+function waitMs(ms){
+  return new Promise(res=>{ relationWaitTimeoutId = setTimeout(()=>{ relationWaitTimeoutId=null; res(); }, ms); });
+}
+async function speakRemainingClauses(perRelationDelayMs, voiceSnap){
+  while (currentParts && nextClauseIdx < currentParts.length){
+    if (!isRunning || isPaused) return;
+    setActiveClause(nextClauseIdx);
+    await speak(currentParts[nextClauseIdx], voiceSnap);
+    if (!isRunning || isPaused) return;
+    if (nextClauseIdx < currentParts.length - 1){
+      await waitMs(perRelationDelayMs);
+      if (!isRunning || isPaused) return;
+    }
+    nextClauseIdx++;
   }
-  spans.forEach(s => s.classList.remove('active'));
+  setActiveClause(-1);
 }
 
-// ================= Minimal premise generator (placeholder) =================
 const DIRS = ['north','south','east','west','northeast','northwest','southeast','southwest'];
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 function token(){ return LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9)); }
@@ -205,35 +157,70 @@ function generatePremiseParts(){
   return [`${A} is 1 ${d1} of ${B}`, `${B} is 1 ${d2} of ${C}`];
 }
 
-// ================= Trial loop =================
-let trialIndex = 0;
+let isRunning = false, trialIndex = 0, paused = false;
 async function runNextTrial(){
-  if (!isRunning) return;
+  if (!isRunning || isPaused) return;
   const pauseMs = parseInt($('pauseMs').value, 10) || 0;
   const trialMs = parseInt($('trialMs').value, 10) || 3000;
-  const voiceSnap = selectedVoice; // lock the chosen voice for this entire premise
-  const parts = generatePremiseParts();
-  const t0 = performance.now();
-  await playPremise(parts, pauseMs, voiceSnap);
-  const elapsed = performance.now() - t0;
+  const voiceSnap = selectedVoice;
+
+  currentParts = generatePremiseParts();
+  nextClauseIdx = 0;
+  trialStartTs = performance.now();
+
+  await speakRemainingClauses(pauseMs, voiceSnap);
+  if (!isRunning || isPaused) return;
+  const elapsed = performance.now() - trialStartTs;
   const remain = Math.max(0, trialMs - elapsed);
-  setTimeout(()=>{ if (isRunning){ trialIndex++; runNextTrial(); } }, remain);
+  trialTimeoutId = setTimeout(()=>{ if (isRunning && !isPaused){ trialIndex++; runNextTrial(); } }, remain);
 }
 
 $('start').onclick = () => {
-  $('hit').disabled = false;
-  if (!selectedVoice && speechSynthesis.getVoices().length){
-    // pick first female in language if available
-    const lang = $('voiceLang').value || 'en-AU';
-    const all = speechSynthesis.getVoices();
-    const inLang = all.filter(v => v.lang === lang);
-    selectedVoice = (inLang.find(isLikelyFemale) || inLang[0] || all.find(isLikelyFemale) || all[0]) || null;
-  }
-  isRunning = true; trialIndex = 0; runNextTrial();
-  $('voiceLang').disabled = true; $('voiceSelect').disabled = true; // no switching mid‑block
+  $('hit').disabled = false; $('pause').disabled = false; $('reset').disabled = false;
+  if (!selectedVoice && speechSynthesis.getVoices().length){ selectedVoice = speechSynthesis.getVoices()[0]; }
+  isPaused = false; isRunning = true; trialIndex = 0; runNextTrial();
 };
 
+$('pause').onclick = () => { paused = !paused; if (!paused) runNextTrial(); };
+$('reset').onclick = () => { isRunning = false; paused = false; trialIndex = 0; $('hit').disabled = true; $('pause').disabled = true; $('reset').disabled = true; $('premiseDisplay').innerHTML=''; };
+
 $('hit').onclick = () => { console.log('Match pressed'); };
+$('pause').onclick = () => {
+  if (!isRunning && !isPaused) return;
+  if (!isPaused){
+    // Enter paused state
+    isPaused = true; isRunning = false;
+    cancelSpeech();
+    if (relationWaitTimeoutId) { clearTimeout(relationWaitTimeoutId); relationWaitTimeoutId=null; }
+    if (trialTimeoutId) { clearTimeout(trialTimeoutId); trialTimeoutId=null; }
+    $('pause').textContent = '▶ Resume';
+  } else {
+    // Resume
+    isPaused = false; isRunning = true;
+    $('pause').textContent = '⏸ Pause';
+    const pauseMs = parseInt($('pauseMs').value, 10) || 0;
+    const trialMs = parseInt($('trialMs').value, 10) || 3000;
+    const voiceSnap = selectedVoice;
+    (async ()=>{
+      await speakRemainingClauses(pauseMs, voiceSnap);
+      if (!isRunning || isPaused) return;
+      const elapsed = performance.now() - trialStartTs;
+      const remain = Math.max(0, trialMs - elapsed);
+      trialTimeoutId = setTimeout(()=>{ if (isRunning && !isPaused){ trialIndex++; runNextTrial(); } }, remain);
+    })();
+  }
+};
+$('reset').onclick = () => {
+  isPaused = false; isRunning = false;
+  cancelSpeech();
+  if (relationWaitTimeoutId) { clearTimeout(relationWaitTimeoutId); relationWaitTimeoutId=null; }
+  if (trialTimeoutId) { clearTimeout(trialTimeoutId); trialTimeoutId=null; }
+  trialIndex = 0; currentParts = null; nextClauseIdx = 0; trialStartTs = 0;
+  $('premiseDisplay').innerHTML = '';
+  document.querySelectorAll('.relationPart').forEach(s=>s.classList.remove('active'));
+  $('pause').textContent = '⏸ Pause';
+  $('pause').disabled = true; $('reset').disabled = true; $('hit').disabled = true;
+};
 window.addEventListener('keydown', e => { if (e.key.toLowerCase() === 'm') $('hit').click(); });
 </script>
 </body>
