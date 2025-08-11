@@ -10,6 +10,10 @@
   #premiseDisplay { margin-top: 16px; font-size: 1.2em; line-height: 1.4; min-height: 60px; }
   .relationPart { padding: 2px 4px; border-radius: 4px; }
   .relationPart.active { background: rgba(0,200,255,0.2); border: 1px solid rgba(0,200,255,0.5); }
+  /* Visual transcript */
+  #premiseDisplay{margin-top:16px;font-size:1.15rem;line-height:1.5;min-height:64px;background:#0e1113;border:1px solid rgba(0,200,255,.25);padding:10px;border-radius:10px}
+  .relationPart{padding:2px 6px;border-radius:6px}
+  .relationPart.active{background:rgba(0,200,255,.18);outline:1px solid rgba(0,200,255,.35)}
 </style>
 </head>
 <body>
@@ -38,6 +42,10 @@
   <input id="volumeControl" type="number" value="1.00" min="0" max="1" step="0.05" style="width:60px">
 </div>
 <div id="premiseDisplay"></div>
+
+<!-- Visual transcript below -->
+<div id="premiseDisplay" aria-live="polite">—</div>
+
 <script>
 const $ = id => document.getElementById(id);
 let selectedVoice = null;
@@ -101,16 +109,16 @@ $('voiceSelect').addEventListener('change', () => {
 
 function speak(text, voiceSnap){
   return new Promise(resolve => {
-    if (!window.speechSynthesis) { resolve(); return; }
+    if (!('speechSynthesis' in window)) { resolve(); return; }
     const utter = new SpeechSynthesisUtterance(text);
-    if (voiceSnap) utter.voice = voiceSnap;
-    utter.rate = parseFloat($('rateControl').value);
-    utter.pitch = parseFloat($('pitchControl').value);
-    utter.volume = parseFloat($('volumeControl').value);
-    utter.lang = voiceSnap?.lang || 'en-AU';
-    utter.onend = () => resolve();
-    utter.onerror = () => resolve();
-    speechSynthesis.speak(utter);
+    if (voiceSnap) { utter.voice = voiceSnap; utter.lang = voiceSnap.lang || utter.lang; }
+    // Defensive defaults if rate/pitch/volume inputs aren't present
+    const rEl=$('rateControl'), pEl=$('pitchControl'), vEl=$('volumeControl');
+    utter.rate = rEl? parseFloat(rEl.value)||1.0 : 1.0;
+    utter.pitch = pEl? parseFloat(pEl.value)||1.0 : 1.0;
+    utter.volume = vEl? parseFloat(vEl.value)||1.0 : 1.0;
+    utter.onend = resolve; utter.onerror = resolve;
+    window.speechSynthesis.speak(utter);
   });
 }
 function cancelSpeech(){ try{ speechSynthesis.cancel(); }catch(_){} }
@@ -176,9 +184,19 @@ async function runNextTrial(){
 }
 
 $('start').onclick = () => {
-  $('hit').disabled = false; $('pause').disabled = false; $('reset').disabled = false;
-  if (!selectedVoice && speechSynthesis.getVoices().length){ selectedVoice = speechSynthesis.getVoices()[0]; }
-  isPaused = false; isRunning = true; trialIndex = 0; runNextTrial();
+  // Enable controls
+  const pauseBtn=$('pause'), resetBtn=$('reset'), hitBtn=$('hit');
+  if (pauseBtn) pauseBtn.disabled=false; if (resetBtn) resetBtn.disabled=false; if (hitBtn) hitBtn.disabled=false;
+  // Choose a voice if none yet (but don't block start if none)
+  if (!selectedVoice && 'speechSynthesis' in window){
+    const vs = speechSynthesis.getVoices();
+    selectedVoice = vs && vs.length ? vs[0] : null;
+  }
+  // Clear any old timers/state and start
+  if (relationWaitTimeoutId) { clearTimeout(relationWaitTimeoutId); relationWaitTimeoutId=null; }
+  if (trialTimeoutId) { clearTimeout(trialTimeoutId); trialTimeoutId=null; }
+  isPaused = false; isRunning = true; trialIndex = 0; currentParts=null; nextClauseIdx=0; trialStartTs=0;
+  runNextTrial();
 };
 
 $('pause').onclick = () => { paused = !paused; if (!paused) runNextTrial(); };
