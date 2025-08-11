@@ -23,6 +23,7 @@ input[type=range],select{ width:100% }
 #premiseText .rel{ padding:0 4px; border-radius:6px }
 #premiseText .rel.active{ background:rgba(0,200,255,.20); outline:1px solid rgba(0,200,255,.45) }
 #premiseText .sep{ opacity:.65 }
+.badge{ display:inline-block; padding:2px 6px; border:1px solid rgba(0,200,255,.3); border-radius:8px; font-size:12px; color:var(--mut); margin-left:6px }
 </style>
 </head>
 <body>
@@ -47,22 +48,22 @@ input[type=range],select{ width:100% }
 
     <div class="col">
       <div class="box">
-        <div class="title">Voice</div>
+        <div class="title">Voice <span id="voiceStatus" class="badge">Loading…</span></div>
         <label>Country / Region</label>
         <select id="regionSelect"></select>
         <label>Voice</label>
         <select id="voice"></select>
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <button id="testVoice" class="btn" type="button">Test voice</button>
-          <button id="preloadVoices" class="btn" type="button">Preload voices</button>
-        </div>
-        <label style="margin-top:8px">Rate: <span id="rateVal">0.92</span></label>
+        <label>Rate: <span id="rateVal">0.92</span></label>
         <input id="vRate" type="range" min="0.7" max="1.6" step="0.01" value="0.92">
-        <label>Pitch: <span id="pitchVal">1.22</span></label>
-        <input id="vPitch" type="range" min="0.7" max="2" step="0.01" value="1.22">
+        <label>Pitch: <span id="pitchVal">1.28</span></label>
+        <input id="vPitch" type="range" min="0.7" max="2" step="0.01" value="1.28">
         <label>Volume: <span id="vVolVal">1.00</span></label>
         <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.0">
-        <div id="voiceHint" class="mut" style="margin-top:6px"></div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button id="testVoice" class="btn" type="button">Test voice</button>
+          <button id="preloadVoices" class="btn" type="button">Preload / Verify</button>
+        </div>
+        <div class="mut">Tip: choose a local region (e.g., Australia) for clear pronunciation.</div>
       </div>
     </div>
 
@@ -91,32 +92,25 @@ input[type=range],select{ width:100% }
 </div>
 
 <script>
-// ===== Helpers =====
+// ========== Small helpers ==========
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
 
-// ===== Voice system (female-only, silent filtering, non-blocking) =====
-let VOICE=null, voicesReady=false;
+// ========== Voice system (female-only, verified, non-blocking) ==========
+let VOICE=null, voicesReady=false, verifying=false;
 let userRateChanged=false, userPitchChanged=false;
 
 const REGION_NAMES={AU:'Australia',GB:'United Kingdom',UK:'United Kingdom',US:'United States',CA:'Canada',NZ:'New Zealand',IE:'Ireland',IN:'India',ZA:'South Africa',PH:'Philippines',SG:'Singapore',HK:'Hong Kong',NG:'Nigeria'};
 const regionCode=lang=>(String(lang).match(/^[a-z]{2,3}[-_]?([A-Z]{2})/)||[])[1]||'';
 const regionName=lang=>REGION_NAMES[regionCode(lang)]||(/^en\b/i.test(lang)?'Global English':'Other Region');
 
-// Hidden heuristics (never shown to player)
-const POS=/\b(female|zira|aria|ava|jenny|jessa|samantha|kendra|joanna|olivia|zoe|ella|mia|isla|karen|tessa|moira|hazel|serena|victoria|natasha|catherine|susan|allison|amy|emma|maya|sophia|isabella|grace|chloe|ruby|lily|sarah|sara|sienna|isabelle|isobel|lola|eva|bella|amelia|freya|evie|holly|phoebe|ellie|nina|nicole|taylor|melissa|katrina|shelly)\b/i;
-const NEG=/\b(male|man|sir|daniel|george|michael|mark|tom|fred|brian|kevin|liam|adam|andy|ben|bruce|charles|david|chris|eric|frank|jack|john|luke|matt|mike|nathan|paul|peter|ryan|steve|tim|alex\b|alexander|brandon|carlos|carl|don|ed|edward|henry|ian|james|jason|jeff|jordan|jose|juan|lewis|martin|neil|noah|oscar|patrick|philip|phillip|richard|robert|sam|samuel|scott|sean|shane|stephen|stuart|terry|tony|victor|warren|will|william)\b/i;
+// Hidden heuristics to exclude obvious males & prefer feminine
+const FEMALE_POS=/\b(female|zira|aria|ava|jenny|jessa|samantha|kendra|joanna|olivia|zoe|ella|mia|isla|karen|tessa|moira|hazel|serena|victoria|natasha|catherine|susan|allison|amy|emma|maya|sophia|isabella|salli|kimberly|kendra|ivy|nicole|gabriella|helena|luna|tiana|sarah|sara|natasha)\b/i;
+const MALE_NEG=/\b(male|daniel|george|michael|mark|tom|fred|brian|kevin|liam|adam|andy|ben|bruce|charles|david|chris|eric|frank|jack|john|luke|matt|mike|nathan|paul|peter|ryan|steve|tim|alex|james|william)\b/i;
 const vKey=v=>v.voiceURI||(v.name+'|'+v.lang);
-function feminineScore(v){const s=(v.name+' '+v.voiceURI).toLowerCase(); let k=0; if(POS.test(s))k+=5; if(/female/.test(s))k+=7; if(NEG.test(s))k-=15; return k;}
-function femaleOnly(list){
-  return list.filter(v=>{
-    const s=(v.name+' '+v.voiceURI).toLowerCase();
-    if(NEG.test(s)) return false;           // hard exclude
-    const score=feminineScore(v);
-    return score>=3 || /female/.test(s);    // allow only clearly-feminine voices
-  });
-}
+function feminineScore(v){const s=(v.name+' '+v.voiceURI).toLowerCase();let k=0;if(FEMALE_POS.test(s))k+=5;if(MALE_NEG.test(s))k-=8;if(/female/.test(s))k+=6;return k;}
 
+// Friendly display names (only shown name, not gender logic)
 const FRIENDLY_POOL={
  'Australia':['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
  'United Kingdom':['Sophie','Amelia','Olivia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
@@ -135,38 +129,104 @@ const FRIENDLY_POOL={
 };
 const friendlyByKey=new Map();
 
+// Load voices from engine
 async function loadVoices(maxWait=6000){
   if(!('speechSynthesis' in window)) return [];
-  try{ const u=new SpeechSynthesisUtterance(''); u.volume=0; u.rate=10; speechSynthesis.speak(u); }catch(_){}
+  try{ const u=new SpeechSynthesisUtterance(''); u.volume=0; u.rate=10; speechSynthesis.speak(u);}catch(_){}
   const start=performance.now();
   return new Promise(resolve=>{
-    const poll=setInterval(()=>{
-      const v=speechSynthesis.getVoices();
-      if(v.length || performance.now()-start>maxWait){ clearInterval(poll); resolve(v); }
-    },100);
-    speechSynthesis.onvoiceschanged=()=>{ clearInterval(poll); resolve(speechSynthesis.getVoices()); };
+    const poll=setInterval(()=>{ const v=speechSynthesis.getVoices(); if(v.length || performance.now()-start>maxWait){ clearInterval(poll); resolve(v);} },100);
+    speechSynthesis.onvoiceschanged=()=>{ resolve(speechSynthesis.getVoices()); };
   });
 }
-function buildRegionOptions(voices){
-  const regions=[...new Set(voices.map(v=>regionName(v.lang)))].sort();
-  const sel=$('regionSelect'); sel.innerHTML='';
-  regions.forEach(r=>{ const o=document.createElement('option'); o.value=r; o.textContent=r; sel.appendChild(o); });
-  sel.value=['Australia','United Kingdom','United States'].find(r=>regions.includes(r))||regions[0]||'';
+
+// Verify a single voice actually starts/ends (user gesture required)
+function verifyVoiceWorks(v, timeout=1400){
+  return new Promise(res=>{
+    let ended=false;
+    const u=new SpeechSynthesisUtterance('verification');
+    u.voice=v; u.lang=v.lang; u.volume=0; u.rate=1; u.pitch=1;
+    const to=setTimeout(()=>{ if(!ended){ ended=true; u.onend=u.onerror=null; res(false);} }, timeout);
+    u.onend=()=>{ if(!ended){ ended=true; clearTimeout(to); res(true);} };
+    u.onerror=()=>{ if(!ended){ ended=true; clearTimeout(to); res(false);} };
+    try{ speechSynthesis.speak(u);}catch(_){ clearTimeout(to); res(false); }
+  });
 }
+
+function filterFemaleVoices(raw){
+  // English only unless explicitly changed by region selection; keep it simple here: prefer en-*
+  const enFirst = raw.filter(v=>/^en[-_]/i.test(v.lang));
+  const list = enFirst.length ? enFirst : raw;
+  // Remove obvious males; prefer feminine-scored
+  const femLikely = list.filter(v=>{
+    const s=(v.name+' '+v.voiceURI).toLowerCase();
+    if(MALE_NEG.test(s)) return false;
+    // if lang provides "male/female" hint in name/uri, exclude male
+    if(/\bmale\b/.test(s)) return false;
+    return true;
+  });
+  // Rank by feminine score (descending)
+  return femLikely.sort((a,b)=>feminineScore(b)-feminineScore(a));
+}
+
+async function verifyAllVoices(candidates){
+  verifying=true; setStatus('Verifying voices…');
+  const working=[];
+  for(const v of candidates){
+    // Speak cancel between checks to avoid queue piling
+    try{ speechSynthesis.cancel(); }catch(_){}
+    // Require an interactive gesture before this runs (Start/Test/Preload)
+    // We test; if it ends, we accept it
+    /* eslint-disable no-await-in-loop */
+    const ok = await verifyVoiceWorks(v);
+    if(ok) working.push(v);
+  }
+  verifying=false;
+  return working;
+}
+
+function setStatus(t){ const el=$('voiceStatus'); if(el) el.textContent=t; }
+function clearStatus(){ setStatus('Ready'); }
+
+async function initVoices(verify=true){
+  if(voicesReady && !verify) return;
+  const raw=await loadVoices();
+  if(!raw.length){ setStatus('No voices'); voicesReady=true; return; }
+
+  const femaleOnly = filterFemaleVoices(raw);
+  // Group by region
+  const regions=[...new Set(femaleOnly.map(v=>regionName(v.lang)))].sort();
+  const regionSel=$('regionSelect'); regionSel.innerHTML='';
+  regions.forEach(r=>{ const o=document.createElement('option'); o.value=r; o.textContent=r; regionSel.appendChild(o);});
+  regionSel.value=['Australia','United Kingdom','United States'].find(r=>regions.includes(r))||regions[0];
+
+  // Optionally verify all voices before exposing them
+  let usable=femaleOnly;
+  if(verify){
+    usable = await verifyAllVoices(femaleOnly);
+    if(!usable.length){
+      // Fallback: if verification failed due to autoplay quirks, expose femaleOnly anyway
+      usable = femaleOnly;
+      setStatus('Ready*');
+    } else {
+      clearStatus();
+    }
+  } else {
+    clearStatus();
+  }
+
+  populateVoicesForRegion(usable);
+  regionSel.onchange=()=>populateVoicesForRegion(usable);
+  voicesReady=true;
+}
+
 function populateVoicesForRegion(voices){
   const region=$('regionSelect').value;
-  const list=femaleOnly(voices.filter(v=>regionName(v.lang)===region));
-  const sel=$('voice'); sel.innerHTML='';
-  if(!list.length){
-    VOICE=null;
-    $('voiceHint').textContent='No suitable voices detected for this region. Try “Preload voices” or pick another region.';
-    return;
-  }
-  $('voiceHint').textContent='';
-  // Rank by “feminine” score (kept private), assign friendly names
-  const ranked=list.map(v=>({v,score:feminineScore(v)})).sort((a,b)=>b.score-a.score).map(x=>x.v);
+  const list=voices.filter(v=>regionName(v.lang)===region);
+  const ranked=list.sort((a,b)=>feminineScore(b)-feminineScore(a));
   const pool=FRIENDLY_POOL[region]||FRIENDLY_POOL['Other Region'];
   let i=0;
+  const voiceSel=$('voice'); voiceSel.innerHTML='';
   ranked.forEach(v=>{
     const key=vKey(v);
     if(!friendlyByKey.has(key)){
@@ -174,40 +234,27 @@ function populateVoicesForRegion(voices){
       friendlyByKey.set(key, cyc?`${base} ${cyc+1}`:base);
       i++;
     }
-  });
-  ranked.forEach(v=>{
     const o=document.createElement('option');
-    o.value=vKey(v);
-    o.textContent=friendlyByKey.get(vKey(v))||'Voice';
-    o.title=`${v.name} — ${region}`;
-    sel.appendChild(o);
+    o.value=key; o.textContent=friendlyByKey.get(key);
+    o.title=`${v.name} — ${region} — ${v.lang}`;
+    voiceSel.appendChild(o);
   });
-  const best=ranked[0];
-  if(best){ sel.value=vKey(best); VOICE=best; applyGentleDefaults(); }
+  const best=ranked[0]||null;
+  if(best){ voiceSel.value=vKey(best); VOICE=best; applySexyDefaultsIfUntouched(); }
 }
-async function initVoices(){
-  if(voicesReady) return;
-  const voices=await loadVoices();
-  if(!voices.length){ voicesReady=true; $('voiceHint').textContent='No voices detected. Try “Preload voices” or another browser.'; return; }
-  buildRegionOptions(voices);
-  populateVoicesForRegion(voices);
-  $('regionSelect').onchange=()=>populateVoicesForRegion(voices);
-  $('voice').onchange=()=>{
-    const key=$('voice').value;
-    const v=voices.find(v=>vKey(v)===key);
-    if(v){ VOICE=v; }
-  };
-  voicesReady=true;
-}
-function applyGentleDefaults(){
+
+function applySexyDefaultsIfUntouched(){
   if(!userRateChanged){ $('vRate').value=0.92; $('rateVal').textContent='0.92'; }
-  if(!userPitchChanged){ $('vPitch').value=1.22; $('pitchVal').textContent='1.22'; }
+  if(!userPitchChanged){ $('vPitch').value=1.28; $('pitchVal').textContent='1.28'; }
 }
-$('preloadVoices').onclick=initVoices;
+
+$('preloadVoices').onclick=()=>initVoices(true);
 $('testVoice').onclick=async()=>{
-  await initVoices();
-  await speak('Voice check. Example: G six is one level below V four. I nine is two levels above V four.');
+  await initVoices(false);
+  await speak('Voice check. Example: C three is north of H seven.');
 };
+
+// Speak / cancel
 function speak(text){
   return new Promise(res=>{
     if(!VOICE || !('speechSynthesis' in window)){ res(); return; }
@@ -217,12 +264,18 @@ function speak(text){
     u.onend=res; u.onerror=res; speechSynthesis.speak(u);
   });
 }
-function cancelSpeech(){ try{ speechSynthesis.cancel(); }catch(_){} }
+function cancelSpeech(){ try{ speechSynthesis.cancel(); }catch(_){ } }
+$('voice').onchange=()=>{
+  const key=$('voice').value;
+  const all=speechSynthesis.getVoices();
+  const found=all.find(v=>vKey(v)===key);
+  if(found) VOICE=found;
+};
 $('vRate').oninput=e=>{ userRateChanged=true; $('rateVal').textContent=(+e.target.value).toFixed(2); };
 $('vPitch').oninput=e=>{ userPitchChanged=true; $('pitchVal').textContent=(+e.target.value).toFixed(2); };
 $('vVol').oninput=e=>{ $('vVolVal').textContent=(+e.target.value).toFixed(2); };
 
-// ===== Logic engine (strict relational isomorphism) =====
+// ========== Relational logic (strict isomorphism; labels ignored) ==========
 const DIRS={
   north:{x:0,y:-1}, south:{x:0,y:1}, east:{x:1,y:0}, west:{x:-1,y:0},
   northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1}
@@ -237,18 +290,16 @@ function parsePremise(sentence){
   const parts=String(sentence).split(/\s+and\s+/i).map(p=>p.trim()).filter(Boolean);
   const edges=[]; const nodes=new Set();
   for(const part of parts){
-    // vertical: X is {1|2|3} (level[s]) (above|below) [of] Y
     let m=part.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+(?:of\s+)?([A-Z]\d+)$/i);
     if(m){
       const from=m[1], to=m[4];
-      const nRaw=m[2].toLowerCase();
-      const n = nRaw==='one'?1 : nRaw==='two'?2 : nRaw==='three'?3 : +nRaw;
-      const z = m[3].toLowerCase()==='above' ? n : -n;
+      const nText=m[2].toLowerCase();
+      const n=nText==='one'?1:nText==='two'?2:nText==='three'?3:+nText;
+      const z=m[3].toLowerCase()==='above'? n : -n;
       edges.push({u:from,v:to,rel:{x:0,y:0,z}});
       nodes.add(from); nodes.add(to);
       continue;
     }
-    // horizontal: X is {dir} of Y
     m=part.match(/^([A-Z]\d+)\s+is\s+(north(?:east|west)?|south(?:east|west)?|east|west)\s+of\s+([A-Z]\d+)$/i);
     if(m){
       const from=m[1], to=m[3], dir=m[2].toLowerCase();
@@ -260,15 +311,14 @@ function parsePremise(sentence){
   }
   return {nodes:[...nodes], edges};
 }
+
 function edgeKey(e){ return `${e.u}->${e.v}|${e.rel.x},${e.rel.y},${e.rel.z}`; }
 function edgesToString(edges){ return edges.map(edgeKey).sort().join('||'); }
 function permutations(arr){
-  const res=[]; const used=Array(arr.length).fill(false); const path=[];
+  const res=[], used=Array(arr.length).fill(false), path=[];
   (function dfs(){
     if(path.length===arr.length){ res.push(path.slice()); return; }
-    for(let i=0;i<arr.length;i++){
-      if(used[i]) continue; used[i]=true; path.push(arr[i]); dfs(); path.pop(); used[i]=false;
-    }
+    for(let i=0;i<arr.length;i++){ if(used[i])continue; used[i]=true; path.push(arr[i]); dfs(); path.pop(); used[i]=false; }
   })();
   return res;
 }
@@ -277,15 +327,16 @@ function sentencesCompatible(a,b){
   if(A.edges.length!==B.edges.length) return false;
   if(A.nodes.length!==B.nodes.length) return false;
   const Akey=edgesToString(A.edges);
-  const nodesA=A.nodes.slice().sort(), nodesB=B.nodes.slice().sort();
+  const nodesA=A.nodes.slice().sort();
+  const nodesB=B.nodes.slice().sort();
   for(const perm of permutations(nodesA)){
-    const map=new Map();
-    for(let i=0;i<nodesB.length;i++) map.set(nodesB[i], perm[i]);
-    const mapped=B.edges.map(e=>({u:map.get(e.u),v:map.get(e.v),rel:e.rel}));
+    const map=new Map(); for(let i=0;i<nodesB.length;i++) map.set(nodesB[i], perm[i]);
+    const mapped=B.edges.map(e=>({u:map.get(e.u), v:map.get(e.v), rel:e.rel}));
     if(edgesToString(mapped)===Akey) return true;
   }
   return false;
 }
+
 function clauseString(from, rel, to){
   if(rel.z && rel.z!==0){
     const n=Math.abs(rel.z), word=n===1?'one level':n===2?'two levels':'three levels';
@@ -295,15 +346,16 @@ function clauseString(from, rel, to){
     return `${from} is ${dir} of ${to}`;
   }
 }
+
 function randomPremise(){
   const [A,B,C]=uniqueTokens(3);
-  const pick=()=> Math.random()<0.6
-     ? {k:'h',d:HORIZ[Math.floor(Math.random()*HORIZ.length)]}
-     : {k:'v',n:LEVELS[Math.floor(Math.random()*LEVELS.length)],up:Math.random()<0.5};
+  const pick=()=> Math.random()<0.6 ? {k:'h',d:HORIZ[Math.floor(Math.random()*HORIZ.length)]}
+                                    : {k:'v',n:LEVELS[Math.floor(Math.random()*LEVELS.length)],up:Math.random()<0.5};
   const c=(X,r,Y)=> r.k==='h' ? `${X} is ${r.d} of ${Y}` : `${X} is ${r.n} ${r.n===1?'level':'levels'} ${r.up?'above':'below'} ${Y}`;
   const r1=pick(), r2=pick();
   return `${c(A,r1,B)} and ${c(B,r2,C)}`;
 }
+
 function buildCompatible(sentence){
   const {edges}=parsePremise(sentence);
   const uniq=[...new Set(edges.flatMap(e=>[e.u,e.v]))].length;
@@ -318,7 +370,7 @@ function buildCompatible(sentence){
   return parts.join(' and ');
 }
 
-// ===== Speech-friendly wording =====
+// ========== Verbalization ==========
 function sayToken(tok){
   const m=tok.match(/^([A-Z])(\d+)$/); if(!m) return tok;
   const map={'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine'};
@@ -340,14 +392,13 @@ function verbalizeClause(clause){
 }
 function verbalizeSentence(s){ return s.split(/\s+and\s+/i).map(p=>verbalizeClause(p.trim())); }
 
-// ===== Gameplay =====
+// ========== Gameplay ==========
 let N=1, MAX=40, DUR=5000, REL_PAUSE=1000, RATE=25;
 let idx=0, running=false, paused=false;
 let waitTimer=null, remainderTimer=null;
 const history=[], planned=[];
 let correct=0, errors=0;
 let spokenParts=null, clauseIdx=0, trialStart=0;
-let answeredForIdx=new Set();
 
 function planSequence(){ planned.length=0; for(let i=0;i<MAX;i++){ planned.push(i>=N && Math.random()*100<RATE); } }
 function isActualMatch(i){ return i>=N && sentencesCompatible(history[i-N], history[i]); }
@@ -401,7 +452,6 @@ function nextPremiseString(){
 async function runTrial(){
   if(!running || paused) return;
   if(idx>=MAX){ stop(); return; }
-  answeredForIdx.delete(idx);
   const s=nextPremiseString();
   history[idx]=s;
   buildPremiseVisual(s);
@@ -449,12 +499,7 @@ function reset(){
   stop(); $('start').disabled=false; $('pause').textContent='⏸ Pause';
   idx=0; correct=0; errors=0; $('premiseText').textContent='—'; updateUI();
 }
-function registerHit(){
-  if(!running || answeredForIdx.has(idx)) return;
-  answeredForIdx.add(idx);
-  if(isActualMatch(idx)) correct++; else errors++;
-  updateUI();
-}
+function registerHit(){ if(!running) return; if(isActualMatch(idx)) correct++; else errors++; updateUI(); }
 function skip(){ if(!running) return; clearTimeout(waitTimer); clearTimeout(remainderTimer); cancelSpeech(); idx++; updateUI(); runTrial(); }
 function updateUI(){
   $('idx').textContent=idx; $('max').textContent=MAX;
@@ -464,15 +509,17 @@ function updateUI(){
   $('nVal').textContent=N; $('tVal').textContent=MAX; $('dVal').textContent=DUR; $('pVal').textContent=REL_PAUSE; $('rVal').textContent=RATE+'%';
 }
 
-// ===== Bindings =====
+// ========== Bindings & safeguards ==========
 $('start').onclick = async ()=>{
-  initVoices().catch(()=>{});
+  // Ensure a user gesture precedes verification (autoplay policy)
+  if(!voicesReady) await initVoices(true);
+  // If still no VOICE but voices exist, pick best female
   if(!VOICE && 'speechSynthesis' in window && speechSynthesis.getVoices().length){
     const region=$('regionSelect').value;
-    const all=speechSynthesis.getVoices().filter(v=>regionName(v.lang)===region);
-    const fem=femaleOnly(all);
-    const best=fem.sort((a,b)=>feminineScore(b)-feminineScore(a))[0] || null;
-    if(best){ VOICE=best; applyGentleDefaults(); }
+    const all=speechSynthesis.getVoices();
+    const femaleOnly=filterFemaleVoices(all).filter(v=>regionName(v.lang)===region);
+    VOICE=(femaleOnly[0]||filterFemaleVoices(all)[0]||null);
+    applySexyDefaultsIfUntouched();
   }
   start();
 };
@@ -482,24 +529,40 @@ $('hit').onclick=registerHit;
 $('skip').onclick=skip;
 window.addEventListener('keydown', e=>{ if(e.key.toLowerCase()==='m') registerHit(); });
 
-// Timing sliders (trial ≥ pause+buffer to avoid stalls)
+// Timing sliders — keep trial ≥ pause+buffer to avoid stalls
 $('n').oninput=e=>{ N=+e.target.value; $('nVal').textContent=N; };
 $('trials').oninput=e=>{ MAX=+e.target.value; $('tVal').textContent=MAX; $('max').textContent=MAX; };
 $('dur').oninput=e=>{
-  const val=+e.target.value;
-  const minNeeded=REL_PAUSE+500;
-  DUR=Math.max(val,minNeeded);
+  const val=+e.target.value; const minNeeded = REL_PAUSE + 500;
+  DUR = Math.max(val, minNeeded);
   $('dVal').textContent=DUR;
-  if(DUR!==val){ $('dur').value=DUR; }
+  if (DUR !== val) { $('dur').value = DUR; }
 };
 $('pauseTime').oninput=e=>{
   REL_PAUSE=+e.target.value; $('pVal').textContent=REL_PAUSE;
-  const minNeeded=REL_PAUSE+500;
-  if(DUR<minNeeded){ DUR=minNeeded; $('dur').value=DUR; $('dVal').textContent=DUR; }
+  const minNeeded = REL_PAUSE + 500;
+  if (DUR < minNeeded){ DUR = minNeeded; $('dur').value = DUR; $('dVal').textContent = DUR; }
 };
 $('rate').oninput=e=>{ RATE=+e.target.value; $('rVal').textContent=RATE+'%'; };
 
-document.addEventListener('DOMContentLoaded', ()=>{ initVoices().catch(()=>{}); });
+// Try to warm voices early; don’t block UI
+document.addEventListener('DOMContentLoaded', ()=>{ initVoices(false).catch(()=>{}); setStatus('Ready'); });
+
+// ======== Compatibility function (after parser) ========
+function sentencesCompatible(a,b){
+  const A=parsePremise(a), B=parsePremise(b);
+  if(A.edges.length!==B.edges.length) return false;
+  if(A.nodes.length!==B.nodes.length) return false;
+  const Akey=edgesToString(A.edges);
+  const nodesA=A.nodes.slice().sort();
+  const nodesB=B.nodes.slice().sort();
+  for(const perm of permutations(nodesA)){
+    const map=new Map(); for(let i=0;i<nodesB.length;i++) map.set(nodesB[i], perm[i]);
+    const mapped=B.edges.map(e=>({u:map.get(e.u), v:map.get(e.v), rel:e.rel}));
+    if(edgesToString(mapped)===Akey) return true;
+  }
+  return false;
+}
 </script>
 </body>
 </html>
