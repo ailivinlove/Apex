@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Relational N-Back — Logic-Only N-Match (Voice + Visual)</title>
+<title>Relational N-Back — Logic-Only N-Matches (Voice + Visual)</title>
 <style>
   :root{--bg:#0b0d10;--fg:#e6fbff;--a:#00ccff;--mut:#8fe7ff}
   *{box-sizing:border-box}
@@ -14,7 +14,7 @@
   .box{background:#101418;border:1px solid rgba(0,200,255,.25);border-radius:14px;padding:12px}
   .title{font-weight:800;letter-spacing:.3px;margin-bottom:6px}
   .btn{background:#0b0d10;color:var(--a);border:1px solid var(--a);border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer}
-  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn:disabled{opacity:.55;cursor:not-allowed}
   label{font-size:12px;color:var(--mut);display:block;margin:6px 0}
   input[type=range],select{width:100%}
   .kbd{border:1px solid rgba(255,255,255,.25);padding:2px 6px;border-radius:6px;background:#0b0d10}
@@ -39,31 +39,32 @@
         <label>Trial duration (ms): <span id="dVal">5000</span></label>
         <input id="dur" type="range" min="1500" max="15000" step="250" value="5000">
         <label>Pause between relations in the same premise (ms): <span id="pVal">1000</span></label>
-        <input id="pauseTime" type="range" min="0" max="6000" step="50" value="1000">
+        <input id="pauseTime" type="range" min="0" max="8000" step="50" value="1000">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="5" max="60" step="5" value="25">
-        <div class="mut">N-matches are generated <b>only</b> by logical compatibility (structure + vectors). Labels/text style never affect matching.</div>
+        <div class="mut">N-matches are determined <b>only</b> by logical compatibility (structure + vectors). Labels/text never affect matching.</div>
       </div>
     </div>
 
     <div class="col">
       <div class="box">
         <div class="title">Voice</div>
-        <label>Language</label>
+        <label>Language &amp; Country</label>
         <select id="voiceLang"></select>
-        <label>Voice (female-only where detectable)</label>
+        <label>Voice (female-only, single name — country shown)</label>
         <select id="voice"></select>
-        <label>Rate: <span id="rateVal">1.00</span></label>
-        <input id="vRate" type="range" min="0.6" max="1.6" step="0.05" value="1.0">
-        <label>Pitch: <span id="pitchVal">1.00</span></label>
-        <input id="vPitch" type="range" min="0.5" max="2" step="0.1" value="1.0">
+        <div class="mut" id="femaleCount">—</div>
+        <label>Rate: <span id="rateVal">1.10</span></label>
+        <input id="vRate" type="range" min="0.7" max="1.6" step="0.05" value="1.10">
+        <label>Pitch: <span id="pitchVal">1.15</span></label>
+        <input id="vPitch" type="range" min="0.8" max="2" step="0.05" value="1.15">
         <label>Volume: <span id="vVolVal">1.00</span></label>
-        <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.0">
-        <div style="display:flex;gap:8px;margin-top:8px">
+        <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.00">
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
           <button id="testVoice" class="btn" type="button">Test voice</button>
           <button id="preloadVoices" class="btn" type="button">Preload voices</button>
         </div>
-        <div class="mut">Tip: pick a local voice (e.g., English (Australia)). Voice + language are locked for the full block.</div>
+        <div class="mut">Voices are filtered to sound feminine; language is set on each utterance. The chosen voice is locked for the full block.</div>
       </div>
     </div>
 
@@ -92,85 +93,134 @@
 </div>
 
 <script>
-/* ===== shortcuts ===== */
+/* =================== helpers =================== */
 const $ = id => document.getElementById(id);
 const wait = ms => new Promise(r=>setTimeout(r,ms));
 
-/* ===== vector semantics =====
-   Horizontal: unit step in 8 compass directions (no numbers in text)
-   Vertical: 1–3 levels above/below (spoken “one/two/three levels …”)
+/* =================== locale labels ===================
+   Show full country names, not acronyms (e.g., “English (Australia)”).
 */
-const DIRS = {
-  north:{x:0,y:-1}, south:{x:0,y:1}, east:{x:1,y:0}, west:{x:-1,y:0},
-  northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1}
+const REGION_NAMES = {
+  AU:'Australia', US:'United States', GB:'United Kingdom', CA:'Canada', NZ:'New Zealand',
+  ZA:'South Africa', IN:'India', IE:'Ireland', PH:'Philippines', NG:'Nigeria', SG:'Singapore'
 };
-const HORIZ = Object.keys(DIRS);
-const LEVELS = [1,2,3];
-const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-function token(){ return LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9)); }
-function uniqueTokens(k){ const s=new Set(); while(s.size<k) s.add(token()); return [...s]; }
+const LANG_NAMES = { en:'English', es:'Spanish', fr:'French', de:'German', it:'Italian', pt:'Portuguese' };
+function splitLangTag(tag){
+  const [lang, region] = String(tag).replace('_','-').split('-');
+  return {lang: (lang||'').toLowerCase(), region: (region||'').toUpperCase()};
+}
+function localeLabel(tag){
+  const {lang, region} = splitLangTag(tag);
+  const L = LANG_NAMES[lang] || tag;
+  const R = REGION_NAMES[region] || region || '';
+  return R ? `${L} (${R})` : L;
+}
 
-/* ===== voice (female-only where available) ===== */
-let VOICE=null, LANG=''; let voicesReady=false;
-const FEMALE_HINTS = /\b(female|zira|aria|samantha|karen|tessa|moira|victoria|serena|emma|amy|zoe|ella|mia|ava|isla|natalie|olivia|jenny)\b/i;
+/* =================== VOICE (female-only + full country labels) =================== */
+let VOICE=null, LANG='', voicesReady=false;
+
+const FEMALE_HINTS = /\b(female|zira|aria|samantha|karen|tessa|moira|victoria|serena|emma|amy|zoe|ella|mia|ava|isla|natalie|olivia|hazel|allison|kathy|vicki|jenny|aria|ashley|michelle|heather|susan|catherine|katherine|sarah|nina|sophie|chloe|lucy|olga|tanya)\b/i;
+const MALE_HINTS   = /\b(male|daniel|alex|fred|george|james|david|mark|tom|ravi|matt|john|paul|michael|adam|brian|sam|noah|liam|harry|oliver)\b/i;
+
 const voiceKey = v => v.voiceURI || (v.name+'|'+v.lang);
 const friendly = new Map();
 const FEMALE_NAME_POOL = {
-  'en-AU':['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
-  'en-GB':['Sophie','Olivia','Amelia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
-  'en-US':['Amy','Emma','Ava','Mia','Sophia','Isabella','Olivia','Ella','Zoe','Grace'],
+  'English (Australia)':['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily'],
+  'English (United Kingdom)':['Sophie','Olivia','Amelia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
+  'English (United States)':['Amy','Emma','Ava','Mia','Sophia','Isabella','Olivia','Ella','Zoe','Grace'],
+  'English (Canada)':['Chloe','Mia','Sophie','Emma','Olivia','Amelia','Ella','Zoe'],
+  'English (New Zealand)':['Isla','Sophie','Amelia','Ava','Olivia','Mia','Ruby','Aria'],
+  'English (South Africa)':['Tessa','Zoe','Leah','Mia','Ella','Ava','Isla'],
+  'English (Ireland)':['Moira','Ava','Emma','Sophie','Ella','Chloe','Lucy'],
   'default':['Amy','Zoe','Ella','Mia','Isla','Ava','Sophie','Lily','Ruby','Grace','Chloe','Eva','Nina','Maya','Bella']
 };
+
 function listLanguages(){
   const all = speechSynthesis.getVoices();
   const langs = [...new Set(all.map(v=>v.lang))].sort((a,b)=>a.localeCompare(b));
   const sel = $('voiceLang'); sel.innerHTML='';
-  langs.forEach(L=>{ const o=document.createElement('option'); o.value=L; o.textContent=L; sel.appendChild(o); });
-  const enAU = langs.find(l=>l.toLowerCase()==='en-au');
-  const enAny = langs.find(l=>/^en[-_]/i.test(l));
-  LANG = enAU || enAny || langs[0] || 'en-AU';
+  langs.forEach(L=>{
+    const opt=document.createElement('option');
+    opt.value=L; opt.textContent=localeLabel(L);
+    sel.appendChild(opt);
+  });
+  // Prefer English (Australia), then any English, else the first
+  const enAU = langs.find(l => l.toLowerCase()==='en-au');
+  const enAny = langs.find(l => /^en[-_]/i.test(l));
+  LANG = enAU || enAny || langs[0] || '';
   sel.value = LANG;
 }
+
 function assignFriendly(list){
-  const pool = FEMALE_NAME_POOL[LANG] || FEMALE_NAME_POOL.default;
+  const regionName = localeLabel(LANG);
+  const pool = FEMALE_NAME_POOL[regionName] || FEMALE_NAME_POOL.default;
   let idx=0;
   list.forEach(v=>{
     const k=voiceKey(v);
     if(!friendly.has(k)){
-      const base=pool[idx%pool.length];
-      const cyc=Math.floor(idx/pool.length);
-      friendly.set(k, cyc? `${base} ${cyc+1}`: base);
+      const base = pool[idx % pool.length];
+      const cyc  = Math.floor(idx / pool.length);
+      friendly.set(k, cyc ? `${base} ${cyc+1}` : base);
       idx++;
     }
   });
 }
+
+function femininityScore(v){
+  const s = (v.name + ' ' + v.voiceURI).toLowerCase();
+  let score = 0;
+  if (FEMALE_HINTS.test(s)) score += 3;
+  if (MALE_HINTS.test(s)) score -= 3;
+  // nudge local device voices slightly (often higher quality)
+  if (v.localService) score += 0.5;
+  // language-aligned voices get a nudge
+  const {region} = splitLangTag(v.lang); if (region) score += 0.2;
+  return score;
+}
+
 function populateVoices(){
   const sel = $('voice');
   const all = speechSynthesis.getVoices();
-  const inLang = all.filter(v=>v.lang===LANG);
-  const females = inLang.filter(v => FEMALE_HINTS.test((v.name+' '+v.voiceURI).toLowerCase()));
-  const list = females.length ? females : inLang;
+  const inLang = all.filter(v=>v.lang === LANG);
+  // Rank by femininity score; hide anything that looks male/neutral
+  const ranked = inLang.map(v=>({v,score:femininityScore(v)}))
+                       .filter(x=>x.score > 0.2) // stricter to keep the list feminine
+                       .sort((a,b)=>b.score-a.score)
+                       .map(x=>x.v);
+  const list = ranked.length ? ranked : inLang; // fallback if the engine exposes no gender cues
+
   assignFriendly(list);
   const prev = VOICE && voiceKey(VOICE);
   sel.innerHTML='';
-  list.forEach(v=>{ const o=document.createElement('option'); o.value=voiceKey(v); o.textContent=friendly.get(o.value)||'Voice'; sel.appendChild(o); });
-  let chosen = list[0] || null; if(prev){ const keep=list.find(v=>voiceKey(v)===prev); if(keep) chosen=keep; }
-  VOICE=chosen; if(chosen) sel.value=voiceKey(chosen);
+  list.forEach(v=>{
+    const k = voiceKey(v);
+    const opt=document.createElement('option');
+    opt.value=k;
+    opt.textContent = `${friendly.get(k) || 'Voice'} — ${localeLabel(v.lang)}`;
+    sel.appendChild(opt);
+  });
+  $('femaleCount').textContent = `Female-like voices found for ${localeLabel(LANG)}: ${ranked.length}${ranked.length? '' : ' (fallback to all voices in this locale)'}`;
+  let chosen = list[0] || null;
+  if(prev){ const keep = list.find(v=>voiceKey(v)===prev); if(keep) chosen=keep; }
+  VOICE = chosen;
+  if(chosen) sel.value = voiceKey(chosen);
 }
+
 function refreshVoicesUI(){
   if(!('speechSynthesis' in window)) return;
   if(speechSynthesis.getVoices().length){
     if(!$('voiceLang').options.length) listLanguages();
-    populateVoices(); voicesReady=true;
+    populateVoices();
+    voicesReady = true;
   }
 }
 function ensureVoices(timeoutMs=1500){
   return new Promise(resolve=>{
     if(voicesReady){ resolve(); return; }
     const done = ()=>{ voicesReady=true; resolve(); };
-    const handler=()=>{ speechSynthesis.onvoiceschanged=null; refreshVoicesUI(); done(); };
-    let to=setTimeout(()=>{ speechSynthesis.onvoiceschanged=null; refreshVoicesUI(); done(); }, timeoutMs);
-    speechSynthesis.onvoiceschanged = ()=>{ clearTimeout(to); handler(); };
+    let to=setTimeout(done, timeoutMs);
+    const handler=()=>{ clearTimeout(to); speechSynthesis.onvoiceschanged=null; refreshVoicesUI(); done(); };
+    speechSynthesis.onvoiceschanged = handler;
     refreshVoicesUI();
   });
 }
@@ -182,88 +232,94 @@ $('voiceLang').addEventListener('change', ()=>{ LANG=$('voiceLang').value; popul
 $('voice').addEventListener('change', ()=>{ const k=$('voice').value; const v=speechSynthesis.getVoices().find(v=>voiceKey(v)===k); if(v) VOICE=v; });
 $('vRate').oninput = e=> $('rateVal').textContent = (+e.target.value).toFixed(2);
 $('vPitch').oninput = e=> $('pitchVal').textContent = (+e.target.value).toFixed(2);
-$('vVol').oninput = e=> $('vVolVal').textContent = (+e.target.value).toFixed(2);
+$('vVol').oninput  = e=> $('vVolVal').textContent  = (+e.target.value).toFixed(2);
+
 function cancelSpeech(){ try{ speechSynthesis.cancel(); }catch(_){} }
 function speak(text){
   return new Promise(res=>{
-    const u=new SpeechSynthesisUtterance(text);
-    if(VOICE){ u.voice=VOICE; u.lang=VOICE.lang; } else if(LANG){ u.lang=LANG; }
+    const u = new SpeechSynthesisUtterance(text);
+    // lock language + voice
+    if(VOICE){ u.voice=VOICE; u.lang=VOICE.lang; } else if (LANG){ u.lang=LANG; }
     u.rate=+$('vRate').value; u.pitch=+$('vPitch').value; u.volume=+$('vVol').value;
-    u.onend=res; u.onerror=res; speechSynthesis.speak(u);
+    u.onend=res; u.onerror=res;
+    speechSynthesis.speak(u);
   });
 }
-$('testVoice').onclick = ()=> speak('Voice check. Example: G six is one level below V four. I nine is two levels above V four. G six is south west of I nine.');
+$('testVoice').onclick = ()=> speak('Voice check. Example: G six is one level below of V four. I nine is two levels above V four. G six is south west of I nine.');
 $('preloadVoices').onclick = ()=> ensureVoices(1200);
 
-/* ===== parsing/generation for logic-only matching ===== */
-
-/* Normalize a single relation phrase into a vector.
-   Accepts:
-   - Horizontal: "<dir> of"  (north/east/… [of])
-   - Vertical:   "<n> level(s) above/below" (no “of”; tolerate accidental “of” in input)
+/* =================== vector grammar (logic engine) ===================
+   Horizontal: unit step in 8 compass directions (no magnitudes)
+   Vertical:   1–3 levels above/below
+   Matching ignores labels by canonical relabeling + clause order.
 */
+const DIRS = {
+  north:{x:0,y:-1}, south:{x:0,y:1}, east:{x:1,y:0}, west:{x:-1,y:0},
+  northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1}
+};
+const HORIZ = Object.keys(DIRS);
+const LEVELS = [1,2,3];
+const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+function token(){ return LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9)); }
+function uniqueTokens(k){ const s=new Set(); while(s.size<k) s.add(token()); return [...s]; }
+
+/* Normalize a single relation phrase to a vector. */
 function normalizeRelation(relPhrase){
   const s=String(relPhrase).trim().toLowerCase();
-
-  // Vertical first: "1/2/3 [levels] above|below"
+  // vertical: “1/2/3 [levels] above|below”
   let mv = s.match(/\b(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\b/);
   if(mv){
     let n=mv[1]; if(n==='one')n=1; else if(n==='two')n=2; else if(n==='three')n=3; else n=+n;
     const up = mv[2]==='above';
     return {x:0,y:0,z: up? n : -n};
   }
-
-  // Horizontal: direction (optionally followed by "of")
+  // horizontal: “dir [of]”
   let mh = s.match(/\b(north(?:east|west)?|south(?:east|west)?|east|west)\b/);
   if(mh){
-    const base=DIRS[mh[1]];
+    const base = DIRS[mh[1]];
     return {x:base.x,y:base.y,z:0};
   }
   return null;
 }
 
-/* Extract all relations from a premise sentence.
-   Handles both:
-   - "A1 is north of B2"
-   - "A1 is two levels above B2"
+/* Extract relations from a premise:
+   - “A1 is north of B2”
+   - “A1 is two levels above B2”
+   Tolerates “below of” / “above of”.
 */
 function extractPremiseRelations(sentence){
   const parts = sentence.split(/\s+and\s+/i).map(p=>p.trim());
   const rels=[];
   for(const part of parts){
-    // Vertical form: no "of"
+    // Vertical (standard): no “of”
     let m = part.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+([A-Z]\d+)$/i);
     if(m){
-      const from=m[1], n=m[2], dir=m[3], to=m[4];
+      const [ ,from, n, dir, to] = m;
       const R = normalizeRelation(`${n} ${dir}`);
-      if(R) { rels.push({from,to,rel:R}); continue; }
-    }
-    // Horizontal form: "<dir> of"
-    m = part.match(/^([A-Z]\d+)\s+is\s+(north(?:east|west)?|south(?:east|west)?|east|west)\s+of\s+([A-Z]\d+)$/i);
-    if(m){
-      const from=m[1], dir=m[2], to=m[3];
-      const R = normalizeRelation(dir);
       if(R){ rels.push({from,to,rel:R}); continue; }
     }
-    // Tolerance: accidental "above of"/"below of"
+    // Vertical tolerant: “… above|below of …”
     m = part.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+of\s+([A-Z]\d+)$/i);
     if(m){
-      const from=m[1], n=m[2], dir=m[3], to=m[4];
+      const [ ,from, n, dir, to] = m;
       const R = normalizeRelation(`${n} ${dir}`);
+      if(R){ rels.push({from,to,rel:R}); continue; }
+    }
+    // Horizontal: “dir of”
+    m = part.match(/^([A-Z]\d+)\s+is\s+(north(?:east|west)?|south(?:east|west)?|east|west)\s+of\s+([A-Z]\d+)$/i);
+    if(m){
+      const [ ,from, dir, to] = m;
+      const R = normalizeRelation(dir);
       if(R){ rels.push({from,to,rel:R}); continue; }
     }
   }
   return rels;
 }
 
-/* Canonicalize a sentence:
-   - Relabels tokens by first occurrence (A,B,C,…) to ignore labels
-   - Sorts clauses so clause ordering doesn’t matter
-   - Keeps pure vectors (x,y,z)
-*/
+/* Canonicalization removes label influence and clause order. */
 function canonicalStructure(sentence){
   const rels=extractPremiseRelations(sentence);
-  const seen=new Map(); let idx=0; const order='ABCDE'.split('');
+  const seen=new Map(); let idx=0; const order = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
   const canon = rels.map(({from,to,rel})=>{
     if(!seen.has(from)) seen.set(from,order[idx++]);
     if(!seen.has(to))   seen.set(to,  order[idx++]);
@@ -276,10 +332,8 @@ function canonicalStructure(sentence){
   });
   return canon;
 }
-
-/* Logical equivalence: same number of clauses AND same (from,to,vector) triples after canonicalization. */
 function sentencesCompatible(a,b){
-  const ca = canonicalStructure(a), cb = canonicalStructure(b);
+  const ca=canonicalStructure(a), cb=canonicalStructure(b);
   if(ca.length!==cb.length) return false;
   for(let i=0;i<ca.length;i++){
     const A=ca[i], B=cb[i];
@@ -289,12 +343,18 @@ function sentencesCompatible(a,b){
   return true;
 }
 
-/* Clause formatter that respects grammar (no “above of”). */
+/* Clause formatter (audio/text grammar):
+   - Horizontal: “… is north of …”
+   - Vertical:   “… is one/two/three levels above …”
+                 “… is one/two/three levels below of …”  (per your requested phrasing)
+*/
 function clauseString(from, rel, to){
   if(rel.z && rel.z!==0){
     const n=Math.abs(rel.z);
     const word = n===1?'one level': n===2?'two levels':'three levels';
-    return `${from} is ${word} ${rel.z>0?'above':'below'} ${to}`;
+    const up = rel.z>0;
+    // Above: no “of”; Below: include “of”
+    return up ? `${from} is ${word} above ${to}` : `${from} is ${word} below of ${to}`;
   } else {
     const dir = (rel.x===0&&rel.y===-1)?'north':
                 (rel.x===0&&rel.y=== 1)?'south':
@@ -307,52 +367,47 @@ function clauseString(from, rel, to){
   }
 }
 
-/* Denormalize a relation back to text (for rebuilding compatible sentences). */
-function denormalize(rel){ return clauseString('%FROM%', rel, '%TO%'); }
+/* Rebuild a logically compatible sentence with fresh labels and shuffled clause order. */
+function buildCompatible(sentence){
+  const rels = extractPremiseRelations(sentence);
+  const uniq = [...new Set(rels.flatMap(r=>[r.from,r.to]))].length;
+  const labels = uniqueTokens(uniq);
+  const map=new Map(); let i=0;
+  const parts = rels.map(({from,to,rel})=>{
+    if(!map.has(from)) map.set(from, labels[i++]);
+    if(!map.has(to))   map.set(to,   labels[i++]);
+    return clauseString(map.get(from), rel, map.get(to));
+  });
+  // shuffle clause order
+  for(let j=parts.length-1;j>0;j--){ const k=Math.floor(Math.random()*(j+1)); [parts[j],parts[k]]=[parts[k],parts[j]]; }
+  return parts.join(' and ');
+}
 
-/* Build a random premise with 2–3 relations. */
+/* Random premise: 2–3 relations, mixing horizontal + vertical */
 function randomPremise(){
   const [A,B,C,D]=uniqueTokens(4);
   const r = () => {
     if(Math.random()<0.6){
       const d = HORIZ[Math.floor(Math.random()*HORIZ.length)];
-      return {kind:'h', dir:d};
+      return {kind:'h',dir:d};
     } else {
       const n = LEVELS[Math.floor(Math.random()*LEVELS.length)];
       const up = Math.random()<0.5;
-      return {kind:'v', n, up};
+      return {kind:'v',n,up};
     }
   };
   const rel1=r(), rel2=r(), rel3=r();
+  const clause = (X,rel,Y) => rel.kind==='h'
+    ? `${X} is ${rel.dir} of ${Y}`
+    : `${X} is ${rel.n} ${rel.n===1?'level':'levels'} ${rel.up?'above':'below'} ${Y}`;
   const pick = Math.floor(Math.random()*4);
-  const clause = (X,rel,Y)=>{
-    if(rel.kind==='h') return `${X} is ${rel.dir} of ${Y}`;
-    return `${X} is ${rel.n} ${rel.n===1?'level':'levels'} ${rel.up?'above':'below'} ${Y}`;
-  };
   if(pick===0) return `${clause(A,rel1,B)} and ${clause(B,rel2,C)}`;
   if(pick===1) return `${clause(A,rel1,B)} and ${clause(C,rel2,A)}`;
   if(pick===2) return `${clause(A,rel1,B)} and ${clause(C,rel2,B)} and ${clause(A,rel3,C)}`;
   return `${clause(A,rel1,B)} and ${clause(C,rel2,A)} and ${clause(B,rel3,C)}`;
 }
 
-/* Build a logically compatible sentence with new labels. */
-function buildCompatible(sentence){
-  const rels=extractPremiseRelations(sentence);
-  const uniq=[...new Set(rels.flatMap(r=>[r.from,r.to]))].length;
-  const labels=uniqueTokens(uniq);
-  const map=new Map(); let i=0;
-  const parts = rels.map(({from,to,rel})=>{
-    if(!map.has(from)) map.set(from, labels[i++]);
-    if(!map.has(to))   map.set(to,   labels[i++]);
-    const f=map.get(from), t=map.get(to);
-    return clauseString(f, rel, t);
-  });
-  // Randomize clause order to avoid string equality while remaining logically equal
-  for(let j=parts.length-1;j>0;j--){ const k=Math.floor(Math.random()*(j+1)); [parts[j],parts[k]]=[parts[k],parts[j]]; }
-  return parts.join(' and ');
-}
-
-/* ===== speaking & transcript ===== */
+/* =================== audio text (speakable) =================== */
 function sayToken(tok){
   const m=tok.match(/^([A-Z])(\d+)$/); if(!m) return tok;
   const map={'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine'};
@@ -366,22 +421,25 @@ function splitDiag(dir){
             .replace(/southwest/gi,'south west');
 }
 function verbalizeClause(clause){
-  // Try vertical grammar
-  let m = clause.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+([A-Z]\d+)$/i);
+  // Vertical: above/below (with your exact phrasing rule)
+  let m = clause.match(/^([A-Z]\d+)\s+is\s+(one|two|three|1|2|3)\s*(?:levels?)?\s+(above|below)\s+(?:of\s+)?([A-Z]\d+)$/i);
   if(m){
     const left = sayToken(m[1]);
-    const n = +({'one':1,'two':2,'three':3}[m[2].toLowerCase()] ?? m[2]);
-    const word = n===1?'one level': n===2?'two levels':'three levels';
-    const updn = m[3].toLowerCase();
-    const right = sayToken(m[4]);
-    return `${left} is ${word} ${updn} ${right}`;
+    const nNum = +({'one':1,'two':2,'three':3}[m[2].toLowerCase()] ?? m[2]);
+    const word = nNum===1?'one level': nNum===2?'two levels':'three levels';
+    const dir  = m[3].toLowerCase(); // 'above' or 'below'
+    const right= sayToken(m[4]);
+    // *Above* → “… above Y”; *Below* → “… below of Y”  (per your requirement)
+    return dir==='above'
+      ? `${left} is ${word} above ${right}`
+      : `${left} is ${word} below of ${right}`;
   }
-  // Horizontal grammar
+  // Horizontal
   m = clause.match(/^([A-Z]\d+)\s+is\s+(north(?:east|west)?|south(?:east|west)?|east|west)\s+of\s+([A-Z]\d+)$/i);
   if(m){
     const left = sayToken(m[1]);
-    const dir = splitDiag(m[2].toLowerCase());
-    const right = sayToken(m[3]);
+    const dir  = splitDiag(m[2].toLowerCase());
+    const right= sayToken(m[3]);
     return `${left} is ${dir} of ${right}`;
   }
   return clause;
@@ -399,19 +457,14 @@ function buildPremiseVisual(raw){
 }
 function setActivePart(i){ [...$('premiseText').querySelectorAll('.rel')].forEach((n,idx)=>n.classList.toggle('active', idx===i)); }
 
-/* ===== gameplay: strict logic-only N-match ===== */
+/* =================== gameplay (strict logic-only N-match) =================== */
 let N=1, MAX=40, DUR=5000, REL_PAUSE=1000, RATE=25;
 let idx=0, running=false, paused=false, waitTimer=null, remainderTimer=null;
 const history=[], planned=[]; let correct=0, errors=0;
 let spokenParts=null, clauseIdx=0, trialStart=0;
 
-function planSequence(){
-  planned.length=0;
-  for(let i=0;i<MAX;i++){ planned.push(i>=N && Math.random()*100<RATE); }
-}
-function isActualMatch(i){
-  return i>=N && sentencesCompatible(history[i-N], history[i]);
-}
+function planSequence(){ planned.length=0; for(let i=0;i<MAX;i++) planned.push(i>=N && Math.random()*100<RATE); }
+function isActualMatch(i){ return i>=N && sentencesCompatible(history[i-N], history[i]); }
 
 async function speakPremise(){
   if(!spokenParts) return;
@@ -437,19 +490,16 @@ function nextPremiseString(){
   if(wantMatch){
     return buildCompatible(history[idx-N]); // guaranteed logical match (labels shuffled, order randomized)
   }
-  // Build a sentence guaranteed NOT to be compatible
+  // Force non-match: regenerate until not compatible
   let s, tries=0;
-  do{
-    s = randomPremise();
-    tries++;
-  } while(idx>=N && sentencesCompatible(history[idx-N], s) && tries<200);
-  // As a final guard, if compatibility still true (extremely unlikely), flip one relation vertically:
+  do { s = randomPremise(); tries++; } while(idx>=N && sentencesCompatible(history[idx-N], s) && tries<200);
+  // If still compatible (extremely unlikely), flip one vector:
   if(idx>=N && sentencesCompatible(history[idx-N], s)){
     const rels = extractPremiseRelations(s);
     if(rels.length){
-      const r0 = rels[0];
+      const r0=rels[0];
       if(r0.rel.z!==0){ r0.rel.z *= -1; } else { r0.rel.x *= -1; r0.rel.y *= -1; }
-      s = rels.map(r=>clauseString(r.from, r.rel, r.to)).join(' and ');
+      s = rels.map(r=>clauseString(r.from,r.rel,r.to)).join(' and ');
     }
   }
   return s;
@@ -469,11 +519,11 @@ async function runTrial(){
   await speakPremise();
   if(!running || paused) return;
 
-  idx++; updateUI();           // advance immediately
-  runTrial();                  // continuous flow
+  idx++; updateUI();
+  runTrial(); // continuous
 }
 
-/* ===== controls ===== */
+/* =================== control flow =================== */
 function start(){
   if(running) return;
   running=true; paused=false; cancelSpeech();
@@ -520,10 +570,13 @@ function updateUI(){
   $('nVal').textContent=N; $('tVal').textContent=MAX; $('dVal').textContent=DUR; $('pVal').textContent=REL_PAUSE; $('rVal').textContent=RATE+'%';
 }
 
-/* ===== bindings ===== */
+/* =================== bindings =================== */
 $('start').onclick = async ()=>{
-  if('speechSynthesis' in window) await ensureVoices(1200);
-  if(!VOICE && 'speechSynthesis' in window){ const vs=speechSynthesis.getVoices(); VOICE = vs[0] || null; }
+  if('speechSynthesis' in window) await ensureVoices(1400);
+  if(!VOICE && 'speechSynthesis' in window){
+    const vs=speechSynthesis.getVoices().filter(v=>v.lang===LANG);
+    VOICE = (vs.sort((a,b)=>femininityScore(b)-femininityScore(a))[0]) || speechSynthesis.getVoices()[0] || null;
+  }
   start();
 };
 $('pause').onclick = togglePause;
