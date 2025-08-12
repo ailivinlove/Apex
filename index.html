@@ -103,13 +103,7 @@ const DIRS = {
 const HORIZ = Object.keys(DIRS);
 const LEVELS = [1,2,3];
 
-/* ===================== ultra-fast voice loader =====================
-   Goals:
-   - ZERO long preloads. Render instantly.
-   - No verification loops. We pick best candidate immediately.
-   - If a voice fails at speak-time, we auto-fallback to the next one (no blocking).
-   - Persist the last working voice to reuse on next load.
-*/
+/* ===================== ultra-fast voice loader ===================== */
 let VOICE=null;
 let userRateChanged=false, userPitchChanged=false;
 const LAST_KEY='rnback_last_voice_v1';
@@ -150,19 +144,16 @@ function femaleScore(v){
   if(/\bfemale\b/.test(n)) s+=3;
   if(FEMALE_TOKENS.test(n)) s+=2;
   if(!MALE_NEG.test(n)) s+=1;
-  if(/AE$/i.test(v.lang)) s+=1;                 // UAE priority if present
-  if(/^en[-_](AU|GB|US)/i.test(v.lang)) s+=1;    // common English locales
+  if(/AE$/i.test(v.lang)) s+=1;
+  if(/^en[-_](AU|GB|US)/i.test(v.lang)) s+=1;
   return s;
 }
 function chooseBestVoice(list){
-  // 1) last saved, if present
   try{
     const last=localStorage.getItem(LAST_KEY);
     if(last){ const found=list.find(v=>vKey(v)===last); if(found) return found; }
   }catch(_){}
-  // 2) highest femaleScore
   const sorted=list.slice().sort((a,b)=>femaleScore(b)-femaleScore(a));
-  // prefer Australia quickly (often fastest to speak on AU systems)
   const au=sorted.find(v=>/en[-_]?AU/i.test(v.lang));
   return au || sorted[0] || null;
 }
@@ -176,10 +167,9 @@ function populateMenusFast() {
   const raw=voicesNow();
   const list = raw.filter(v=>{
     const n=(v.name+' '+v.voiceURI).toLowerCase();
-    // fast female-ish filter; if it eliminates everything, we’ll refill on Refresh
     return FEMALE_TOKENS.test(n) || (!MALE_NEG.test(n) && /\bfemale\b/.test(n));
   });
-  const use = list.length? list : raw; // never leave empty
+  const use = list.length? list : raw;
   const inRegion = (r)=>use.filter(v=>regionName(v.lang)===r);
 
   function fillVoicesFor(region){
@@ -192,17 +182,14 @@ function populateMenusFast() {
       voiceSel.appendChild(o);
     });
     const best=chooseBestVoice(use);
-    if(best){ VOICE=best; voiceSel.value=vKey(best); }
+    if(best){ VOICE=best; voiceSel.value=vKey(best); try{localStorage.setItem(LAST_KEY,vKey(best));}catch(_){ } }
   }
   fillVoicesFor(regionSel.value);
 
   regionSel.onchange=()=>fillVoicesFor(regionSel.value);
   voiceSel.onchange=()=>{ const key=voiceSel.value; const found=voicesNow().find(v=>vKey(v)===key); if(found){ VOICE=found; try{localStorage.setItem(LAST_KEY,vKey(found));}catch(_){}} };
-  // if the engine later exposes more voices, rebuild menus quickly without blocking
   if('speechSynthesis' in window){
-    speechSynthesis.onvoiceschanged = ()=>{
-      populateMenusFast(); // re-run quickly with new list
-    };
+    speechSynthesis.onvoiceschanged = ()=>{ populateMenusFast(); };
   }
 }
 function applyVoiceDefaults(){
@@ -210,7 +197,7 @@ function applyVoiceDefaults(){
   if(!userPitchChanged){ $('vPitch').value=1.28; $('pitchVal').textContent='1.28'; }
 }
 
-/* Speaking — instant, with fast fallback if a particular voice errors. */
+/* Speaking — instant, with quick fallback */
 async function speak(text){
   if(!('speechSynthesis' in window)){ return; }
   const u=new SpeechSynthesisUtterance(text);
@@ -222,7 +209,6 @@ async function speak(text){
     let settled=false; const done=()=>{ if(!settled){ settled=true; res(); } };
     u.onend=done;
     u.onerror=()=>{
-      // quick fallback: try another candidate immediately (no scanning delays)
       const pool=voicesNow();
       const alt = pool.find(v=>vKey(v)!== (VOICE? vKey(VOICE):'')) || null;
       if(alt){
@@ -236,12 +222,12 @@ async function speak(text){
     try{
       if(speechSynthesis.speaking) speechSynthesis.cancel();
       speechSynthesis.speak(u);
-      setTimeout(done, 7000); // safety
+      setTimeout(done, 7000);
     }catch(_){ done(); }
   });
 }
 
-/* ===================== strict relational logic (with reversible relations) ===================== */
+/* ===================== strict relational logic (reversible) ===================== */
 const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const token=()=> LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9));
 function uniqueTokens(k){ const s=new Set(); while(s.size<k) s.add(token()); return [...s]; }
@@ -387,18 +373,24 @@ function buildPremiseVisual(raw){
 }
 function setActivePart(i){ [...$('premiseText').querySelectorAll('.rel')].forEach((n,idx)=>n.classList.toggle('active', idx===i)); }
 
+/* Key fix: also wait PAUSE_SEC **after the final relation** before advancing to next premise */
 async function speakPremise(){
   if(!spokenParts) return;
   for(; running && !paused && clauseIdx<spokenParts.length; clauseIdx++){
     setActivePart(clauseIdx);
     await speak(spokenParts[clauseIdx]+'.');
     if(!running || paused) return;
+    // pause between relations
     if(clauseIdx<spokenParts.length-1){
       await new Promise(res=>{ waitTimer=setTimeout(()=>{waitTimer=null; res(); }, PAUSE_SEC*1000); });
       if(!running || paused) return;
     }
   }
   setActivePart(-1);
+  // NEW: pause after the last relation as well
+  if(running && !paused){
+    await new Promise(res=>{ waitTimer=setTimeout(()=>{waitTimer=null; res(); }, PAUSE_SEC*1000); });
+  }
 }
 
 function nextPremiseString(){
@@ -425,7 +417,7 @@ async function runTrial(){
   buildPremiseVisual(s);
   spokenParts=verbalizeSentence(s);
   clauseIdx=0;
-  await speakPremise();
+  await speakPremise();            // includes the post-premise pause
   if(!running || paused) return;
   idx++; updateUI(); runTrial();
 }
@@ -452,9 +444,13 @@ function togglePause(){
     $('pause').textContent='▶ Resume';
   } else {
     paused=false; $('pause').textContent='⏸ Pause';
+    // if we paused inside a premise, resume the remainder (including its trailing pause)
     if(spokenParts && clauseIdx<spokenParts.length){
       speakPremise().then(()=>{ if(running && !paused){ idx++; updateUI(); runTrial(); } });
-    } else { idx++; updateUI(); runTrial(); }
+    } else {
+      // if we paused during the trailing pause, just advance after finishing it (already handled)
+      idx++; updateUI(); runTrial();
+    }
   }
 }
 function reset(){
@@ -474,10 +470,9 @@ function updateUI(){
 
 /* ===================== bindings ===================== */
 $('start').onclick = async ()=>{
-  // instant: populate menus (fast) and pick a voice immediately
   if(!VOICE){
     populateMenusFast();
-    const raw=voicesNow(); if(raw.length){ VOICE=chooseBestVoice(raw); try{localStorage.setItem(LAST_KEY,vKey(VOICE));}catch(_){} }
+    const raw=voicesNow(); if(raw.length){ VOICE=chooseBestVoice(raw); try{localStorage.setItem(LAST_KEY,vKey(VOICE));}catch(_){ } }
   }
   // unlock audio on the same gesture
   await speak('Ready.');
@@ -495,19 +490,16 @@ $('trials').oninput=e=>{ MAX=+e.target.value; $('tVal').textContent=MAX; $('max'
 $('pauseTime').oninput=e=>{ PAUSE_SEC=+e.target.value; $('pVal').textContent=PAUSE_SEC.toFixed(1)+' s'; };
 $('rate').oninput=e=>{ RATE=+e.target.value; $('rVal').textContent=RATE+'%'; };
 
-// pitch/rate/vol
-$('vRate').oninput=e=>{ userRateChanged=true; $('rateVal').textContent=(+e.target.value).toFixed(2); };
-$('vPitch').oninput=e=>{ userPitchChanged=true; $('pitchVal').textContent=(+e.target.value).toFixed(2); };
-$('vVol').oninput=e=>{ $('vVolVal').textContent=(+e.target.value).toFixed(2); };
+// voice UI init
+$('refreshVoices').onclick=()=>populateMenusFast();
+$('testVoice').onclick=async()=>{ if(!VOICE) populateMenusFast(); await speak('Voice check. Example: C three is north east of H seven.'); };
 
-/* ===================== immediate paint (no waiting) ===================== */
+/* ===================== immediate paint ===================== */
 document.addEventListener('DOMContentLoaded', ()=>{
   populateMenusFast();
   applyVoiceDefaults();
   $('voiceStatus').textContent='Ready';
 });
-$('refreshVoices').onclick=()=>populateMenusFast();
-$('testVoice').onclick=async()=>{ if(!VOICE) populateMenusFast(); await speak('Voice check. Example: C three is north east of H seven.'); };
 </script>
 </body>
 </html>
