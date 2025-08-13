@@ -41,7 +41,7 @@ select{ min-height:38px }
         <input id="pauseTime" type="range" min="0" max="60" step="0.5" value="1">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="0" max="100" step="1" value="25">
-        <div class="mut">N-matches are computed <b>only</b> from relational logic (vectors + levels). Labels/text never affect matching.</div>
+        <div class="mut"><b>N-match rule:</b> Premise i matches i−N iff <b>all symbols from i−N reappear in i</b> and keep the <b>same pairwise offsets</b> (dx,dy,dz) up to a single global <b>translation</b>. Extra symbols allowed. Compass is fixed; levels are exact.</div>
       </div>
     </div>
 
@@ -227,7 +227,7 @@ async function speak(text){
   });
 }
 
-/* ===================== relational parsing ===================== */
+/* ===================== parsing & utilities ===================== */
 const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const token=()=> LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9));
 function uniqueTokens(k){ const s=new Set(); while(s.size<k) s.add(token()); return [...s]; }
@@ -256,14 +256,10 @@ function parsePremise(sentence){
   return {nodes:[...nodes], edges};
 }
 function invertRel(r){ return {x:-r.x, y:-r.y, z:-r.z}; }
-
-/* ===================== ENTAILMENT-BASED MATCHING (rock solid) ===================== */
-/* A premise B is an N-match to A if A's derived pairwise relations are entailed by B
-   after some one-to-one relabeling of A's symbols into a subset of B's symbols. */
-
 function vecAdd(a,b){ return {x:a.x+b.x, y:a.y+b.y, z:a.z+b.z}; }
 function vecSub(a,b){ return {x:a.x-b.x, y:a.y-b.y, z:a.z-b.z}; }
 
+/* ===================== coordinate closure ===================== */
 function closureFromSentence(sentence){
   const P = parsePremise(sentence);
   const adj = new Map(), nodes = new Set();
@@ -282,70 +278,35 @@ function closureFromSentence(sentence){
         if(!coords.has(v)){ coords.set(v, want); stack.push(v); }
         else {
           const pv = coords.get(v);
-          if(pv.x!==want.x || pv.y!==want.y || pv.z!==want.z) ok=false; // contradiction
+          if(pv.x!==want.x || pv.y!==want.y || pv.z!==want.z) ok=false;
         }
       }
     }
   }
-
-  const arr=[...nodes].sort();
-  const pairs = new Map(); // canonical a<b pairs with their vectors from a->b
-  for(let i=0;i<arr.length;i++){
-    for(let j=i+1;j<arr.length;j++){
-      const a=arr[i], b=arr[j];
-      const d = vecSub(coords.get(b), coords.get(a));
-      pairs.set(`${a}|${b}|${d.x},${d.y},${d.z}`, 1);
-    }
-  }
-  return { ok, nodes:arr, pairs };
+  return { ok, nodes:[...nodes], coords };
 }
 
-function permutations(arr){
-  const res=[], used=Array(arr.length).fill(false), path=[];
-  (function dfs(){
-    if(path.length===arr.length){ res.push(path.slice()); return; }
-    for(let i=0;i<arr.length;i++){ if(used[i])continue; used[i]=true; path.push(arr[i]); dfs(); path.pop(); used[i]=false; }
-  })();
-  return res;
-}
-function combinations(arr,k){
-  const res=[]; (function go(start, path){
-    if(path.length===k){ res.push(path.slice()); return; }
-    for(let i=start;i<arr.length;i++){ path.push(arr[i]); go(i+1, path); path.pop(); }
-  })(0,[]);
-  return res;
-}
-
-// B entails A if every derived relation of A appears in B after relabeling A's nodes
-// into some k-subset of B's nodes (k = |A.nodes|).
-function sentencesEntails(a,b){
+/* ===================== EMBEDDING MATCH (final rule) ===================== */
+/* Premise B matches A iff every symbol in A reappears in B and their
+   pairwise offsets are preserved up to a single translation T (no rotation/flip). */
+function sentencesEmbed(a,b){
   const A = closureFromSentence(a), B = closureFromSentence(b);
   if(!A.ok || !B.ok) return false;
-  const nodesA=A.nodes, nodesB=B.nodes;
-  if(nodesA.length > nodesB.length) return false;
-
-  const need = [...A.pairs.keys()];
-  const have = B.pairs;
-
-  for(const combo of combinations(nodesB, nodesA.length)){
-    for(const perm of permutations(combo)){
-      const map=new Map(); for(let i=0;i<nodesA.length;i++) map.set(nodesA[i], perm[i]);
-      let ok=true;
-      for(const key of need){
-        const [a1,b1,relStr]=key.split('|');
-        const [dx,dy,dz]=relStr.split(',').map(Number);
-        let u = map.get(a1), v = map.get(b1);
-        if(u==null || v==null){ ok=false; break; }
-        // canonicalize pair order for lookup
-        let rx=dx, ry=dy, rz=dz;
-        if(v < u){ [u,v]=[v,u]; rx=-rx; ry=-ry; rz=-rz; }
-        const look = `${u}|${v}|${rx},${ry},${rz}`;
-        if(!have.has(look)){ ok=false; break; }
-      }
-      if(ok) return true;
-    }
+  const prev=A.nodes, curr=B.nodes;
+  // require prev symbols to persist
+  for(const s of prev){ if(!curr.includes(s)) return false; }
+  // compute translation using one shared anchor
+  const anchor = prev[0];
+  const Ta = A.coords.get(anchor), Tb = B.coords.get(anchor);
+  const T = vecSub(Tb, Ta);
+  // verify all shared nodes align with same T
+  for(const s of prev){
+    const pa = A.coords.get(s), pb = B.coords.get(s);
+    if(!pa || !pb) return false;
+    const shifted = vecAdd(pa, T);
+    if(shifted.x!==pb.x || shifted.y!==pb.y || shifted.z!==pb.z) return false;
   }
-  return false;
+  return true;
 }
 
 /* ===================== builders ===================== */
@@ -360,81 +321,51 @@ function clauseString(from, rel, to){
 }
 function randomPremise(){
   const [A,B,C]=uniqueTokens(3);
-  const pick=()=> Math.random()<0.6 ? {k:'h',d:Object.values(DIRS)[Math.floor(Math.random()*8)]}
+  const pick=()=> Math.random()<0.6 ? {k:'h',d:DIRS[HORIZ[Math.floor(Math.random()*HORIZ.length)]]}
                                     : {k:'v',n:LEVELS[Math.floor(Math.random()*LEVELS.length)],up:Math.random()<0.5};
   const toRel=(r)=> r.k==='h' ? {x:r.d.x,y:r.d.y,z:0} : {x:0,y:0,z:r.up? r.n : -r.n};
   const r1=toRel(pick()), r2=toRel(pick());
   return `${clauseString(A,r1,B)} and ${clauseString(B,r2,C)}`;
 }
-function buildEquivalent(sentence){
-  // same relations, new labels, order shuffled ⇒ guarantees entailment
-  const P=parsePremise(sentence);
-  const uniq=[...new Set(P.edges.flatMap(e=>[e.u,e.v]))].length;
-  const labels=uniqueTokens(uniq);
-  const map=new Map(); let i=0;
-  const parts=P.edges.map(({u,v,rel})=>{
-    if(!map.has(u)) map.set(u,labels[i++]);
-    if(!map.has(v)) map.set(v,labels[i++]);
-    return clauseString(map.get(u),rel,map.get(v));
+
+/* Build a guaranteed embedding of prev by reusing all prior symbols and preserving their offsets.
+   We restate the two relations (possibly reordered / flipped with subject-object swap) so T=0. */
+function buildEmbeddingOf(prev){
+  const P = parsePremise(prev);
+  // If prev had no edges, just return it.
+  if(!P.edges.length) return prev;
+  // Reconstruct clauses, optionally swapping order or flipping (swap endpoints + invert vector).
+  const parts = P.edges.map(e=>{
+    const flip = Math.random()<0.5;
+    const u = flip ? e.v : e.u;
+    const v = flip ? e.u : e.v;
+    const rel = flip ? invertRel(e.rel) : e.rel;
+    return clauseString(u, rel, v);
   });
-  for(let j=parts.length-1;j>0;j--){ const k=Math.floor(Math.random()*(j+1)); [parts[j],parts[k]]=[parts[k],parts[j]]; }
+  // Shuffle clause order
+  if(parts.length>1 && Math.random()<0.5) parts.reverse();
   return parts.join(' and ');
 }
 
-/* Robust non-entailing generator to honor Target match rate precisely */
-function generateNonEntailing(prev){
-  // Phase 1: try random premises until non-entailing
-  for(let t=0;t<1200;t++){
-    const s=randomPremise();
-    if(!sentencesEntails(prev,s)) return s;
+/* Build a guaranteed NON-embedding premise by using fresh labels (no shared anchors). */
+function buildNonEmbedding(prev){
+  const prevNodes = new Set(parsePremise(prev).nodes);
+  function freshToken(){
+    let t;
+    do{ t = token(); }while(prevNodes.has(t));
+    prevNodes.add(t); // prevent reuse within this call
+    return t;
   }
-  // Phase 2: bias dimensions opposite to prev’s closure
-  const A = closureFromSentence(prev);
-  const needsVertical = [...A.pairs.keys()].some(k=>k.endsWith(',0')); // z==0 somewhere
-  const needsHorizontal = [...A.pairs.keys()].some(k=>!k.endsWith(',0')); // z!=0 somewhere
-  function verticalOnlyPremise(){
-    const [A1,B1,C1]=uniqueTokens(3);
-    const z1=(Math.random()<0.5?1:-1)*[1,2,3][Math.floor(Math.random()*3)];
-    const z2=(Math.random()<0.5?1:-1)*[1,2,3][Math.floor(Math.random()*3)];
-    return `${clauseString(A1,{x:0,y:0,z:z1},B1)} and ${clauseString(B1,{x:0,y:0,z:z2},C1)}`;
-  }
-  function horizontalOnlyPremise(){
-    const [A1,B1,C1]=uniqueTokens(3);
-    const dirs=Object.values(DIRS);
-    const r1=dirs[Math.floor(Math.random()*dirs.length)];
-    const r2=dirs[Math.floor(Math.random()*dirs.length)];
-    return `${clauseString(A1,{x:r1.x,y:r1.y,z:0},B1)} and ${clauseString(B1,{x:r2.x,y:r2.y,z:0},C1)}`;
-  }
-  for(let t=0;t<1200;t++){
-    const s = needsHorizontal ? horizontalOnlyPremise() : verticalOnlyPremise();
-    if(!sentencesEntails(prev,s)) return s;
-  }
-  // Phase 3: deterministically flip one relation magnitude/direction from prev, then verify
-  const P=parsePremise(prev);
-  if(P.edges.length){
-    const [A1,B1,C1]=uniqueTokens(3);
-    const e0=P.edges[0], e1=P.edges[Math.min(1,P.edges.length-1)];
-    const flip=(rel)=>{
-      if(rel.z){ // vertical → change magnitude (guaranteed different)
-        let mag=Math.abs(rel.z);
-        let newMag = mag===3 ? 2 : mag+1;
-        return {x:0,y:0,z:rel.z>0? newMag : -newMag};
-      } else {  // horizontal → rotate 90 degrees
-        const rot={x:-rel.y, y:rel.x, z:0};
-        return rot.x===0 && rot.y===0 ? {x:1,y:0,z:0} : {x:rot.x,y:rot.y,z:0};
-      }
-    };
-    const rA=flip(e0.rel), rB=e1.rel;
-    const s1=`${clauseString(A1,rA,B1)} and ${clauseString(B1,rB,C1)}`;
-    if(!sentencesEntails(prev,s1)) return s1;
-    const s2=`${clauseString(A1,rB,B1)} and ${clauseString(B1,rA,C1)}`;
-    if(!sentencesEntails(prev,s2)) return s2;
-  }
-  // Final fallback: generate until success (rarely needed)
-  while(true){
-    const s=randomPremise();
-    if(!sentencesEntails(prev,s)) return s;
-  }
+  const A=freshToken(), B=freshToken(), C=freshToken();
+  // random relations
+  const dirs = Object.values(DIRS);
+  const r1 = Math.random()<0.5 ? {x:0,y:0,z:(Math.random()<0.5?1:-1)*LEVELS[Math.floor(Math.random()*LEVELS.length)]}
+                               : dirs[Math.floor(Math.random()*dirs.length)];
+  const r2 = Math.random()<0.5 ? {x:0,y:0,z:(Math.random()<0.5?1:-1)*LEVELS[Math.floor(Math.random()*LEVELS.length)]}
+                               : dirs[Math.floor(Math.random()*dirs.length)];
+  const R1 = {x:r1.x||0, y:r1.y||0, z:r1.z||0};
+  const R2 = {x:r2.x||0, y:r2.y||0, z:r2.z||0};
+  return `${clauseString(A,R1,B)} and ${clauseString(B,R2,C)}`;
 }
 
 /* ===================== TTS verbalization ===================== */
@@ -469,13 +400,11 @@ let spokenParts=null, clauseIdx=0;
 
 function planSequence(){
   planned.length=0;
-  for(let i=0;i<MAX;i++){
-    planned.push(i>=N && Math.random()*100 < RATE);
-  }
+  for(let i=0;i<MAX;i++){ planned.push(i>=N && Math.random()*100 < RATE); }
 }
 
-/* ***** FIXED: actual matching now uses logical entailment ***** */
-function isActualMatch(i){ return i>=N && sentencesEntails(history[i-N], history[i]); }
+/* FINAL: use embedding rule */
+function isActualMatch(i){ return i>=N && sentencesEmbed(history[i-N], history[i]); }
 
 function buildPremiseVisual(raw){
   const parts=raw.split(/\s+and\s+/i).map(p=>p.trim());
@@ -488,7 +417,7 @@ function buildPremiseVisual(raw){
 }
 function setActivePart(i){ [...$('premiseText').querySelectorAll('.rel')].forEach((n,idx)=>n.classList.toggle('active', idx===i)); }
 
-/* Ensure pause after last relation before advancing */
+/* Speak with a pause after the last relation */
 async function speakPremise(){
   if(!spokenParts) return;
   for(; running && !paused && clauseIdx<spokenParts.length; clauseIdx++){
@@ -507,15 +436,10 @@ async function speakPremise(){
 }
 
 function nextPremiseString(){
-  // If we want a planned match, generate an equivalent premise (guaranteed entailment).
-  if(planned[idx] && idx>=N){
-    return buildEquivalent(history[idx-N]);
-  }
-  // Otherwise, generate a premise that is guaranteed NOT to entail the previous premise.
   if(idx>=N){
-    return generateNonEntailing(history[idx-N]);
+    if(planned[idx]) return buildEmbeddingOf(history[idx-N]);
+    return buildNonEmbedding(history[idx-N]);
   }
-  // For initial burn-in (i < N), any random premise is fine.
   return randomPremise();
 }
 
@@ -527,7 +451,7 @@ async function runTrial(){
   buildPremiseVisual(s);
   spokenParts=verbalizeSentence(s);
   clauseIdx=0;
-  await speakPremise();            // includes the post-premise pause
+  await speakPremise();
   if(!running || paused) return;
   idx++; updateUI(); runTrial();
 }
