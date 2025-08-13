@@ -227,7 +227,7 @@ async function speak(text){
   });
 }
 
-/* ===================== strict relational logic (reversible) ===================== */
+/* ===================== relational parsing ===================== */
 const LETTERS='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const token=()=> LETTERS[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9));
 function uniqueTokens(k){ const s=new Set(); while(s.size<k) s.add(token()); return [...s]; }
@@ -256,40 +256,94 @@ function parsePremise(sentence){
   return {nodes:[...nodes], edges};
 }
 function invertRel(r){ return {x:-r.x, y:-r.y, z:-r.z}; }
-function canonEdge(u,v,rel){
-  if(u<=v){ return {a:u, b:v, rel:`${rel.x},${rel.y},${rel.z}`}; }
-  const ri=invertRel(rel);
-  return {a:v, b:u, rel:`${ri.x},${ri.y},${ri.z}`};
+
+/* ===================== ENTAILMENT-BASED MATCHING (rock solid) ===================== */
+/* A premise B is an N-match to A if A's derived pairwise relations are entailed by B
+   after some one-to-one relabeling of A's symbols into a subset of B's symbols. */
+
+function vecAdd(a,b){ return {x:a.x+b.x, y:a.y+b.y, z:a.z+b.z}; }
+function vecSub(a,b){ return {x:a.x-b.x, y:a.y-b.y, z:a.z-b.z}; }
+
+function closureFromSentence(sentence){
+  const P = parsePremise(sentence);
+  const adj = new Map(), nodes = new Set();
+  function push(u,v,rel){ if(!adj.has(u)) adj.set(u,[]); adj.get(u).push({v,rel}); nodes.add(u); nodes.add(v); }
+  for(const e of P.edges){ push(e.u,e.v,e.rel); push(e.v,e.u,invertRel(e.rel)); }
+
+  const coords = new Map(); let ok = true;
+  for(const start of nodes){
+    if(coords.has(start)) continue;
+    coords.set(start,{x:0,y:0,z:0});
+    const stack=[start];
+    while(stack.length){
+      const u = stack.pop(), pu = coords.get(u);
+      for(const {v,rel} of (adj.get(u)||[])){
+        const want = vecAdd(pu, rel);
+        if(!coords.has(v)){ coords.set(v, want); stack.push(v); }
+        else {
+          const pv = coords.get(v);
+          if(pv.x!==want.x || pv.y!==want.y || pv.z!==want.z) ok=false; // contradiction
+        }
+      }
+    }
+  }
+
+  const arr=[...nodes].sort();
+  const pairs = new Map(); // canonical a<b pairs with their vectors from a->b
+  for(let i=0;i<arr.length;i++){
+    for(let j=i+1;j<arr.length;j++){
+      const a=arr[i], b=arr[j];
+      const d = vecSub(coords.get(b), coords.get(a));
+      pairs.set(`${a}|${b}|${d.x},${d.y},${d.z}`, 1);
+    }
+  }
+  return { ok, nodes:arr, pairs };
 }
-function multisetKey(e){ return `${e.a}|${e.b}|${e.rel}`; }
-function edgesToMultiset(edges){
-  const map=new Map();
-  for(const e of edges){ const ce=canonEdge(e.u,e.v,e.rel); const k=multisetKey(ce); map.set(k,(map.get(k)||0)+1); }
-  return map;
-}
-function equalMultisets(A,B){
-  if(A.size!==B.size) return false;
-  for(const [k,v] of A){ if(B.get(k)!==v) return false; }
-  return true;
-}
+
 function permutations(arr){
   const res=[], used=Array(arr.length).fill(false), path=[];
   (function dfs(){
     if(path.length===arr.length){ res.push(path.slice()); return; }
     for(let i=0;i<arr.length;i++){ if(used[i])continue; used[i]=true; path.push(arr[i]); dfs(); path.pop(); used[i]=false; }
-  })(); return res;
+  })();
+  return res;
 }
-function sentencesCompatible(a,b){
-  const A=parsePremise(a), B=parsePremise(b);
-  if(A.edges.length!==B.edges.length) return false;
-  if(A.nodes.length!==B.nodes.length) return false;
-  const nodesA=A.nodes.slice().sort(), nodesB=B.nodes.slice().sort();
-  const Ams=edgesToMultiset(A.edges);
-  for(const perm of permutations(nodesA)){
-    const map=new Map(); for(let i=0;i<nodesB.length;i++) map.set(nodesB[i], perm[i]);
-    const mapped=B.edges.map(e=>({u:map.get(e.u), v:map.get(e.v), rel:e.rel}));
-    const Bms=edgesToMultiset(mapped);
-    if(equalMultisets(Ams,Bms)) return true;
+function combinations(arr,k){
+  const res=[]; (function go(start, path){
+    if(path.length===k){ res.push(path.slice()); return; }
+    for(let i=start;i<arr.length;i++){ path.push(arr[i]); go(i+1, path); path.pop(); }
+  })(0,[]);
+  return res;
+}
+
+// B entails A if every derived relation of A appears in B after relabeling A's nodes
+// into some k-subset of B's nodes (k = |A.nodes|).
+function sentencesEntails(a,b){
+  const A = closureFromSentence(a), B = closureFromSentence(b);
+  if(!A.ok || !B.ok) return false;
+  const nodesA=A.nodes, nodesB=B.nodes;
+  if(nodesA.length > nodesB.length) return false;
+
+  const need = [...A.pairs.keys()];
+  const have = B.pairs;
+
+  for(const combo of combinations(nodesB, nodesA.length)){
+    for(const perm of permutations(combo)){
+      const map=new Map(); for(let i=0;i<nodesA.length;i++) map.set(nodesA[i], perm[i]);
+      let ok=true;
+      for(const key of need){
+        const [a1,b1,relStr]=key.split('|');
+        const [dx,dy,dz]=relStr.split(',').map(Number);
+        let u = map.get(a1), v = map.get(b1);
+        if(u==null || v==null){ ok=false; break; }
+        // canonicalize pair order for lookup
+        let rx=dx, ry=dy, rz=dz;
+        if(v < u){ [u,v]=[v,u]; rx=-rx; ry=-ry; rz=-rz; }
+        const look = `${u}|${v}|${rx},${ry},${rz}`;
+        if(!have.has(look)){ ok=false; break; }
+      }
+      if(ok) return true;
+    }
   }
   return false;
 }
@@ -306,13 +360,14 @@ function clauseString(from, rel, to){
 }
 function randomPremise(){
   const [A,B,C]=uniqueTokens(3);
-  const pick=()=> Math.random()<0.6 ? {k:'h',d:HORIZ[Math.floor(Math.random()*HORIZ.length)]}
+  const pick=()=> Math.random()<0.6 ? {k:'h',d:Object.values(DIRS)[Math.floor(Math.random()*8)]}
                                     : {k:'v',n:LEVELS[Math.floor(Math.random()*LEVELS.length)],up:Math.random()<0.5};
-  const c=(X,r,Y)=> r.k==='h' ? `${X} is ${r.d} of ${Y}` : `${X} is ${r.n} ${r.n===1?'level':'levels'} ${r.up?'above':'below'} ${Y}`;
-  const r1=pick(), r2=pick();
-  return `${c(A,r1,B)} and ${c(B,r2,C)}`;
+  const toRel=(r)=> r.k==='h' ? {x:r.d.x,y:r.d.y,z:0} : {x:0,y:0,z:r.up? r.n : -r.n};
+  const r1=toRel(pick()), r2=toRel(pick());
+  return `${clauseString(A,r1,B)} and ${clauseString(B,r2,C)}`;
 }
-function buildCompatible(sentence){
+function buildEquivalent(sentence){
+  // same relations, new labels, order shuffled ⇒ guarantees entailment
   const P=parsePremise(sentence);
   const uniq=[...new Set(P.edges.flatMap(e=>[e.u,e.v]))].length;
   const labels=uniqueTokens(uniq);
@@ -324,6 +379,62 @@ function buildCompatible(sentence){
   });
   for(let j=parts.length-1;j>0;j--){ const k=Math.floor(Math.random()*(j+1)); [parts[j],parts[k]]=[parts[k],parts[j]]; }
   return parts.join(' and ');
+}
+
+/* Robust non-entailing generator to honor Target match rate precisely */
+function generateNonEntailing(prev){
+  // Phase 1: try random premises until non-entailing
+  for(let t=0;t<1200;t++){
+    const s=randomPremise();
+    if(!sentencesEntails(prev,s)) return s;
+  }
+  // Phase 2: bias dimensions opposite to prev’s closure
+  const A = closureFromSentence(prev);
+  const needsVertical = [...A.pairs.keys()].some(k=>k.endsWith(',0')); // z==0 somewhere
+  const needsHorizontal = [...A.pairs.keys()].some(k=>!k.endsWith(',0')); // z!=0 somewhere
+  function verticalOnlyPremise(){
+    const [A1,B1,C1]=uniqueTokens(3);
+    const z1=(Math.random()<0.5?1:-1)*[1,2,3][Math.floor(Math.random()*3)];
+    const z2=(Math.random()<0.5?1:-1)*[1,2,3][Math.floor(Math.random()*3)];
+    return `${clauseString(A1,{x:0,y:0,z:z1},B1)} and ${clauseString(B1,{x:0,y:0,z:z2},C1)}`;
+  }
+  function horizontalOnlyPremise(){
+    const [A1,B1,C1]=uniqueTokens(3);
+    const dirs=Object.values(DIRS);
+    const r1=dirs[Math.floor(Math.random()*dirs.length)];
+    const r2=dirs[Math.floor(Math.random()*dirs.length)];
+    return `${clauseString(A1,{x:r1.x,y:r1.y,z:0},B1)} and ${clauseString(B1,{x:r2.x,y:r2.y,z:0},C1)}`;
+  }
+  for(let t=0;t<1200;t++){
+    const s = needsHorizontal ? horizontalOnlyPremise() : verticalOnlyPremise();
+    if(!sentencesEntails(prev,s)) return s;
+  }
+  // Phase 3: deterministically flip one relation magnitude/direction from prev, then verify
+  const P=parsePremise(prev);
+  if(P.edges.length){
+    const [A1,B1,C1]=uniqueTokens(3);
+    const e0=P.edges[0], e1=P.edges[Math.min(1,P.edges.length-1)];
+    const flip=(rel)=>{
+      if(rel.z){ // vertical → change magnitude (guaranteed different)
+        let mag=Math.abs(rel.z);
+        let newMag = mag===3 ? 2 : mag+1;
+        return {x:0,y:0,z:rel.z>0? newMag : -newMag};
+      } else {  // horizontal → rotate 90 degrees
+        const rot={x:-rel.y, y:rel.x, z:0};
+        return rot.x===0 && rot.y===0 ? {x:1,y:0,z:0} : {x:rot.x,y:rot.y,z:0};
+      }
+    };
+    const rA=flip(e0.rel), rB=e1.rel;
+    const s1=`${clauseString(A1,rA,B1)} and ${clauseString(B1,rB,C1)}`;
+    if(!sentencesEntails(prev,s1)) return s1;
+    const s2=`${clauseString(A1,rB,B1)} and ${clauseString(B1,rA,C1)}`;
+    if(!sentencesEntails(prev,s2)) return s2;
+  }
+  // Final fallback: generate until success (rarely needed)
+  while(true){
+    const s=randomPremise();
+    if(!sentencesEntails(prev,s)) return s;
+  }
 }
 
 /* ===================== TTS verbalization ===================== */
@@ -358,9 +469,13 @@ let spokenParts=null, clauseIdx=0;
 
 function planSequence(){
   planned.length=0;
-  for(let i=0;i<MAX;i++){ planned.push(i>=N && Math.random()*100 < RATE); }
+  for(let i=0;i<MAX;i++){
+    planned.push(i>=N && Math.random()*100 < RATE);
+  }
 }
-function isActualMatch(i){ return i>=N && sentencesCompatible(history[i-N], history[i]); }
+
+/* ***** FIXED: actual matching now uses logical entailment ***** */
+function isActualMatch(i){ return i>=N && sentencesEntails(history[i-N], history[i]); }
 
 function buildPremiseVisual(raw){
   const parts=raw.split(/\s+and\s+/i).map(p=>p.trim());
@@ -373,40 +488,35 @@ function buildPremiseVisual(raw){
 }
 function setActivePart(i){ [...$('premiseText').querySelectorAll('.rel')].forEach((n,idx)=>n.classList.toggle('active', idx===i)); }
 
-/* Key fix: also wait PAUSE_SEC **after the final relation** before advancing to next premise */
+/* Ensure pause after last relation before advancing */
 async function speakPremise(){
   if(!spokenParts) return;
   for(; running && !paused && clauseIdx<spokenParts.length; clauseIdx++){
     setActivePart(clauseIdx);
     await speak(spokenParts[clauseIdx]+'.');
     if(!running || paused) return;
-    // pause between relations
     if(clauseIdx<spokenParts.length-1){
       await new Promise(res=>{ waitTimer=setTimeout(()=>{waitTimer=null; res(); }, PAUSE_SEC*1000); });
       if(!running || paused) return;
     }
   }
   setActivePart(-1);
-  // NEW: pause after the last relation as well
   if(running && !paused){
     await new Promise(res=>{ waitTimer=setTimeout(()=>{waitTimer=null; res(); }, PAUSE_SEC*1000); });
   }
 }
 
 function nextPremiseString(){
-  const want=planned[idx] && idx>=N;
-  if(want) return buildCompatible(history[idx-N]);
-  let s, tries=0;
-  do{ s=randomPremise(); tries++; } while(idx>=N && sentencesCompatible(history[idx-N], s) && tries<300);
-  if(idx>=N && sentencesCompatible(history[idx-N], s)){
-    const P=parsePremise(s);
-    if(P.edges.length){
-      const e=P.edges[0];
-      if(e.rel.z){ e.rel.z*=-1; } else { e.rel.x*=-1; e.rel.y*=-1; }
-      s=P.edges.map(ed=>clauseString(ed.u, ed.rel, ed.v)).join(' and ');
-    }
+  // If we want a planned match, generate an equivalent premise (guaranteed entailment).
+  if(planned[idx] && idx>=N){
+    return buildEquivalent(history[idx-N]);
   }
-  return s;
+  // Otherwise, generate a premise that is guaranteed NOT to entail the previous premise.
+  if(idx>=N){
+    return generateNonEntailing(history[idx-N]);
+  }
+  // For initial burn-in (i < N), any random premise is fine.
+  return randomPremise();
 }
 
 async function runTrial(){
@@ -444,11 +554,9 @@ function togglePause(){
     $('pause').textContent='▶ Resume';
   } else {
     paused=false; $('pause').textContent='⏸ Pause';
-    // if we paused inside a premise, resume the remainder (including its trailing pause)
     if(spokenParts && clauseIdx<spokenParts.length){
       speakPremise().then(()=>{ if(running && !paused){ idx++; updateUI(); runTrial(); } });
     } else {
-      // if we paused during the trailing pause, just advance after finishing it (already handled)
       idx++; updateUI(); runTrial();
     }
   }
@@ -474,7 +582,6 @@ $('start').onclick = async ()=>{
     populateMenusFast();
     const raw=voicesNow(); if(raw.length){ VOICE=chooseBestVoice(raw); try{localStorage.setItem(LAST_KEY,vKey(VOICE));}catch(_){ } }
   }
-  // unlock audio on the same gesture
   await speak('Ready.');
   start();
 };
