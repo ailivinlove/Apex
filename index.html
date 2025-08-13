@@ -36,12 +36,12 @@ select{ min-height:38px }
         <label>N-back level: <span id="nVal">1</span></label>
         <input id="n" type="range" min="1" max="10" value="1">
         <label>Trials per block: <span id="tVal">40</span></label>
-        <input id="trials" type="range" min="10" max="200" step="5" value="40">
+        <input id="trials" type="range" min="10" max="5000" step="5" value="40">
         <label>Pause between relations in the same premise (seconds): <span id="pVal">1.0 s</span></label>
         <input id="pauseTime" type="range" min="0" max="60" step="0.5" value="1">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="0" max="100" step="1" value="25">
-        <div class="mut"><b>N-match rule:</b> Premise i matches i−N iff <b>all symbols from i−N reappear in i</b> and keep the <b>same pairwise offsets</b> (dx,dy,dz) up to a single global <b>translation</b>. Extra symbols allowed. Compass is fixed; levels are exact.</div>
+        <div class="mut"><b>N-match rule:</b> Premise i matches i−N iff <b>all symbols from i−N reappear in i</b> and the <b>union</b> of their relations is <b>consistent</b> (no contradictions). Extra symbols allowed. Compass and level magnitudes are fixed.</div>
       </div>
     </div>
 
@@ -94,6 +94,7 @@ select{ min-height:38px }
 /* ===================== helpers ===================== */
 const $ = id => document.getElementById(id);
 const sleep = ms => new Promise(r=>setTimeout(r,ms));
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
 /* ===================== directions ===================== */
 const DIRS = {
@@ -257,14 +258,12 @@ function parsePremise(sentence){
 }
 function invertRel(r){ return {x:-r.x, y:-r.y, z:-r.z}; }
 function vecAdd(a,b){ return {x:a.x+b.x, y:a.y+b.y, z:a.z+b.z}; }
-function vecSub(a,b){ return {x:a.x-b.x, y:a.y-b.y, z:a.z-b.z}; }
 
-/* ===================== coordinate closure ===================== */
-function closureFromSentence(sentence){
-  const P = parsePremise(sentence);
+/* ===================== coordinate closure on arbitrary edges ===================== */
+function closureFromEdges(edges){
   const adj = new Map(), nodes = new Set();
   function push(u,v,rel){ if(!adj.has(u)) adj.set(u,[]); adj.get(u).push({v,rel}); nodes.add(u); nodes.add(v); }
-  for(const e of P.edges){ push(e.u,e.v,e.rel); push(e.v,e.u,invertRel(e.rel)); }
+  for(const e of edges){ push(e.u,e.v,e.rel); push(e.v,e.u,invertRel(e.rel)); }
 
   const coords = new Map(); let ok = true;
   for(const start of nodes){
@@ -286,27 +285,15 @@ function closureFromSentence(sentence){
   return { ok, nodes:[...nodes], coords };
 }
 
-/* ===================== EMBEDDING MATCH (final rule) ===================== */
-/* Premise B matches A iff every symbol in A reappears in B and their
-   pairwise offsets are preserved up to a single translation T (no rotation/flip). */
-function sentencesEmbed(a,b){
-  const A = closureFromSentence(a), B = closureFromSentence(b);
-  if(!A.ok || !B.ok) return false;
-  const prev=A.nodes, curr=B.nodes;
-  // require prev symbols to persist
-  for(const s of prev){ if(!curr.includes(s)) return false; }
-  // compute translation using one shared anchor
-  const anchor = prev[0];
-  const Ta = A.coords.get(anchor), Tb = B.coords.get(anchor);
-  const T = vecSub(Tb, Ta);
-  // verify all shared nodes align with same T
-  for(const s of prev){
-    const pa = A.coords.get(s), pb = B.coords.get(s);
-    if(!pa || !pb) return false;
-    const shifted = vecAdd(pa, T);
-    if(shifted.x!==pb.x || shifted.y!==pb.y || shifted.z!==pb.z) return false;
-  }
-  return true;
+/* ===================== RELATIVE-COMPATIBILITY MATCH ===================== */
+/* Premise B matches A iff:
+   (1) every symbol in A also appears in B (anchors persist), and
+   (2) the union of A's and B's relations has no contradictions (is satisfiable). */
+function sentencesRelMatch(a,b){
+  const A = parsePremise(a), B = parsePremise(b);
+  for(const s of A.nodes){ if(!B.nodes.includes(s)) return false; }
+  const merged = closureFromEdges([...A.edges, ...B.edges]);
+  return merged.ok;
 }
 
 /* ===================== builders ===================== */
@@ -328,13 +315,10 @@ function randomPremise(){
   return `${clauseString(A,r1,B)} and ${clauseString(B,r2,C)}`;
 }
 
-/* Build a guaranteed embedding of prev by reusing all prior symbols and preserving their offsets.
-   We restate the two relations (possibly reordered / flipped with subject-object swap) so T=0. */
-function buildEmbeddingOf(prev){
+/* Guaranteed matching premise: reuse all prior symbols, keep constraints (possibly reorder/flip clauses). */
+function buildMatching(prev){
   const P = parsePremise(prev);
-  // If prev had no edges, just return it.
   if(!P.edges.length) return prev;
-  // Reconstruct clauses, optionally swapping order or flipping (swap endpoints + invert vector).
   const parts = P.edges.map(e=>{
     const flip = Math.random()<0.5;
     const u = flip ? e.v : e.u;
@@ -342,30 +326,26 @@ function buildEmbeddingOf(prev){
     const rel = flip ? invertRel(e.rel) : e.rel;
     return clauseString(u, rel, v);
   });
-  // Shuffle clause order
   if(parts.length>1 && Math.random()<0.5) parts.reverse();
   return parts.join(' and ');
 }
 
-/* Build a guaranteed NON-embedding premise by using fresh labels (no shared anchors). */
-function buildNonEmbedding(prev){
+/* Guaranteed non-match for previous: use fresh labels so anchors don't persist. */
+function buildNonMatching(prev){
   const prevNodes = new Set(parsePremise(prev).nodes);
   function freshToken(){
     let t;
     do{ t = token(); }while(prevNodes.has(t));
-    prevNodes.add(t); // prevent reuse within this call
+    prevNodes.add(t);
     return t;
   }
   const A=freshToken(), B=freshToken(), C=freshToken();
-  // random relations
   const dirs = Object.values(DIRS);
-  const r1 = Math.random()<0.5 ? {x:0,y:0,z:(Math.random()<0.5?1:-1)*LEVELS[Math.floor(Math.random()*LEVELS.length)]}
-                               : dirs[Math.floor(Math.random()*dirs.length)];
-  const r2 = Math.random()<0.5 ? {x:0,y:0,z:(Math.random()<0.5?1:-1)*LEVELS[Math.floor(Math.random()*LEVELS.length)]}
-                               : dirs[Math.floor(Math.random()*dirs.length)];
-  const R1 = {x:r1.x||0, y:r1.y||0, z:r1.z||0};
-  const R2 = {x:r2.x||0, y:r2.y||0, z:r2.z||0};
-  return `${clauseString(A,R1,B)} and ${clauseString(B,R2,C)}`;
+  const r = ()=> Math.random()<0.5
+    ? {x:0,y:0,z:(Math.random()<0.5?1:-1)*LEVELS[Math.floor(Math.random()*LEVELS.length)]}
+    : {x:dirs[Math.floor(Math.random()*dirs.length)].x, y:dirs[Math.floor(Math.random()*dirs.length)].y, z:0};
+  const r1=r(), r2=r();
+  return `${clauseString(A,r1,B)} and ${clauseString(B,r2,C)}`;
 }
 
 /* ===================== TTS verbalization ===================== */
@@ -398,13 +378,17 @@ const history=[], planned=[];
 let correct=0, errors=0;
 let spokenParts=null, clauseIdx=0;
 
+/* Plan an exact match count to honor the target rate precisely. */
 function planSequence(){
   planned.length=0;
-  for(let i=0;i<MAX;i++){ planned.push(i>=N && Math.random()*100 < RATE); }
+  for(let i=0;i<MAX;i++) planned.push(false);
+  const eligible=[]; for(let i=N;i<MAX;i++) eligible.push(i);
+  const k=Math.round((RATE/100)*eligible.length);
+  shuffle(eligible);
+  for(let i=0;i<k;i++) planned[eligible[i]]=true;
 }
 
-/* FINAL: use embedding rule */
-function isActualMatch(i){ return i>=N && sentencesEmbed(history[i-N], history[i]); }
+function isActualMatch(i){ return i>=N && sentencesRelMatch(history[i-N], history[i]); }
 
 function buildPremiseVisual(raw){
   const parts=raw.split(/\s+and\s+/i).map(p=>p.trim());
@@ -417,7 +401,6 @@ function buildPremiseVisual(raw){
 }
 function setActivePart(i){ [...$('premiseText').querySelectorAll('.rel')].forEach((n,idx)=>n.classList.toggle('active', idx===i)); }
 
-/* Speak with a pause after the last relation */
 async function speakPremise(){
   if(!spokenParts) return;
   for(; running && !paused && clauseIdx<spokenParts.length; clauseIdx++){
@@ -437,8 +420,8 @@ async function speakPremise(){
 
 function nextPremiseString(){
   if(idx>=N){
-    if(planned[idx]) return buildEmbeddingOf(history[idx-N]);
-    return buildNonEmbedding(history[idx-N]);
+    if(planned[idx]) return buildMatching(history[idx-N]);
+    return buildNonMatching(history[idx-N]);
   }
   return randomPremise();
 }
