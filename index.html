@@ -46,7 +46,6 @@ select{ min-height:38px }
         <input id="rate" type="range" min="0" max="100" step="1" value="25">
         <hr style="border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0">
         <div class="title">Relational Complexity</div>
-        <!-- Removed symbols-per-premise controls because their impact on relational g‑loading is negligible -->
         <label>Relations per premise expansion: <span id="relCountVal">2</span></label>
         <input id="relCount" type="number" min="0" value="2">
         <div class="mut"><b>N-match rule:</b> Premise i matches i−N iff <b>all symbols from i−N reappear in i</b> and the <b>union</b> of their relations is <b>consistent</b> (no contradictions). Extra symbols allowed. Compass and level magnitudes are fixed.</div>
@@ -106,6 +105,8 @@ const DIRS = {
   northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1}
 };
 const HORIZ=Object.keys(DIRS);
+const CARDINALS = ['north','south','east','west'];
+const DIAGONALS = ['northeast','northwest','southeast','southwest'];
 const LEVELS=[1,2,3];
 
 // Complexity variables (NUM_SYMBOLS is now fixed because symbol count has negligible effect on g-loading)
@@ -286,10 +287,17 @@ function randomCompositeRel(){
   let rel={x:0,y:0,z:0};
   const n=1 + Math.floor(Math.random()*COMP_COUNT);
   for(let i=0;i<n;i++){
-    // Increase chance of horizontal moves: 80% horizontal, 20% vertical
-    if(Math.random()<0.8){
-      const d = DIRS[HORIZ[Math.floor(Math.random()*HORIZ.length)]];
-      rel.x+=d.x; rel.y+=d.y;
+    // Adjust probabilities: increase diagonal directions, de-emphasize vertical
+    const rand = Math.random();
+    if(rand < 0.8){ // Horizontal branch (80%)
+      // 60% of horizontal: diagonal; 40%: cardinal
+      if(Math.random() < 0.6){
+        const d = DIRS[DIAGONALS[Math.floor(Math.random()*DIAGONALS.length)]];
+        rel.x+=d.x; rel.y+=d.y;
+      } else {
+        const d = DIRS[CARDINALS[Math.floor(Math.random()*CARDINALS.length)]];
+        rel.x+=d.x; rel.y+=d.y;
+      }
     } else {
       const nLev=LEVELS[Math.floor(Math.random()*LEVELS.length)];
       const up=Math.random()<0.5;
@@ -309,7 +317,6 @@ function uniqueTokens(k){
   return [...s];
 }
 function randomPremise(){
-  // Conditional mode generates a basic if-then with two antecedents and a conclusion
   if(COND_MODE){
     const toks=uniqueTokens(5);
     const r1=randomCompositeRel();
@@ -320,9 +327,7 @@ function randomPremise(){
     const clause3=clauseString(toks[3],r3,toks[4]);
     return `If ${clause1} and ${clause2} then ${clause3}`;
   }
-  // Generate tokens for the premise
   const baseTokens = uniqueTokens(NUM_SYMBOLS);
-  // Randomize order of base tokens
   const shuffled = shuffle(baseTokens.slice());
   const needed = REL_COUNT * 2;
   const sel = [];
@@ -333,7 +338,6 @@ function randomPremise(){
   for(let i = 0; i < REL_COUNT; i++){
     const u = sel[2*i];
     let v = sel[2*i + 1];
-    // Avoid self-relations by picking an alternative token if necessary
     if(u === v){
       v = shuffled.find(tok => tok !== u) || u;
     }
@@ -440,7 +444,6 @@ function buildNonMatching(prev){
     prevNodes.add(t);
     return t;
   }
-  // Generate a base list of fresh tokens for this premise
   const base = [];
   for(let i = 0; i < NUM_SYMBOLS; i++){
     base.push(freshToken());
@@ -667,7 +670,6 @@ function updateUI(){
   $('pVal').textContent=PAUSE_SEC.toFixed(1) + ' s';
   $('premiseIntervalVal').textContent=PREMISE_INTERVAL_SEC.toFixed(1) + ' s';
   $('rVal').textContent=RATE + '%';
-  // symVal update removed — symbol count is fixed
   $('relCountVal').textContent=REL_COUNT;
 }
 
@@ -716,12 +718,10 @@ $('premiseInterval').oninput=e=>{
   PREMISE_INTERVAL_SEC=+e.target.value;
   $('premiseIntervalVal').textContent=PREMISE_INTERVAL_SEC.toFixed(1) + ' s';
 };
-// No symbols input — symbol count fixed
 $('relCount').oninput=e=>{
   REL_COUNT=+e.target.value;
   $('relCountVal').textContent=REL_COUNT;
 };
-// voice controls
 $('refreshVoices').onclick=()=>populateMenusFast();
 $('testVoice').onclick=async ()=>{
   if(!VOICE) populateMenusFast();
@@ -731,7 +731,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   populateMenusFast();
   applyVoiceDefaults();
   $('voiceStatus').textContent='Ready';
-  // symVal update removed
   $('relCountVal').textContent=REL_COUNT;
   $('premiseIntervalVal').textContent=PREMISE_INTERVAL_SEC.toFixed(1) + ' s';
 });
