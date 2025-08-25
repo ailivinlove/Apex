@@ -7,7 +7,8 @@
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
-body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:#0b0d10; color:#e6fbff; margin:0; padding:16px }
+html,body{ height:100% }
+body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); margin:0; padding:16px }
 .wrap{ max-width:1280px; margin:0 auto }
 .row{ display:flex; gap:12px; flex-wrap:wrap }
 .col{ flex:1 1 360px }
@@ -21,7 +22,7 @@ select{ min-height:38px }
 .kbd{ border:1px solid rgba(255,255,255,.25); padding:2px 6px; border-radius:6px; background:#0b0d10 }
 .mut{ color:var(--mut); font-size:12px }
 .badge{ display:inline-block; padding:2px 6px; border:1px solid rgba(0,200,255,.3); border-radius:8px; font-size:12px; color:var(--mut); margin-left:6px }
-#premiseText{ margin-top:12px; min-height:96px; background:#0e1113; border:1px solid rgba(0,200,255,.25); border-radius:12px; padding:10px; font-size:18px; line-height:1.6; word-break:break-word }
+#premiseText{ margin-top:12px; min-height:110px; background:#0e1113; border:1px solid rgba(0,200,255,.25); border-radius:12px; padding:10px; font-size:18px; line-height:1.6; word-break:break-word }
 #premiseText .rel{ padding:0 4px; border-radius:6px }
 #premiseText .rel.active{ background:rgba(0,200,255,.20); outline:1px solid rgba(0,200,255,.45) }
 #premiseText .sep{ opacity:.65 }
@@ -33,36 +34,31 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 <body>
 <div class="wrap">
   <div class="row">
+    <!-- Timing / Complexity -->
     <div class="col">
       <div class="box">
         <div class="title">Timing & Complexity</div>
-        <label>N-back level: <span id="nVal">1</span></label>
-        <input id="n" type="range" min="1" max="10" value="1">
+        <label>N-back level: <span id="nVal">2</span></label>
+        <input id="n" type="range" min="1" max="10" value="2">
         <label>Trials per block: <span id="tVal">40</span></label>
-        <input id="trials" type="range" min="10" max="5000" step="5" value="40">
-        <label>Pause between relations in the same premise (seconds): <span id="pVal">1.0 s</span></label>
-        <input id="pauseTime" type="range" min="0" max="60" step="0.1" value="1">
-        <label>Pause between premises (seconds): <span id="premiseIntervalVal">1.0 s</span></label>
-        <input id="premiseInterval" type="range" min="0" max="60" step="0.1" value="1">
+        <input id="trials" type="range" min="10" max="500" step="1" value="40">
+        <label>Pause between relations in a premise (seconds): <span id="pVal">0.6 s</span></label>
+        <input id="pauseTime" type="range" min="0" max="3" step="0.1" value="0.6">
+        <label>Pause between premises (seconds): <span id="premiseIntervalVal">0.8 s</span></label>
+        <input id="premiseInterval" type="range" min="0" max="3" step="0.1" value="0.8">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="0" max="100" step="1" value="25">
         <hr class="hr">
         <div class="title">Relational Complexity</div>
-        <label>Relations per premise expansion: <span id="relCountVal">2</span></label>
+        <label>Relations per premise (clauses): <span id="relCountVal">2</span></label>
         <input id="relCount" type="number" min="1" step="1" value="2">
-        <div class="mut">
-          <b>N-match rule (6D Compass — Logic Only)</b><br>
-          Premise <em>i</em> matches <em>i−N</em> iff:<br>
-          (1) <b>All symbols</b> from <em>i−N</em> reappear in <em>i</em> (extra symbols allowed), and<br>
-          (2) For those symbols the <b>relational structure is equivalent</b> per the selected mode (vector or ordered), and<br>
-          (3) The <b>union</b> of relations is <b>consistent</b> (no contradictions and no banned combos).
-          <div class="small" style="margin-top:6px">
-            6D axes: plane (north/south/east/west), levels (up/down), depth (in/out), turn (right/left), timing (ahead/behind).
-          </div>
+        <div class="mut small" style="margin-top:6px">
+          6D axes (plain): plane (north/south/east/west), levels (up/down), depth (in/out), turn (right/left), timing (ahead/behind).
         </div>
       </div>
     </div>
 
+    <!-- Stressors -->
     <div class="col">
       <div class="box">
         <div class="title">Advanced Stressors</div>
@@ -75,18 +71,19 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
             </select>
           </label>
 
-          <label><input id="isoMode" type="checkbox"> Isomorphism (allow symbol relabeling)</label>
-          <label><input id="plainMode" type="checkbox" checked> Plain language output</label>
-
+          <label><input id="isoMode" type="checkbox"> Isomorphism (allow relabeling)</label>
           <label><input id="banOppositesSameClause" type="checkbox"> Ban opposites in same clause</label>
+
           <label><input id="banOppositesUnion" type="checkbox"> Ban opposites across union (i−N ∪ i)</label>
+          <label><input id="speakEnabled" type="checkbox" checked> Speak premises</label>
         </div>
         <div class="mut small" style="margin-top:6px">
-          Tip: Order + 3 steps + Isomorphism + bans OFF = maximal fluid-intelligence stress.
+          Max stress: enable Order + set 3 steps + enable Isomorphism + leave bans OFF.
         </div>
       </div>
     </div>
 
+    <!-- Controls -->
     <div class="col">
       <div class="box">
         <div class="title">Controls / Status</div>
@@ -105,6 +102,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
     </div>
   </div>
 
+  <!-- Premise -->
   <div class="box" style="margin-top:12px">
     <div class="title">Premise (spoken + visual)</div>
     <div id="premiseText" aria-live="polite">—</div>
@@ -113,248 +111,210 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 
 <script>
 /* ===========================================================
-   6D COMPASS + ADVANCED STRESSORS (NO DRIFT, NO "UNIT"/"STEP")
-   - Vector (commutative) or Ordered (non-commutative) signatures
-   - Constraint bans (opposites same clause / across union)
-   - Isomorphism (symbol relabeling allowed)
-   - Pure axis language: north/south/east/west, level(s) up/down, in/out, right/left turn, ahead/behind
+   6D COMPASS (PLAIN) + ADVANCED STRESSORS — NO DRIFT, NO JARGON
+   Reliable start, options hooked, speech optional. Pure axes:
+   plane (N/S/E/W), levels (up/down), depth (in/out),
+   turn (right/left), timing (ahead/behind).
    =========================================================== */
 
-/* ---------- Helpers ---------- */
+/* ---------- Mini utilities ---------- */
 const $ = id => document.getElementById(id);
-function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 const clone = o => JSON.parse(JSON.stringify(o));
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a; }
 
-/* ---------- Global Settings ---------- */
-let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false, PLAIN_MODE=true;
+/* ---------- Global knobs (read at Start) ---------- */
+let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false;
 let BAN_OPP_SAME=false, BAN_OPP_UNION=false;
+let SPEAK=true;
 
-/* ---------- 6D Axes & tokens ---------- */
-const DIRS2D={
-  north:{x:0,y:-1}, south:{x:0,y:1}, east:{x:1,y:0}, west:{x:-1,y:0},
-  northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1}
-};
-const CARDINALS=['north','south','east','west'], DIAGONALS=['northeast','northwest','southeast','southwest'];
-const TOKENS = ['north','south','east','west','up','down','in','out','right turn','left turn','ahead','behind'];
-const OPP = {
-  'north':'south','south':'north','east':'west','west':'east',
-  'up':'down','down':'up','in':'out','out':'in',
-  'right turn':'left turn','left turn':'right turn',
-  'ahead':'behind','behind':'ahead'
-};
-const LEVELS=[1,2,3]; // only used for vertical "levels"
+/* ---------- Tokens & opposites ---------- */
+const TOKENS = ['north','south','east','west','up','down','in','out','right','left','ahead','behind'];
+const OPP = {north:'south', south:'north', east:'west', west:'east', up:'down', down:'up', in:'out', out:'in', right:'left', left:'right', ahead:'behind', behind:'ahead'};
 
-/* ---------- Session / generation knobs ---------- */
-let NUM_SYMBOLS=3;  // fixed pool of label tokens
-let REL_COUNT=2;    // clauses per premise
-let COMP_COUNT=1;   // composite picks per clause (kept simple)
-
-/* ---------- Voice (guarded minimal) ---------- */
-async function speak(text){
-  if(!('speechSynthesis' in window)) return;
-  const u=new SpeechSynthesisUtterance(String(text));
-  u.lang='en-GB'; u.rate=1.0; u.pitch=1.0; u.volume=1.0;
-  return new Promise(res=>{ let done=false; const fin=()=>{ if(!done){ done=true; res(); } };
-    u.onend=fin; u.onerror=fin;
-    try{ if(speechSynthesis.speaking) speechSynthesis.cancel(); speechSynthesis.speak(u); setTimeout(fin,10000); }catch(_){ fin(); }});
-}
-
-/* ---------- Token normalization ---------- */
-function normalizeToken(raw){
-  let t=String(raw||'').trim().toLowerCase();
-  // synonyms → normalized, keep pure axis words
-  t=t.replace(/\babove\b/g,'up').replace(/\bbelow\b/g,'down');
-  t=t.replace(/\bana\b/g,'in').replace(/\bkata\b/g,'out');
-  t=t.replace(/\bclockwise\b|\bright turn\b|\bturned right\b|\bcw\b/g,'right turn');
-  t=t.replace(/\bcounterclockwise\b|\bleft turn\b|\bturned left\b|\bccw\b/g,'left turn');
-  t=t.replace(/\blead\b/g,'ahead').replace(/\blag\b/g,'behind');
-  t=t.replace(/\s+/g,' ').trim();
-  return t;
-}
-
-/* ---------- Map tokens → deltas (limit counts to 1 for turn/in/out/ahead/behind) ---------- */
+/* ---------- Vector math (6D) ---------- */
 function tokenToDelta(tok){
-  let d={x:0,y:0,z:0,w:0,u:0,v:0};
+  const d={x:0,y:0,z:0,w:0,u:0,v:0};
   if(tok==='north') d.y-=1;
   else if(tok==='south') d.y+=1;
   else if(tok==='east') d.x+=1;
   else if(tok==='west') d.x-=1;
   else if(tok==='up') d.z+=1;
   else if(tok==='down') d.z-=1;
-  else if(tok==='in') d.w+=1;       // depth inward (magnitude fixed to 1 here)
-  else if(tok==='out') d.w-=1;      // depth outward
-  else if(tok==='right turn') d.u+=1; // turn right (one turn)
-  else if(tok==='left turn') d.u-=1;  // turn left
-  else if(tok==='ahead') d.v+=1;    // timing ahead (one beat)
-  else if(tok==='behind') d.v-=1;   // timing behind
+  else if(tok==='in') d.w+=1;
+  else if(tok==='out') d.w-=1;
+  else if(tok==='right') d.u+=1;      // "turned right"
+  else if(tok==='left') d.u-=1;       // "turned left"
+  else if(tok==='ahead') d.v+=1;
+  else if(tok==='behind') d.v-=1;
   return d;
 }
+function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
+function vecInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
+function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
 
-/* ---------- Human-readable relation strings (no "unit"/"step") ---------- */
-function relationToStringVector(rel){
-  const {x=0,y=0,z=0,w=0,u=0,v=0}=rel||{}; const parts=[];
-  // plane
-  if(x!==0||y!==0){
-    let d='';
-    if(y<0) d+='north';
-    if(y>0) d+='south';
-    if(x>0) d+=(d?' ':'')+'east';
-    if(x<0) d+=(d?' ':'')+'west';
-    if(d) parts.push(d);
+/* ---------- Render: plain language with NO "unit" ---------- */
+function levelsPhrase(z){
+  const n=Math.abs(z);
+  if(n===0) return null;
+  const word = (n===1?'one level':`${n} levels`);
+  return `${word} ${z>0?'up':'down'}`;
+}
+function relToStringVector(r){
+  const parts=[];
+  if(r.y!==0||r.x!==0){
+    let s='';
+    if(r.y<0) s+='north';
+    if(r.y>0) s+='south';
+    if(r.x>0) s+=(s?' ':'')+'east';
+    if(r.x<0) s+=(s?' ':'')+'west';
+    if(s) parts.push(s);
   }
-  // vertical levels
-  if(z){
-    const n=Math.abs(z);
-    parts.push(`${n===1?'one level':n+' levels'} ${z>0?'up':'down'}`);
-  }
-  // depth (in/out) — limited to magnitude 1 by generator
-  if(w){ parts.push(w>0?'in':'out'); }
-  // turn right/left — limited to magnitude 1 by generator
-  if(u){ parts.push(u>0?'right turn':'left turn'); }
-  // timing ahead/behind — limited to magnitude 1 by generator
-  if(v){ parts.push(v>0?'ahead':'behind'); }
+  const lp=levelsPhrase(r.z); if(lp) parts.push(lp);
+  if(r.w!==0) parts.push(r.w>0?'in':'out');
+  if(r.u!==0) parts.push(r.u>0?'turned right':'turned left');
+  if(r.v!==0) parts.push(r.v>0?'ahead':'behind');
   return parts.length? parts.join(' and ') : 'origin';
 }
-function relationToStringOrdered(seq){ return (seq||[]).join(' then '); }
-
-/* ---------- Symbol helpers ---------- */
-function labelToken(){ const L='ABCDEFGHIJKLMNOPQRSTUVWXYZ'; return L[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9)); }
-function uniqueLabels(k){ const s=new Set(); while(s.size<k) s.add(labelToken()); return [...s]; }
-
-/* ---------- Random edge builders ---------- */
-function buildRandomEdgeOrdered(){
-  const syms=uniqueLabels(NUM_SYMBOLS);
-  const u=syms[Math.floor(Math.random()*syms.length)];
-  let v=syms[Math.floor(Math.random()*syms.length)];
-  if(u===v) v=syms.find(x=>x!==u) || u;
-
-  const seq=[], pool=[...TOKENS];
-  // only allow one of each to avoid trivial opposites in same clause unless bans are off
-  while(seq.length<ORDER_LEN && pool.length){
-    const i=Math.floor(Math.random()*pool.length);
-    const cand=pool.splice(i,1)[0];
-    if(BAN_OPP_SAME && seq.includes(OPP[cand])) continue;
-    seq.push(cand);
-  }
-  // compute vector from tokens
-  let vec={x:0,y:0,z:0,w:0,u:0,v:0};
-  seq.forEach(t=>{ const d=tokenToDelta(t); vec={x:vec.x+d.x,y:vec.y+d.y,z:vec.z+d.z,w:vec.w+d.w,u:vec.u+d.u,v:vec.v+d.v}; });
-  return {u,v,rel:vec,seq};
+function seqToString(seq){
+  // ordered mode uses "then" to preserve order
+  return (seq&&seq.length)? seq.map(t=>{
+    if(t==='right') return 'turned right';
+    if(t==='left')  return 'turned left';
+    if(t==='up')    return 'one level up';
+    if(t==='down')  return 'one level down';
+    return t;
+  }).join(' then ') : 'origin';
 }
 
-function randomCompositeRelVector(){
-  // Commutative vector build. Keep depth/turn/timing to ±1; allow multi-level z.
+/* ---------- Symbols ---------- */
+function sym(){ const L='ABCDEFGHIJKLMNOPQRSTUVWXYZ'; return L[(Math.random()*26)|0] + (1+((Math.random()*9)|0)); }
+function pickSymbols(k){
+  const s=new Set(); while(s.size<k) s.add(sym()); return [...s];
+}
+
+/* ---------- Build edges ---------- */
+function buildEdgeOrdered(orderLen, symPool){
+  const u=symPool[(Math.random()*symPool.length)|0];
+  let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
+  const seq=[]; const bag=[...TOKENS];
+  while(seq.length<orderLen && bag.length){
+    const i=(Math.random()*bag.length)|0; seq.push(bag.splice(i,1)[0]);
+  }
   let r={x:0,y:0,z:0,w:0,u:0,v:0};
-  const n=1+Math.floor(Math.random()*Math.max(1,COMP_COUNT));
-  for(let i=0;i<n;i++){
-    const t=Math.random();
-    if(t<0.45){
-      if(Math.random()<0.6){ const d=DIRS2D[DIAGONALS[Math.floor(Math.random()*DIAGONALS.length)]]; r.x+=d.x; r.y+=d.y; }
-      else { const d=DIRS2D[CARDINALS[Math.floor(Math.random()*CARDINALS.length)]]; r.x+=d.x; r.y+=d.y; }
-    } else if(t<0.63){
-      const k=LEVELS[Math.floor(Math.random()*LEVELS.length)];
-      r.z += (Math.random()<0.5?+k:-k);
-    } else if(t<0.80){
-      const tok = (Math.random()<0.5)?'in':'out'; const d=tokenToDelta(tok); r.w+=d.w; // only ±1
-    } else if(t<0.90){
-      const tok = (Math.random()<0.5)?'right turn':'left turn'; const d=tokenToDelta(tok); r.u+=d.u; // only ±1
-    } else {
-      const tok = (Math.random()<0.5)?'ahead':'behind'; const d=tokenToDelta(tok); r.v+=d.v; // only ±1
-    }
+  seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
+  return {u,v,rel:r,seq};
+}
+function buildEdgeVector(symPool){
+  const u=symPool[(Math.random()*symPool.length)|0];
+  let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
+  // random composite; allow z up/down up to 3 levels; others single bumps
+  let r={x:0,y:0,z:0,w:0,u:0,v:0};
+  const rolls=1+((Math.random()*2)|0); // 1..2 components
+  for(let i=0;i<rolls;i++){
+    const axis=(Math.random()*6)|0;
+    if(axis===0){ // plane
+      const p=['north','south','east','west'][(Math.random()*4)|0];
+      r=vecAdd(r, tokenToDelta(p));
+    }else if(axis===1){ // levels with count
+      const dir = (Math.random()<0.5?'up':'down');
+      const steps = 1+((Math.random()*3)|0); // 1..3 levels
+      for(let k=0;k<steps;k++) r=vecAdd(r, tokenToDelta(dir));
+    }else if(axis===2){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out')); }
+    else if(axis===3){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'right':'left')); }
+    else if(axis===4){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind')); }
+    else { /* extra plane tick */ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'north':'east')); }
   }
-  return r;
+  return {u,v,rel:r,seq:null};
 }
 
-function buildRandomEdgeVector(){
-  const syms=uniqueLabels(NUM_SYMBOLS);
-  const u=syms[Math.floor(Math.random()*syms.length)];
-  let v=syms[Math.floor(Math.random()*syms.length)];
-  if(u===v) v=syms.find(x=>x!==u) || u;
-  const rel=randomCompositeRelVector();
-  return {u,v,rel,seq:null};
-}
-
-/* ---------- Vector ops ---------- */
-function invertRel(r){ return {x:-(r.x||0),y:-(r.y||0),z:-(r.z||0),w:-(r.w||0),u:-(r.u||0),v:-(r.v||0)}; }
-function vecAdd(a,b){ return {x:(a.x||0)+(b.x||0),y:(a.y||0)+(b.y||0),z:(a.z||0)+(b.z||0),w:(a.w||0)+(b.w||0),u:(a.u||0)+(b.u||0),v:(a.v||0)+(b.v||0)}; }
-function vecEq(a,b){ return (a.x||0)===(b.x||0)&&(a.y||0)===(b.y||0)&&(a.z||0)===(b.z||0)&&(a.w||0)===(b.w||0)&&(a.u||0)===(b.u||0)&&(a.v||0)===(b.v||0); }
-function invertSeq(seq){ return (seq||[]).map(t=>OPP[t]||t); }
-
-/* ---------- Rendering ---------- */
+/* ---------- Render edges -> sentence ---------- */
 function renderEdges(edges){
   return edges.map(e=>{
-    const core = ORDER_MODE ? relationToStringOrdered(e.seq) : relationToStringVector(e.rel);
+    const core = ORDER_MODE ? seqToString(e.seq) : relToStringVector(e.rel);
     return `${e.u} is ${core} of ${e.v}`;
   }).join(' and ');
 }
 
-/* ---------- Parsing ---------- */
+/* ---------- Parse sentence ---------- */
 function parsePremise(sentence){
-  let s=String(sentence||'').trim();
-  s=s.replace(/^if\s+/i,''); s=s.replace(/\bthen\b/gi,' then ');
-  const parts=s.split(/\s+and\s+/i).map(p=>p.trim()).filter(Boolean);
   const edges=[], nodes=new Set();
+  const parts=String(sentence||'').trim().split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
   parts.forEach(part=>{
     const m=part.match(/^([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)$/i);
-    if(m){
-      const A=m[1], B=m[3]; nodes.add(A); nodes.add(B);
-      let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
-      if(ORDER_MODE){
-        seq = m[2].split(/\s+then\s+/i).map(t=>normalizeToken(t));
-        seq.forEach(tok=>{ const d=tokenToDelta(tok); rel=vecAdd(rel,d); });
-      }else{
-        const items=m[2].split(/\s+and\s+/i).map(t=>normalizeToken(t));
-        items.forEach(tok=>{
-          if(tok==='origin') return;
-          const d=tokenToDelta(tok); rel=vecAdd(rel,d);
-        });
-      }
-      edges.push({u:A,v:B,rel,seq});
+    if(!m) return;
+    const A=m[1], B=m[3]; nodes.add(A); nodes.add(B);
+    let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
+    if(ORDER_MODE){
+      // split by "then"
+      seq = m[2].split(/\s+then\s+/i).map(s=>s.toLowerCase().trim());
+      // normalize phrases used in rendering
+      seq = seq.map(t=>{
+        if(t==='turned right') return 'right';
+        if(t==='turned left') return 'left';
+        if(t==='one level up') return 'up';
+        if(t==='one level down') return 'down';
+        return t;
+      });
+      seq.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
+    }else{
+      // vector phrases separated by 'and' already split; parse sub-phrases
+      const items=m[2].split(/\s+and\s+/i).map(s=>s.toLowerCase().trim());
+      items.forEach(t=>{
+        if(t==='origin') return;
+        // levels forms
+        const lm=t.match(/^(one|two|three|\d+)\s+levels?\s+(up|down)$/);
+        if(lm){
+          const n= lm[1]==='one'?1 : lm[1]==='two'?2 : lm[1]==='three'?3 : parseInt(lm[1],10);
+          const dir= lm[2];
+          for(let k=0;k<n;k++) rel=vecAdd(rel, tokenToDelta(dir));
+          return;
+        }
+        // turned right/left
+        if(t==='turned right' || t==='turned left'){ rel=vecAdd(rel, tokenToDelta(t==='turned right'?'right':'left')); return; }
+        // simple tokens
+        if(TOKENS.includes(t)){ rel=vecAdd(rel, tokenToDelta(t)); return; }
+      });
     }
+    edges.push({u:A,v:B,rel,seq});
   });
   return {nodes:[...nodes], edges};
 }
 
-/* ---------- Constraint checks ---------- */
-function hasOpposites(tokens){
-  const set=new Set(tokens||[]);
-  for(const t of set){ if(set.has(OPP[t])) return true; }
-  return false;
-}
+/* ---------- Constraints ---------- */
+function hasOpposites(list){ const s=new Set(list); for(const t of s){ if(s.has(OPP[t])) return true; } return false; }
 function checkClauseConstraints(edges){
   if(!BAN_OPP_SAME) return true;
-  for(const e of edges){ if(ORDER_MODE && hasOpposites(e.seq)) return false; }
+  if(!ORDER_MODE) return true; // vector clauses already merged
+  for(const e of edges){ if(hasOpposites(e.seq||[])) return false; }
   return true;
 }
-function checkUnionConstraints(mergedEdges){
+function checkUnionConstraints(merged){
   if(!BAN_OPP_UNION) return true;
   const pairs=new Map();
-  mergedEdges.forEach(e=>{
-    const key = [e.u,e.v].sort().join('|');
-    const set = pairs.get(key)||new Set();
+  merged.forEach(e=>{
+    const key=[e.u,e.v].sort().join('|');
+    const set=pairs.get(key)||new Set();
     if(ORDER_MODE){ (e.seq||[]).forEach(t=>set.add(t)); }
     else{
-      const r=e.rel||{};
+      const r=e.rel;
       if(r.y<0) set.add('north'); if(r.y>0) set.add('south');
       if(r.x>0) set.add('east');  if(r.x<0) set.add('west');
       if(r.z>0) set.add('up');    if(r.z<0) set.add('down');
       if(r.w>0) set.add('in');    if(r.w<0) set.add('out');
-      if(r.u>0) set.add('right turn'); if(r.u<0) set.add('left turn');
+      if(r.u>0) set.add('right'); if(r.u<0) set.add('left');
       if(r.v>0) set.add('ahead'); if(r.v<0) set.add('behind');
     }
     pairs.set(key,set);
   });
-  for(const set of pairs.values()){
-    for(const t of set){ if(set.has(OPP[t])) return false; }
-  }
+  for(const set of pairs.values()){ for(const t of set){ if(set.has(OPP[t])) return false; } }
   return true;
 }
 
-/* ---------- Solver (coords) ---------- */
+/* ---------- Solver ---------- */
 function solveCoordsFromEdges(edges){
   const adj=new Map(), nodes=new Set();
   const add=(u,v,rel)=>{ if(!adj.has(u)) adj.set(u,[]); adj.get(u).push({v,rel}); nodes.add(u); nodes.add(v); };
-  edges.forEach(e=>{ add(e.u,e.v,e.rel); add(e.v,e.u,invertRel(e.rel)); });
+  edges.forEach(e=>{ add(e.u,e.v,e.rel); add(e.v,e.u,vecInv(e.rel)); });
   const coords=new Map(), comps=[], seen=new Set(); let ok=true;
   nodes.forEach(root=>{
     if(seen.has(root)) return;
@@ -376,65 +336,61 @@ function pairwiseDeltas(coords, comps){
   const sig=new Map();
   comps.forEach(comp=>{
     const a=comp.slice().sort();
-    for(let i=0;i<a.length;i++){
-      for(let j=i+1;j<a.length;j++){
-        const u=a[i], v=a[j], cu=coords.get(u), cv=coords.get(v);
-        sig.set(`${u}|${v}`, {x:(cv.x||0)-(cu.x||0), y:(cv.y||0)-(cu.y||0), z:(cv.z||0)-(cu.z||0), w:(cv.w||0)-(cu.w||0), u:(cv.u||0)-(cu.u||0), v:(cv.v||0)-(cu.v||0)});
-      }
+    for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++){
+      const u=a[i], v=a[j], cu=coords.get(u), cv=coords.get(v);
+      sig.set(`${u}|${v}`, {x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w, u:cv.u-cu.u, v:cv.v-cu.v});
     }
   });
   return sig;
 }
 
-/* ---------- Signatures ---------- */
-function logicSignatureVector(sentence){
+/* ---------- Signatures (vector vs ordered) ---------- */
+function sigVector(sentence){
   const P=parsePremise(sentence);
   if(!checkClauseConstraints(P.edges)) return 'INVALID';
   const sol=solveCoordsFromEdges(P.edges); if(!sol.ok) return 'INVALID';
   const sig=pairwiseDeltas(sol.coords, sol.comps);
-  const keys=[...sig.keys()].sort(); const out=[];
-  keys.forEach(k=>{ const d=sig.get(k); out.push(`${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v}`); });
-  return out.join('|');
+  return [...sig.keys()].sort().map(k=>{
+    const d=sig.get(k); return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v}`;
+  }).join('|');
 }
-function logicSignatureOrdered(sentence){
+function sigOrdered(sentence){
   const P=parsePremise(sentence);
   if(!checkClauseConstraints(P.edges)) return 'INVALID';
-  const keys=P.edges.map(e=>[e.u,e.v].sort().join('|')).sort();
+  // Use pair -> sequence string (order preserved)
   const map=new Map();
   P.edges.forEach(e=>{
-    const key=[e.u,e.v].sort().join('|');
-    map.set(key,(e.seq||[]).join('>'));
+    const k=[e.u,e.v].sort().join('|');
+    map.set(k,(e.seq||[]).join('>'));
   });
-  const out=keys.map(k=>`${k}:${map.get(k)}`).join('|');
-  return out;
+  return [...map.keys()].sort().map(k=>`${k}:${map.get(k)}`).join('|');
 }
 
-/* ---------- Isomorphism-aware matching ---------- */
+/* ---------- Isomorphism (symbol relabeling) ---------- */
 function permutations(arr){
-  const res=[]; const used=Array(arr.length).fill(false); const cur=[];
-  function backtrack(){ if(cur.length===arr.length){ res.push(cur.slice()); return; }
-    for(let i=0;i<arr.length;i++){ if(used[i]) continue; used[i]=true; cur.push(arr[i]); backtrack(); cur.pop(); used[i]=false; } }
-  backtrack(); return res;
+  const out=[]; const used=Array(arr.length).fill(false); const cur=[];
+  function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; }
+    for(let i=0;i<arr.length;i++){ if(used[i]) continue; used[i]=true; cur.push(arr[i]); rec(); cur.pop(); used[i]=false; } }
+  rec(); return out;
 }
-function isoMatch(A,B){
-  const PA=parsePremise(A), PB=parsePremise(B);
+function isoMatch(aStr,bStr){
+  const PA=parsePremise(aStr), PB=parsePremise(bStr);
   if(!checkClauseConstraints(PA.edges)||!checkClauseConstraints(PB.edges)) return false;
-  const nodesA=PA.nodes.slice().sort(), nodesB=PB.nodes.slice().sort();
-  if(nodesA.length===0 || nodesB.length<nodesA.length) return false;
+  const A=PA.nodes.slice().sort(), B=PB.nodes.slice().sort();
+  if(A.length===0 || B.length<A.length) return false;
 
   if(!ORDER_MODE){
-    const solA=solveCoordsFromEdges(PA.edges); if(!solA.ok) return false;
-    const sigA=pairwiseDeltas(solA.coords, solA.comps);
-    const solB=solveCoordsFromEdges(PB.edges); if(!solB.ok) return false;
-    const sigB=pairwiseDeltas(solB.coords, solB.comps);
-    const cand=permutations(nodesB.slice(0,nodesA.length));
-    for(const perm of cand){
-      const m=new Map(); for(let i=0;i<nodesA.length;i++) m.set(nodesA[i], perm[i]);
+    const sa=solveCoordsFromEdges(PA.edges); if(!sa.ok) return false;
+    const sigA=pairwiseDeltas(sa.coords, sa.comps);
+    const sb=solveCoordsFromEdges(PB.edges); if(!sb.ok) return false;
+    const sigB=pairwiseDeltas(sb.coords, sb.comps);
+    for(const perm of permutations(B.slice(0,A.length))){
+      const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i], perm[i]);
       let ok=true;
-      for(let i=0;i<nodesA.length;i++){
-        for(let j=i+1;j<nodesA.length;j++){
-          const a=nodesA[i], b=nodesA[j], da=sigA.get(`${a}|${b}`); if(!da){ ok=false; break; }
-          const a2=m.get(a), b2=m.get(b), db=sigB.get([a2,b2].sort().join('|')); if(!db || !vecEq(da,db)){ ok=false; break; }
+      for(let i=0;i<A.length;i++){
+        for(let j=i+1;j<A.length;j++){
+          const a=A[i], b=A[j]; const dA=sigA.get(`${a}|${b}`); if(!dA){ ok=false; break; }
+          const aa=map.get(a), bb=map.get(b); const dB=sigB.get([aa,bb].sort().join('|')); if(!dB||!vecEq(dA,dB)){ ok=false; break; }
         }
         if(!ok) break;
       }
@@ -442,20 +398,20 @@ function isoMatch(A,B){
     }
     return false;
   } else {
+    // ordered: compare pair -> seq
     function pairSeqMap(P){
-      const map=new Map();
-      P.edges.forEach(e=>{ const key=[e.u,e.v].sort().join('|'); map.set(key,(e.seq||[]).join('>')); });
-      return map;
+      const m=new Map();
+      P.edges.forEach(e=>{ const k=[e.u,e.v].sort().join('|'); m.set(k,(e.seq||[]).join('>')); });
+      return m;
     }
     const mapA=pairSeqMap(PA), mapB=pairSeqMap(PB);
-    const cand=permutations(nodesB.slice(0,nodesA.length));
-    for(const perm of cand){
-      const m=new Map(); for(let i=0;i<nodesA.length;i++) m.set(nodesA[i], perm[i]);
+    for(const perm of permutations(B.slice(0,A.length))){
+      const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i], perm[i]);
       let ok=true;
-      for(let i=0;i<nodesA.length;i++){
-        for(let j=i+1;j<nodesA.length;j++){
-          const a=nodesA[i], b=nodesA[j], sa=mapA.get(`${a}|${b}`); if(sa==null){ ok=false; break; }
-          const a2=m.get(a), b2=m.get(b), sb=mapB.get([a2,b2].sort().join('|')); if(sb==null || sa!==sb){ ok=false; break; }
+      for(let i=0;i<A.length;i++){
+        for(let j=i+1;j<A.length;j++){
+          const a=A[i], b=A[j]; const sA=mapA.get(`${a}|${b}`); if(sA==null){ ok=false; break; }
+          const aa=map.get(a), bb=map.get(b); const sB=mapB.get([aa,bb].sort().join('|')); if(sB==null || sB!==sA){ ok=false; break; }
         }
         if(!ok) break;
       }
@@ -465,271 +421,243 @@ function isoMatch(A,B){
   }
 }
 
-/* ---------- Matching core ---------- */
+/* ---------- Logic match ---------- */
 function logicMatch(aStr,bStr){
   if(ISO_MODE){
     if(!isoMatch(aStr,bStr)) return false;
-    const PA=parsePremise(aStr), PB=parsePremise(bStr);
-    const merged=[...PA.edges, ...PB.edges];
+    const A=parsePremise(aStr), B=parsePremise(bStr);
+    const merged=[...A.edges, ...B.edges];
     if(!checkUnionConstraints(merged)) return false;
-    const sol=solveCoordsFromEdges(merged); if(!sol.ok) return false;
-    return true;
+    const sol=solveCoordsFromEdges(merged); return sol.ok;
   } else {
-    const PA=parsePremise(aStr), PB=parsePremise(bStr);
-    const setA=new Set(PA.nodes), setB=new Set(PB.nodes);
-    for(const s of setA){ if(!setB.has(s)) return false; }
-    if(!checkClauseConstraints(PA.edges) || !checkClauseConstraints(PB.edges)) return false;
-    const sigA = ORDER_MODE ? logicSignatureOrdered(aStr) : logicSignatureVector(aStr);
-    const sigB = ORDER_MODE ? logicSignatureOrdered(bStr) : logicSignatureVector(bStr);
-    if(sigA==='INVALID' || sigB==='INVALID' || sigA!==sigB) return false;
-    const merged=[...PA.edges, ...PB.edges];
-    if(!checkUnionConstraints(merged)) return false;
-    const sol=solveCoordsFromEdges(merged); if(!sol.ok) return false;
-    return true;
+    const A=parsePremise(aStr), B=parsePremise(bStr);
+    // all symbols from A must reappear in B
+    const sA=new Set(A.nodes), sB=new Set(B.nodes); for(const s of sA){ if(!sB.has(s)) return false; }
+    if(!checkClauseConstraints(A.edges)||!checkClauseConstraints(B.edges)) return false;
+    const sigA = ORDER_MODE ? sigOrdered(aStr) : sigVector(aStr);
+    const sigB = ORDER_MODE ? sigOrdered(bStr) : sigVector(bStr);
+    if(sigA==='INVALID'||sigB==='INVALID'||sigA!==sigB) return false;
+    const merged=[...A.edges, ...B.edges]; if(!checkUnionConstraints(merged)) return false;
+    const sol=solveCoordsFromEdges(merged); return sol.ok;
   }
 }
 
-/* ---------- Anti-repeat caches ---------- */
-const RECENT_SURF=new Set(), RECENT_LOGIC=new Set();
-function rememberSurface(s){ RECENT_SURF.add(s); if(RECENT_SURF.size>120){ const it=RECENT_SURF.values(); RECENT_SURF.delete(it.next().value); } }
-function rememberLogic(sig){ RECENT_LOGIC.add(sig); if(RECENT_LOGIC.size>120){ const it=RECENT_LOGIC.values(); RECENT_LOGIC.delete(it.next().value); } }
-function isSurfaceFresh(s){ return !RECENT_SURF.has(s); }
-function isLogicFresh(sig){ return !RECENT_LOGIC.has(sig); }
+/* ---------- Build trials ---------- */
+let N=2, MAX=40, PAUSE_SEC=0.6, PREMISE_INTERVAL_SEC=0.8, RATE=25;
+let idx=0, paused=false, waitTimer=null;
+let responded=false;
 
-/* ---------- Build logical match / non-match ---------- */
-function invertEdge(e){
-  const invRel=invertRel(e.rel);
-  const invSeq = e.seq ? invertSeq(e.seq) : null;
-  return {u:e.v, v:e.u, rel:invRel, seq:invSeq};
-}
-function buildLogicalMatch(prevStr, count){
-  const P=parsePremise(prevStr);
-  let edges=clone(P.edges);
-  if(edges.length>count) edges=edges.slice(0,count);
-  while(edges.length<count && P.edges.length) edges.push(clone(P.edges[edges.length % P.edges.length]));
-  edges=edges.map(e=>{
-    if(Math.random()<0.5) return invertEdge(e);
-    if(ORDER_MODE && e.seq && e.seq.length>1 && Math.random()<0.5) return clone(e);
-    return clone(e);
-  });
-  return renderEdges(edges);
-}
-function randomEdge(){
-  return ORDER_MODE ? buildRandomEdgeOrdered() : buildRandomEdgeVector();
-}
-function buildLogicalNonMatch(prevStr, count){
-  const P=parsePremise(prevStr);
-  const syms=P.nodes.length? P.nodes : uniqueLabels(NUM_SYMBOLS);
-  function make(){
-    const edges=[];
-    for(let i=0;i<count;i++){
-      const u=syms[Math.floor(Math.random()*syms.length)];
-      let v=syms[Math.floor(Math.random()*syms.length)];
-      if(u===v) v=syms.find(t=>t!==u) || u;
-      const e = ORDER_MODE ? buildRandomEdgeOrdered() : buildRandomEdgeVector();
-      e.u=u; e.v=v; edges.push(e);
-    }
-    return edges;
-  }
-  let tries=0;
-  while(tries++<260){
-    const edges=make(); const s=renderEdges(edges);
-    const sigPrev = ORDER_MODE ? logicSignatureOrdered(prevStr) : logicSignatureVector(prevStr);
-    const sigNow  = ORDER_MODE ? logicSignatureOrdered(s)   : logicSignatureVector(s);
-    const P2=parsePremise(s);
-    if(sigNow!=='INVALID' && sigNow!==sigPrev && checkClauseConstraints(P2.edges)){
-      const sol=solveCoordsFromEdges(P2.edges);
-      if(sol.ok) return s;
-    }
-  }
-  // fallback: perturb an edge
-  let edges=P.edges.slice(0,count);
-  while(edges.length<count){ edges.push(P.edges[edges.length % Math.max(1,P.edges.length)]); }
-  if(ORDER_MODE && edges[0].seq){
-    edges[0]=clone(edges[0]);
-    edges[0].seq[0]=OPP[edges[0].seq[0]]||edges[0].seq[0];
-    let rel={x:0,y:0,z:0,w:0,u:0,v:0};
-    edges[0].seq.forEach(tok=>{ const d=tokenToDelta(tok); rel=vecAdd(rel,d); });
-    edges[0].rel=rel;
-  } else {
-    edges[0]=clone(edges[0]); edges[0].rel=vecAdd(edges[0].rel, randomCompositeRelVector());
-  }
-  return renderEdges(edges);
-}
-
-/* ---------- Game state ---------- */
-let N=1, MAX=40, PAUSE_SEC=1.0, PREMISE_INTERVAL_SEC=1.0, RATE=25;
-let idx=0, paused=false, waitTimer=null, spokenParts=null, clauseIdx=0;
 const history=[], planned=[];
 let correct=0, errors=0;
 
 function planSequence(){
-  planned.length=0; for(let i=0;i<MAX;i++) planned[i]=false;
+  planned.length=MAX;
+  for(let i=0;i<MAX;i++) planned[i]=false;
   const eligible=[]; for(let i=N;i<MAX;i++) eligible.push(i);
   const k=Math.round((RATE/100)*eligible.length);
   shuffle(eligible); for(let i=0;i<k;i++) planned[eligible[i]]=true;
-  RECENT_SURF.clear(); RECENT_LOGIC.clear();
 }
 
-function buildPremiseVisual(raw){
-  const parts=(raw||'').split(/\s+and\s+/i).map(p=>p.trim()).filter(Boolean);
-  const el=$('premiseText'); el.innerHTML='';
-  parts.forEach((part,i)=>{
-    const sp=document.createElement('span'); sp.className='rel'; sp.textContent=part; el.appendChild(sp);
+function buildPremise(count, prevStr=null, mustMatch=false){
+  // symbol pool: keep small & stable
+  const syms=pickSymbols(3);
+  if(mustMatch && prevStr){
+    // derive from prev while preserving signature
+    const P=parsePremise(prevStr);
+    const edges=clone(P.edges).slice(0,Math.min(count,P.edges.length));
+    while(edges.length<count && P.edges.length) edges.push(clone(P.edges[edges.length%P.edges.length]));
+    // randomly invert some edges without changing signature
+    const flip=edges.map(e=>{
+      if(Math.random()<0.5){
+        // invert relation and swap endpoints
+        return {u:e.v, v:e.u, rel:vecInv(e.rel), seq: e.seq ? e.seq.map(t=>OPP[t]||t) : null};
+      }
+      return e;
+    });
+    return renderEdges(flip);
+  }else{
+    // fresh
+    const edges=[];
+    for(let i=0;i<count;i++){
+      edges.push( ORDER_MODE ? buildEdgeOrdered(ORDER_LEN, syms) : buildEdgeVector(syms) );
+    }
+    return renderEdges(edges);
+  }
+}
+
+/* ---------- UI helpers ---------- */
+function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
+
+/* ---------- Speaking ---------- */
+async function speakLine(text){
+  if(!SPEAK) return;
+  if(!('speechSynthesis' in window)) return;
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='en-GB'; u.rate=1.0; u.pitch=1.0; u.volume=1.0;
+  return new Promise(res=>{ let done=false; const fin=()=>{ if(!done){ done=true; res(); } };
+    u.onend=fin; u.onerror=fin;
+    try{ if(speechSynthesis.speaking) speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(_){}
+  });
+}
+
+/* ---------- Visual build ---------- */
+function showPremise(sentence){
+  const el=$('premiseText'); if(!el) return;
+  const parts=sentence.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
+  el.innerHTML='';
+  parts.forEach((p,i)=>{
+    const span=document.createElement('span'); span.className='rel'; span.textContent=p; el.appendChild(span);
     if(i<parts.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
   });
-  return parts;
-}
-function setActivePart(i){ [...$('premiseText').querySelectorAll('.rel')].forEach((n,ix)=>n.classList.toggle('active', ix===i)); }
-
-async function speakPremise(){
-  if(!spokenParts) return;
-  for(; SESSION.running && !paused && clauseIdx<spokenParts.length; clauseIdx++){
-    setActivePart(clauseIdx);
-    await speak(spokenParts[clauseIdx]+'.');
-    if(!SESSION.running || paused) return;
-    if(clauseIdx < spokenParts.length - 1){
-      await new Promise(res=>{ waitTimer=setTimeout(()=>{ waitTimer=null; res(); }, PAUSE_SEC*1000); });
-      if(!SESSION.running || paused) return;
-    }
-  }
-  setActivePart(-1);
-  if(SESSION.running && !paused){
-    await new Promise(res=>{ waitTimer=setTimeout(()=>{ waitTimer=null; res(); }, PREMISE_INTERVAL_SEC*1000); });
-  }
 }
 
-function nextPremiseString(){
-  const COUNT=SESSION.RELS_PER_PREMISE;
-  if(idx >= N){
-    const prev=history[idx-N];
-    let s;
-    if(planned[idx]){
-      let tries=0;
-      do{ s=buildLogicalMatch(prev, COUNT); tries++; } while((s===prev || !isSurfaceFresh(s)) && tries<120);
-      rememberSurface(s); return s;
-    } else {
-      let tries=0;
-      do{
-        s=buildLogicalNonMatch(prev, COUNT);
-        const sigPrev = ORDER_MODE ? logicSignatureOrdered(prev) : logicSignatureVector(prev);
-        const sigNow  = ORDER_MODE ? logicSignatureOrdered(s)   : logicSignatureVector(s);
-        if(sigNow!=='INVALID' && sigNow!==sigPrev && isSurfaceFresh(s) && isLogicFresh(sigNow)){ rememberSurface(s); rememberLogic(sigNow); return s; }
-      }while(++tries<300);
-      rememberSurface(s); return s;
-    }
-  }
-  // first N trials
-  let tries=0, s;
-  do{
-    const edges=[]; for(let i=0;i<COUNT;i++){ edges.push(randomEdge()); }
-    s=renderEdges(edges);
-    const sig= ORDER_MODE ? logicSignatureOrdered(s) : logicSignatureVector(s);
-    if(sig!=='INVALID' && isSurfaceFresh(s) && isLogicFresh(sig)){ rememberSurface(s); rememberLogic(sig); return s; }
-  }while(++tries<220);
-  rememberSurface(s); return s;
-}
-
-function isActualMatch(i){ if(i<N) return false; return logicMatch(history[i-N], history[i]); }
-
+/* ---------- Trial engine ---------- */
 async function runTrial(){
   if(!SESSION.running || paused) return;
-  if(idx >= MAX){ stop(); return; }
-  const s=nextPremiseString();
-  history[idx]=s;
-  buildPremiseVisual(s);
-  spokenParts=s.split(/\s+and\s+/i).map(p=>p.trim()).filter(Boolean);
-  clauseIdx=0;
-  await speakPremise();
-  if(!SESSION.running || paused) return;
+  if(idx>=MAX){ stop(); return; }
+
+  const mustMatch = (idx>=N) && planned[idx];
+  const prev      = (idx>=N) ? history[idx-N] : null;
+  let sentence;
+  if(mustMatch && prev){
+    // build a true logical match of prev
+    sentence = buildPremise(SESSION.RELS_PER_PREMISE, prev, true);
+  }else{
+    // build a non-match with different signature
+    let tries=0;
+    do{
+      sentence = buildPremise(SESSION.RELS_PER_PREMISE, null, false);
+      const prevSig = prev ? (ORDER_MODE?sigOrdered(prev):sigVector(prev)) : null;
+      const nowSig  = ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
+      if(prevSig==null){ break; }
+      if(nowSig!=='INVALID' && nowSig!==prevSig) break;
+    }while(++tries<200);
+  }
+
+  history[idx]=sentence;
+  showPremise(sentence);
+  responded=false;
+
+  // speak clause-by-clause
+  const clauses=sentence.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
+  for(let i=0;i<clauses.length;i++){
+    // highlight
+    const nodes=[...document.querySelectorAll('#premiseText .rel')];
+    nodes.forEach((n,k)=>n.classList.toggle('active', k===i));
+    await speakLine(clauses[i]+'.');
+    if(!SESSION.running || paused) return;
+    await new Promise(r=>{ waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<clauses.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
+    if(!SESSION.running || paused) return;
+  }
+  // clear highlight
+  const nodes=[...document.querySelectorAll('#premiseText .rel')];
+  nodes.forEach(n=>n.classList.remove('active'));
+
   idx++; updateUI(); runTrial();
 }
 
-/* ---------- Controls ---------- */
-function start(){
-  if(SESSION.running) return;
-  ORDER_MODE = !!($('orderMode') && $('orderMode').checked);
-  ORDER_LEN  = $('orderLen') ? parseInt($('orderLen').value,10) : 2;
-  ISO_MODE   = !!($('isoMode') && $('isoMode').checked);
-  PLAIN_MODE = !!($('plainMode') && $('plainMode').checked);
-  BAN_OPP_SAME  = !!($('banOppositesSameClause') && $('banOppositesSameClause').checked);
-  BAN_OPP_UNION = !!($('banOppositesUnion') && $('banOppositesUnion').checked);
+/* ---------- Game state ---------- */
+const SESSION={ running:false, RELS_PER_PREMISE:2 };
 
-  SESSION.running=true; paused=false;
-  SESSION.RELS_PER_PREMISE=Math.max(1, parseInt(($('relCount')&&$('relCount').value)||'2',10)); // lock
+function start(){
+  // read settings
+  ORDER_MODE = !!($('orderMode')&&$('orderMode').checked);
+  ORDER_LEN  = $('orderLen') ? parseInt($('orderLen').value,10) : 2;
+  ISO_MODE   = !!($('isoMode')&&$('isoMode').checked);
+  BAN_OPP_SAME  = !!($('banOppositesSameClause')&&$('banOppositesSameClause').checked);
+  BAN_OPP_UNION = !!($('banOppositesUnion')&&$('banOppositesUnion').checked);
+  SPEAK = !!($('speakEnabled')&&$('speakEnabled').checked);
+
+  SESSION.RELS_PER_PREMISE = Math.max(1, parseInt(($('relCount')&&$('relCount').value)||'2',10));
   if($('relCount')) $('relCount').disabled=true;
 
-  // timing
-  N=+$('n').value; MAX=+$('trials').value; PAUSE_SEC=+$('pauseTime').value; PREMISE_INTERVAL_SEC=+$('premiseInterval').value; RATE=+$('rate').value;
+  N = +($('n')&&$('n').value)||2;
+  MAX = +($('trials')&&$('trials').value)||40;
+  PAUSE_SEC = +($('pauseTime')&&$('pauseTime').value)||0.6;
+  PREMISE_INTERVAL_SEC = +($('premiseInterval')&&$('premiseInterval').value)||0.8;
+  RATE = +($('rate')&&$('rate').value)||25;
 
-  try{ speechSynthesis.cancel(); }catch(_){}
-  idx=0; correct=0; errors=0; planSequence(); updateUI();
+  // init state
+  idx=0; correct=0; errors=0; history.length=0; planned.length=0;
+  planSequence(); updateUI();
+
+  SESSION.running=true; paused=false;
   if($('pause')) $('pause').disabled=false;
   if($('reset')) $('reset').disabled=false;
   if($('hit')) $('hit').disabled=false;
   if($('skip')) $('skip').disabled=false;
 
-  speak(ORDER_MODE ? 'Ordered matching engaged. Sequence matters.' : 'Vector matching engaged. Commutative relations.');
   runTrial();
 }
 function stop(){
   SESSION.running=false; paused=false;
   try{ clearTimeout(waitTimer); }catch(_){}
-  waitTimer=null; spokenParts=null; clauseIdx=0;
-  try{ speechSynthesis.cancel(); }catch(_){}
-  if($('pause')) $('pause').disabled=true;
-  if($('skip')) $('skip').disabled=true;
-  if($('relCount')) $('relCount').disabled=false;
+  waitTimer=null; responded=false;
 }
 function togglePause(){
-  if(!SESSION.running && !paused) return;
-  if(!paused){
-    paused=true; try{ clearTimeout(waitTimer); }catch(_){}
-    waitTimer=null; try{ speechSynthesis.cancel(); }catch(_){}
-    if($('pause')) $('pause').textContent='▶ Resume';
-  } else {
-    paused=false; if($('pause')) $('pause').textContent='⏸ Pause';
-    if(spokenParts && clauseIdx<spokenParts.length){
-      speakPremise().then(()=>{ if(SESSION.running && !paused){ idx++; updateUI(); runTrial(); } });
-    } else { idx++; updateUI(); runTrial(); }
-  }
+  if(!SESSION.running) return;
+  paused=!paused;
+  if($('pause')) $('pause').textContent = paused?'▶ Resume':'⏸ Pause';
+  if(!paused){ runTrial(); }
 }
 function reset(){
   stop();
-  if($('start')) $('start').disabled=false;
-  if($('pause')) $('pause').textContent='⏸ Pause';
-  idx=0; correct=0; errors=0; if($('premiseText')) $('premiseText').textContent='—';
+  if($('relCount')) $('relCount').disabled=false;
+  if($('premiseText')) $('premiseText').textContent='—';
+  idx=0; correct=0; errors=0; updateUI();
+}
+
+/* ---------- Input handling ---------- */
+function registerHit(){
+  if(!SESSION.running) return;
+  if(responded) return; // one response per trial
+  responded=true;
+  const truth = (idx>=N) ? logicMatch(history[idx-N], history[idx-0]) : false;
+  if(truth) correct++; else errors++;
   updateUI();
 }
-function registerHit(){ if(!SESSION.running) return; if(isActualMatch(idx)) correct++; else errors++; updateUI(); }
-function skip(){ if(!SESSION.running) return; try{ clearTimeout(waitTimer); }catch(_){ } try{ speechSynthesis.cancel(); }catch(_){ } idx++; updateUI(); runTrial(); }
-
-function updateUI(){
-  if($('idx')) $('idx').textContent=idx; if($('max')) $('max').textContent=MAX;
-  if($('ptype')) $('ptype').textContent=(idx<MAX && planned[idx] && idx>=N) ? 'planned MATCH' : 'planned NON-match';
-  if($('isMatch')) $('isMatch').textContent=(idx>=N && idx<history.length ? String(isActualMatch(idx)).toUpperCase() : '—');
-  if($('corr')) $('corr').textContent=correct; if($('err')) $('err').textContent=errors;
-  if($('nVal')) $('nVal').textContent=N; if($('tVal')) $('tVal').textContent=MAX;
-  if($('pVal')) $('pVal').textContent=PAUSE_SEC.toFixed(1)+' s';
-  if($('premiseIntervalVal')) $('premiseIntervalVal').textContent=PREMISE_INTERVAL_SEC.toFixed(1)+' s';
-  if($('rVal')) $('rVal').textContent=RATE+'%';
-  if($('relCountVal')) $('relCountVal').textContent=SESSION.RELS_PER_PREMISE;
+function skip(){
+  if(!SESSION.running) return;
+  try{ clearTimeout(waitTimer); }catch(_){}
+  waitTimer=null;
+  // fast-forward to next trial
+  idx++; updateUI(); runTrial();
 }
 
-/* Bind */
+function updateUI(){
+  setText('idx', idx); setText('max', MAX);
+  setText('ptype', (idx<MAX && idx>=N && planned[idx])?'planned MATCH':'planned NON-match');
+  const actual = (idx>=N) ? String(logicMatch(history[idx-N]||'', history[idx]||'')).toUpperCase() : '—';
+  setText('isMatch', actual);
+  setText('corr', correct); setText('err', errors);
+  setText('nVal', N); setText('tVal', MAX);
+  setText('pVal', PAUSE_SEC.toFixed(1)+' s'); setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s');
+  setText('rVal', RATE+'%'); setText('relCountVal', SESSION.RELS_PER_PREMISE);
+}
+
+/* ---------- Bind UI ---------- */
 window.addEventListener('keydown', e=>{
   if(!SESSION.running) return;
-  if(e.key===' ' || e.code==='Space'){ registerHit(); e.preventDefault(); }
+  if(e.code==='Space'){ registerHit(); e.preventDefault(); }
 });
-if($('start')) $('start').onclick=()=>{ start(); };
-if($('pause')) $('pause').onclick=togglePause;
-if($('reset')) $('reset').onclick=reset;
-if($('hit')) $('hit').onclick=registerHit;
-if($('skip')) $('skip').onclick=skip;
 
 document.addEventListener('DOMContentLoaded', ()=>{
-  if($('relCountVal')) $('relCountVal').textContent=REL_COUNT;
-  if($('premiseIntervalVal')) $('premiseIntervalVal').textContent=PREMISE_INTERVAL_SEC.toFixed(1)+' s';
+  // live labels
+  $('n').oninput=e=>{ if(!SESSION.running){ N=+e.target.value; setText('nVal', N); } };
+  $('trials').oninput=e=>{ if(!SESSION.running){ MAX=+e.target.value; setText('tVal', MAX); setText('max', MAX); } };
+  $('pauseTime').oninput=e=>{ if(!SESSION.running){ PAUSE_SEC=+e.target.value; setText('pVal', PAUSE_SEC.toFixed(1)+' s'); } };
+  $('premiseInterval').oninput=e=>{ if(!SESSION.running){ PREMISE_INTERVAL_SEC=+e.target.value; setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s'); } };
+  $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; setText('rVal', RATE+'%'); } };
+  $('relCount').oninput=e=>{ if(!SESSION.running){ SESSION.RELS_PER_PREMISE=Math.max(1,parseInt(e.target.value,10)||2); setText('relCountVal', SESSION.RELS_PER_PREMISE); } };
+
+  // buttons
+  $('start').onclick=()=>{ start(); };
+  $('pause').onclick=()=>{ togglePause(); };
+  $('reset').onclick=()=>{ reset(); };
+  $('hit').onclick=()=>{ registerHit(); };
+  $('skip').onclick=()=>{ skip(); };
+
+  updateUI();
 });
 </script>
 </body>
