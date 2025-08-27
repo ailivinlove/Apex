@@ -43,11 +43,9 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
         <label>Trials per block: <span id="tVal">40</span></label>
         <input id="trials" type="range" min="10" max="500" step="1" value="40">
         <label>Pause between relations in a premise (seconds): <span id="pVal">0.6 s</span></label>
-        <!-- allow up to 60s as requested -->
-        <input id="pauseTime" type="range" min="0" max="60" step="0.1" value="0.6">
+        <input id="pauseTime" type="range" min="0" max="3" step="0.1" value="0.6">
         <label>Pause between premises (seconds): <span id="premiseIntervalVal">0.8 s</span></label>
-        <!-- allow up to 60s as requested -->
-        <input id="premiseInterval" type="range" min="0" max="60" step="0.1" value="0.8">
+        <input id="premiseInterval" type="range" min="0" max="3" step="0.1" value="0.8">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="0" max="100" step="1" value="25">
         <hr class="hr">
@@ -55,7 +53,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
         <label>Relations per premise (clauses): <span id="relCountVal">2</span></label>
         <input id="relCount" type="number" min="1" step="1" value="2">
         <div class="mut small" style="margin-top:6px">
-          Axes (plain): plane (north/south/east/west), levels (up/down), depth (in/out), turn (right/left), timing (ahead/behind), value (higher/lower), cycle (clockwise/counterclockwise).
+          6D axes (plain): plane (north/south/east/west), levels (up/down), depth (in/out), turn (right/left), timing (ahead/behind).
         </div>
       </div>
     </div>
@@ -116,8 +114,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
    6D COMPASS (PLAIN) + ADVANCED STRESSORS — NO DRIFT, NO JARGON
    Reliable start, options hooked, speech optional. Pure axes:
    plane (N/S/E/W), levels (up/down), depth (in/out),
-   turn (right/left), timing (ahead/behind),
-   + value (higher/lower), + cycle (clockwise/counterclockwise).
+   turn (right/left), timing (ahead/behind).
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
@@ -131,20 +128,12 @@ let BAN_OPP_SAME=false, BAN_OPP_UNION=false;
 let SPEAK=true;
 
 /* ---------- Tokens & opposites ---------- */
-const TOKENS = [
-  'north','south','east','west','up','down','in','out','right','left','ahead','behind',
-  'higher','lower','clockwise','counterclockwise'
-];
-const OPP = {
-  north:'south', south:'north', east:'west', west:'east',
-  up:'down', down:'up', in:'out', out:'in',
-  right:'left', left:'right', ahead:'behind', behind:'ahead',
-  higher:'lower', lower:'higher', clockwise:'counterclockwise', counterclockwise:'clockwise'
-};
+const TOKENS = ['north','south','east','west','up','down','in','out','right','left','ahead','behind'];
+const OPP = {north:'south', south:'north', east:'west', west:'east', up:'down', down:'up', in:'out', out:'in', right:'left', left:'right', ahead:'behind', behind:'ahead'};
 
-/* ---------- Vector math (now 8D) ---------- */
+/* ---------- Vector math (6D) ---------- */
 function tokenToDelta(tok){
-  const d={x:0,y:0,z:0,w:0,u:0,v:0,p:0,q:0}; // p=value axis (higher/lower), q=cycle axis (clockwise/ccw)
+  const d={x:0,y:0,z:0,w:0,u:0,v:0};
   if(tok==='north') d.y-=1;
   else if(tok==='south') d.y+=1;
   else if(tok==='east') d.x+=1;
@@ -157,25 +146,11 @@ function tokenToDelta(tok){
   else if(tok==='left') d.u-=1;       // "turned left"
   else if(tok==='ahead') d.v+=1;
   else if(tok==='behind') d.v-=1;
-  else if(tok==='higher') d.p+=1;
-  else if(tok==='lower') d.p-=1;
-  else if(tok==='clockwise') d.q+=1;
-  else if(tok==='counterclockwise') d.q-=1;
   return d;
 }
-function vecAdd(a,b){
-  return {
-    x:a.x+b.x, y:a.y+b.y, z:a.z+b.z, w:a.w+b.w,
-    u:a.u+b.u, v:a.v+b.v, p:a.p+b.p, q:a.q+b.q
-  };
-}
-function vecInv(a){
-  return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v,p:-a.p,q:-a.q};
-}
-function vecEq(a,b){
-  return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&
-         a.u===b.u&&a.v===b.v&&a.p===b.p&&a.q===b.q;
-}
+function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
+function vecInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
+function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
 
 /* ---------- Render: plain language with NO "unit" ---------- */
 function levelsPhrase(z){
@@ -198,8 +173,6 @@ function relToStringVector(r){
   if(r.w!==0) parts.push(r.w>0?'in':'out');
   if(r.u!==0) parts.push(r.u>0?'turned right':'turned left');
   if(r.v!==0) parts.push(r.v>0?'ahead':'behind');
-  if(r.p!==0) parts.push(r.p>0?'higher':'lower'); // value axis
-  if(r.q!==0) parts.push(r.q>0?'clockwise':'counterclockwise'); // cycle axis
   return parts.length? parts.join(' and ') : 'origin';
 }
 function seqToString(seq){
@@ -209,7 +182,7 @@ function seqToString(seq){
     if(t==='left')  return 'turned left';
     if(t==='up')    return 'one level up';
     if(t==='down')  return 'one level down';
-    return t; // keep tokens like north, south, higher, clockwise, etc.
+    return t;
   }).join(' then ') : 'origin';
 }
 
@@ -227,7 +200,7 @@ function buildEdgeOrdered(orderLen, symPool){
   while(seq.length<orderLen && bag.length){
     const i=(Math.random()*bag.length)|0; seq.push(bag.splice(i,1)[0]);
   }
-  let r={x:0,y:0,z:0,w:0,u:0,v:0,p:0,q:0};
+  let r={x:0,y:0,z:0,w:0,u:0,v:0};
   seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq};
 }
@@ -235,10 +208,10 @@ function buildEdgeVector(symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
   // random composite; allow z up/down up to 3 levels; others single bumps
-  let r={x:0,y:0,z:0,w:0,u:0,v:0,p:0,q:0};
+  let r={x:0,y:0,z:0,w:0,u:0,v:0};
   const rolls=1+((Math.random()*2)|0); // 1..2 components
   for(let i=0;i<rolls;i++){
-    const axis=(Math.random()*8)|0; // extended to 8 axis buckets
+    const axis=(Math.random()*6)|0;
     if(axis===0){ // plane
       const p=['north','south','east','west'][(Math.random()*4)|0];
       r=vecAdd(r, tokenToDelta(p));
@@ -249,8 +222,6 @@ function buildEdgeVector(symPool){
     }else if(axis===2){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out')); }
     else if(axis===3){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'right':'left')); }
     else if(axis===4){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind')); }
-    else if(axis===5){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'higher':'lower')); }              // value axis
-    else if(axis===6){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'clockwise':'counterclockwise')); } // cycle axis
     else { /* extra plane tick */ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'north':'east')); }
   }
   return {u,v,rel:r,seq:null};
@@ -272,7 +243,7 @@ function parsePremise(sentence){
     const m=part.match(/^([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)$/i);
     if(!m) return;
     const A=m[1], B=m[3]; nodes.add(A); nodes.add(B);
-    let rel={x:0,y:0,z:0,w:0,u:0,v:0,p:0,q:0}, seq=null;
+    let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
     if(ORDER_MODE){
       // split by "then"
       seq = m[2].split(/\s+then\s+/i).map(s=>s.toLowerCase().trim());
@@ -300,7 +271,7 @@ function parsePremise(sentence){
         }
         // turned right/left
         if(t==='turned right' || t==='turned left'){ rel=vecAdd(rel, tokenToDelta(t==='turned right'?'right':'left')); return; }
-        // simple tokens (includes higher/lower, clockwise/counterclockwise)
+        // simple tokens
         if(TOKENS.includes(t)){ rel=vecAdd(rel, tokenToDelta(t)); return; }
       });
     }
@@ -332,8 +303,6 @@ function checkUnionConstraints(merged){
       if(r.w>0) set.add('in');    if(r.w<0) set.add('out');
       if(r.u>0) set.add('right'); if(r.u<0) set.add('left');
       if(r.v>0) set.add('ahead'); if(r.v<0) set.add('behind');
-      if(r.p>0) set.add('higher'); if(r.p<0) set.add('lower');
-      if(r.q>0) set.add('clockwise'); if(r.q<0) set.add('counterclockwise');
     }
     pairs.set(key,set);
   });
@@ -349,7 +318,7 @@ function solveCoordsFromEdges(edges){
   const coords=new Map(), comps=[], seen=new Set(); let ok=true;
   nodes.forEach(root=>{
     if(seen.has(root)) return;
-    coords.set(root,{x:0,y:0,z:0,w:0,u:0,v:0,p:0,q:0}); seen.add(root);
+    coords.set(root,{x:0,y:0,z:0,w:0,u:0,v:0}); seen.add(root);
     const comp=[root]; comps.push(comp);
     const st=[root];
     while(st.length){
@@ -369,10 +338,7 @@ function pairwiseDeltas(coords, comps){
     const a=comp.slice().sort();
     for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++){
       const u=a[i], v=a[j], cu=coords.get(u), cv=coords.get(v);
-      sig.set(`${u}|${v}`, {
-        x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w,
-        u:cv.u-cu.u, v:cv.v-cu.v, p:cv.p-cu.p, q:cv.q-cu.q
-      });
+      sig.set(`${u}|${v}`, {x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w, u:cv.u-cu.u, v:cv.v-cu.v});
     }
   });
   return sig;
@@ -385,8 +351,7 @@ function sigVector(sentence){
   const sol=solveCoordsFromEdges(P.edges); if(!sol.ok) return 'INVALID';
   const sig=pairwiseDeltas(sol.coords, sol.comps);
   return [...sig.keys()].sort().map(k=>{
-    const d=sig.get(k);
-    return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v},${d.p},${d.q}`;
+    const d=sig.get(k); return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v}`;
   }).join('|');
 }
 function sigOrdered(sentence){
@@ -697,3 +662,5 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
+Think as incredibly deeply as possible.
