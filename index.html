@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Relational N-Back — Logic-Only N-Match (6D + Advanced Stressors)</title>
+<title>Relational N-Back — Logic-Only N-Match (8D + Advanced Stressors)</title>
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
@@ -39,13 +39,13 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
       <div class="box">
         <div class="title">Timing & Complexity</div>
         <label>N-back level: <span id="nVal">2</span></label>
-        <input id="n" type="range" min="1" max="3" value="2">
+        <input id="n" type="range" min="1" max="10" value="2">
         <label>Trials per block: <span id="tVal">40</span></label>
         <input id="trials" type="range" min="10" max="500" step="1" value="40">
         <label>Pause between relations in a premise (seconds): <span id="pVal">0.6 s</span></label>
-        <input id="pauseTime" type="range" min="0" max="30" step="0.1" value="0.6">
+        <input id="pauseTime" type="range" min="0" max="3" step="0.1" value="0.6">
         <label>Pause between premises (seconds): <span id="premiseIntervalVal">0.8 s</span></label>
-        <input id="premiseInterval" type="range" min="0" max="30" step="0.1" value="0.8">
+        <input id="premiseInterval" type="range" min="0" max="3" step="0.1" value="0.8">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="0" max="100" step="1" value="25">
         <hr class="hr">
@@ -53,7 +53,9 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
         <label>Relations per premise (clauses): <span id="relCountVal">2</span></label>
         <input id="relCount" type="number" min="1" step="1" value="2">
         <div class="mut small" style="margin-top:6px">
-          6D axes (plain): plane (north/south/east/west), levels (up/down), depth (in/out), turn (right/left), timing (ahead/behind).
+          8D axes (plain): plane (north/south/east/west), levels (up/down),
+          depth (in/out), orientation (right/left), rotation (clockwise/anticlockwise),
+          value (higher/lower), timing (ahead/behind).
         </div>
       </div>
     </div>
@@ -67,7 +69,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
           <label>Sequence length (if order matters)
             <select id="orderLen">
               <option value="2" selected>2 steps</option>
-              <option value="3"> 3 steps</option>
+              <option value="3">3 steps</option>
             </select>
           </label>
 
@@ -95,9 +97,11 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
           <button id="skip" class="btn" disabled>⏭ Skip</button>
         </div>
         <div class="mut" style="margin-top:8px">
-          Trial <span id="idx">0</span>/<span id="max">40</span> • Planned: <span id="ptype">—</span> • Actual (logic): <span id="isMatch">—</span>
+          Trial <span id="idx">0</span>/<span id="max">40</span>
+          • Planned: <span id="ptype">—</span>
+          • Actual (logic): <span id="isMatch">—</span>
         </div>
-        <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
+        <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span> • Omissions: <span id="omiss">0</span></div>
       </div>
     </div>
   </div>
@@ -111,10 +115,11 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 
 <script>
 /* ===========================================================
-   6D COMPASS (PLAIN) + ADVANCED STRESSORS — NO DRIFT, NO JARGON
-   Reliable start, options hooked, speech optional. Pure axes:
+   8D COMPASS (PLAIN) + ADVANCED STRESSORS — NO DRIFT, NO JARGON
+   Pure axes:
    plane (N/S/E/W), levels (up/down), depth (in/out),
-   turn (right/left), timing (ahead/behind).
+   orientation (right/left), rotation (clockwise/anticlockwise),
+   value (higher/lower), timing (ahead/behind).
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
@@ -128,12 +133,22 @@ let BAN_OPP_SAME=false, BAN_OPP_UNION=false;
 let SPEAK=true;
 
 /* ---------- Tokens & opposites ---------- */
-const TOKENS = ['north','south','east','west','up','down','in','out','right','left','ahead','behind'];
-const OPP = {north:'south', south:'north', east:'west', west:'east', up:'down', down:'up', in:'out', out:'in', right:'left', left:'right', ahead:'behind', behind:'ahead'};
+const TOKENS = [
+  'north','south','east','west','up','down','in','out',
+  'right','left','ahead','behind',
+  'higher','lower','clockwise','anticlockwise'
+];
+const OPP = {
+  north:'south', south:'north', east:'west', west:'east',
+  up:'down', down:'up', in:'out', out:'in',
+  right:'left', left:'right', ahead:'behind', behind:'ahead',
+  higher:'lower', lower:'higher', clockwise:'anticlockwise', anticlockwise:'clockwise'
+};
 
-/* ---------- Vector math (6D) ---------- */
+/* ---------- Vector math (8D) ---------- */
+function zeroVec(){ return {x:0,y:0,z:0,w:0,u:0,v:0,q:0,r:0}; }
 function tokenToDelta(tok){
-  const d={x:0,y:0,z:0,w:0,u:0,v:0};
+  const d=zeroVec();
   if(tok==='north') d.y-=1;
   else if(tok==='south') d.y+=1;
   else if(tok==='east') d.x+=1;
@@ -142,17 +157,30 @@ function tokenToDelta(tok){
   else if(tok==='down') d.z-=1;
   else if(tok==='in') d.w+=1;
   else if(tok==='out') d.w-=1;
-  else if(tok==='right') d.u+=1;      // "turned right"
-  else if(tok==='left') d.u-=1;       // "turned left"
+  else if(tok==='right') d.u+=1;      // role orientation +
+  else if(tok==='left') d.u-=1;       // role orientation -
   else if(tok==='ahead') d.v+=1;
   else if(tok==='behind') d.v-=1;
+  else if(tok==='higher') d.q+=1;     // value +
+  else if(tok==='lower') d.q-=1;      // value -
+  else if(tok==='clockwise') d.r+=1;  // cycle rotation +
+  else if(tok==='anticlockwise') d.r-=1;
   return d;
 }
-function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
-function vecInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
-function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
+function vecAdd(a,b){ return {
+  x:a.x+b.x, y:a.y+b.y, z:a.z+b.z, w:a.w+b.w,
+  u:a.u+b.u, v:a.v+b.v, q:a.q+b.q, r:a.r+b.r
+}; }
+function vecInv(a){ return {
+  x:-a.x, y:-a.y, z:-a.z, w:-a.w,
+  u:-a.u, v:-a.v, q:-a.q, r:-a.r
+}; }
+function vecEq(a,b){
+  return a.x===b.x && a.y===b.y && a.z===b.z && a.w===b.w &&
+         a.u===b.u && a.v===b.v && a.q===b.q && a.r===b.r;
+}
 
-/* ---------- Render: plain language with NO "unit" ---------- */
+/* ---------- Render: plain language with NO "unit" except levels ---------- */
 function levelsPhrase(z){
   const n=Math.abs(z);
   if(n===0) return null;
@@ -172,16 +200,20 @@ function relToStringVector(r){
   const lp=levelsPhrase(r.z); if(lp) parts.push(lp);
   if(r.w!==0) parts.push(r.w>0?'in':'out');
   if(r.u!==0) parts.push(r.u>0?'turned right':'turned left');
+  if(r.r!==0) parts.push(r.r>0?'rotated clockwise':'rotated anticlockwise');
+  if(r.q!==0) parts.push(r.q>0?'higher':'lower');
   if(r.v!==0) parts.push(r.v>0?'ahead':'behind');
   return parts.length? parts.join(' and ') : 'origin';
 }
 function seqToString(seq){
-  // ordered mode uses "then" to preserve order
+  // ordered mode uses "then" to preserve order, with readable phrases
   return (seq&&seq.length)? seq.map(t=>{
-    if(t==='right') return 'turned right';
-    if(t==='left')  return 'turned left';
-    if(t==='up')    return 'one level up';
-    if(t==='down')  return 'one level down';
+    if(t==='right')        return 'turned right';
+    if(t==='left')         return 'turned left';
+    if(t==='up')           return 'one level up';
+    if(t==='down')         return 'one level down';
+    if(t==='clockwise')    return 'rotated clockwise';
+    if(t==='anticlockwise')return 'rotated anticlockwise';
     return t;
   }).join(' then ') : 'origin';
 }
@@ -196,22 +228,22 @@ function pickSymbols(k){
 function buildEdgeOrdered(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
-  const seq=[]; const bag=[...TOKENS];
-  while(seq.length<orderLen && bag.length){
-    const i=(Math.random()*bag.length)|0; seq.push(bag.splice(i,1)[0]);
+  const seq=[];
+  // Allow repeats (with replacement) to strengthen non-commutative load
+  while(seq.length<orderLen){
+    seq.push(TOKENS[(Math.random()*TOKENS.length)|0]);
   }
-  let r={x:0,y:0,z:0,w:0,u:0,v:0};
-  seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
+  let r=zeroVec(); seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq};
 }
 function buildEdgeVector(symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
-  // random composite; allow z up/down up to 3 levels; others single bumps
-  let r={x:0,y:0,z:0,w:0,u:0,v:0};
+  // random composite; z can stack 1..3; others single bumps; include new axes
+  let r=zeroVec();
   const rolls=1+((Math.random()*2)|0); // 1..2 components
   for(let i=0;i<rolls;i++){
-    const axis=(Math.random()*6)|0;
+    const axis=(Math.random()*8)|0; // 0..7 across 8D
     if(axis===0){ // plane
       const p=['north','south','east','west'][(Math.random()*4)|0];
       r=vecAdd(r, tokenToDelta(p));
@@ -221,8 +253,12 @@ function buildEdgeVector(symPool){
       for(let k=0;k<steps;k++) r=vecAdd(r, tokenToDelta(dir));
     }else if(axis===2){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out')); }
     else if(axis===3){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'right':'left')); }
-    else if(axis===4){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind')); }
-    else { /* extra plane tick */ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'north':'east')); }
+    else if(axis===4){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'clockwise':'anticlockwise')); }
+    else if(axis===5){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'higher':'lower')); }
+    else if(axis===6){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind')); }
+    else { // extra plane tick to vary
+      r=vecAdd(r, tokenToDelta(Math.random()<0.5?'north':'east'));
+    }
   }
   return {u,v,rel:r,seq:null};
 }
@@ -243,21 +279,21 @@ function parsePremise(sentence){
     const m=part.match(/^([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)$/i);
     if(!m) return;
     const A=m[1], B=m[3]; nodes.add(A); nodes.add(B);
-    let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
+    let rel=zeroVec(), seq=null;
     if(ORDER_MODE){
-      // split by "then"
       seq = m[2].split(/\s+then\s+/i).map(s=>s.toLowerCase().trim());
-      // normalize phrases used in rendering
+      // normalize phrases used in rendering to tokens
       seq = seq.map(t=>{
         if(t==='turned right') return 'right';
         if(t==='turned left') return 'left';
         if(t==='one level up') return 'up';
         if(t==='one level down') return 'down';
+        if(t==='rotated clockwise') return 'clockwise';
+        if(t==='rotated anticlockwise' || t==='rotated counterclockwise') return 'anticlockwise';
         return t;
       });
       seq.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
     }else{
-      // vector phrases separated by 'and' already split; parse sub-phrases
       const items=m[2].split(/\s+and\s+/i).map(s=>s.toLowerCase().trim());
       items.forEach(t=>{
         if(t==='origin') return;
@@ -269,8 +305,13 @@ function parsePremise(sentence){
           for(let k=0;k<n;k++) rel=vecAdd(rel, tokenToDelta(dir));
           return;
         }
-        // turned right/left
-        if(t==='turned right' || t==='turned left'){ rel=vecAdd(rel, tokenToDelta(t==='turned right'?'right':'left')); return; }
+        // special phrases
+        if(t==='turned right' || t==='turned left'){
+          rel=vecAdd(rel, tokenToDelta(t==='turned right'?'right':'left')); return;
+        }
+        if(t==='rotated clockwise' || t==='rotated anticlockwise' || t==='rotated counterclockwise'){
+          rel=vecAdd(rel, tokenToDelta(t.indexOf('anti')>=0||t.indexOf('counter')>=0?'anticlockwise':'clockwise')); return;
+        }
         // simple tokens
         if(TOKENS.includes(t)){ rel=vecAdd(rel, tokenToDelta(t)); return; }
       });
@@ -284,7 +325,7 @@ function parsePremise(sentence){
 function hasOpposites(list){ const s=new Set(list); for(const t of s){ if(s.has(OPP[t])) return true; } return false; }
 function checkClauseConstraints(edges){
   if(!BAN_OPP_SAME) return true;
-  if(!ORDER_MODE) return true; // vector clauses already merged
+  if(!ORDER_MODE) return true; // in vector clauses tokens are merged; only meaningful for ordered
   for(const e of edges){ if(hasOpposites(e.seq||[])) return false; }
   return true;
 }
@@ -302,6 +343,8 @@ function checkUnionConstraints(merged){
       if(r.z>0) set.add('up');    if(r.z<0) set.add('down');
       if(r.w>0) set.add('in');    if(r.w<0) set.add('out');
       if(r.u>0) set.add('right'); if(r.u<0) set.add('left');
+      if(r.r>0) set.add('clockwise'); if(r.r<0) set.add('anticlockwise');
+      if(r.q>0) set.add('higher'); if(r.q<0) set.add('lower');
       if(r.v>0) set.add('ahead'); if(r.v<0) set.add('behind');
     }
     pairs.set(key,set);
@@ -318,7 +361,7 @@ function solveCoordsFromEdges(edges){
   const coords=new Map(), comps=[], seen=new Set(); let ok=true;
   nodes.forEach(root=>{
     if(seen.has(root)) return;
-    coords.set(root,{x:0,y:0,z:0,w:0,u:0,v:0}); seen.add(root);
+    coords.set(root, zeroVec()); seen.add(root);
     const comp=[root]; comps.push(comp);
     const st=[root];
     while(st.length){
@@ -338,30 +381,40 @@ function pairwiseDeltas(coords, comps){
     const a=comp.slice().sort();
     for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++){
       const u=a[i], v=a[j], cu=coords.get(u), cv=coords.get(v);
-      sig.set(`${u}|${v}`, {x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w, u:cv.u-cu.u, v:cv.v-cu.v});
+      sig.set(`${u}|${v}`, {
+        x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w,
+        u:cv.u-cu.u, v:cv.v-cu.v, q:cv.q-cu.q, r:cv.r-cu.r
+      });
     }
   });
   return sig;
 }
 
 /* ---------- Signatures (vector vs ordered) ---------- */
+function canonicalSeq(u,v,seq){
+  // Store sequences under sorted pair key; if original direction is reversed,
+  // reverse the sequence and invert tokens so canonical strings match.
+  const needFlip = (u > v); // lex compare (IDs like 'A1')
+  if(!needFlip) return (seq||[]).join('>');
+  const inv = (seq||[]).slice().reverse().map(t => OPP[t] || t);
+  return inv.join('>');
+}
 function sigVector(sentence){
   const P=parsePremise(sentence);
   if(!checkClauseConstraints(P.edges)) return 'INVALID';
   const sol=solveCoordsFromEdges(P.edges); if(!sol.ok) return 'INVALID';
   const sig=pairwiseDeltas(sol.coords, sol.comps);
   return [...sig.keys()].sort().map(k=>{
-    const d=sig.get(k); return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v}`;
+    const d=sig.get(k); return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v},${d.q},${d.r}`;
   }).join('|');
 }
 function sigOrdered(sentence){
   const P=parsePremise(sentence);
   if(!checkClauseConstraints(P.edges)) return 'INVALID';
-  // Use pair -> sequence string (order preserved)
   const map=new Map();
   P.edges.forEach(e=>{
     const k=[e.u,e.v].sort().join('|');
-    map.set(k,(e.seq||[]).join('>'));
+    map.set(k, canonicalSeq(e.u,e.v,e.seq||[]));
   });
   return [...map.keys()].sort().map(k=>`${k}:${map.get(k)}`).join('|');
 }
@@ -389,8 +442,11 @@ function isoMatch(aStr,bStr){
       let ok=true;
       for(let i=0;i<A.length;i++){
         for(let j=i+1;j<A.length;j++){
-          const a=A[i], b=A[j]; const dA=sigA.get(`${a}|${b}`); if(!dA){ ok=false; break; }
-          const aa=map.get(a), bb=map.get(b); const dB=sigB.get([aa,bb].sort().join('|')); if(!dB||!vecEq(dA,dB)){ ok=false; break; }
+          const a=A[i], b=A[j];
+          const dA=sigA.get(`${a}|${b}`); if(!dA){ ok=false; break; }
+          const aa=map.get(a), bb=map.get(b);
+          const dB=sigB.get([aa,bb].sort().join('|'));
+          if(!dB||!vecEq(dA,dB)){ ok=false; break; }
         }
         if(!ok) break;
       }
@@ -398,10 +454,12 @@ function isoMatch(aStr,bStr){
     }
     return false;
   } else {
-    // ordered: compare pair -> seq
     function pairSeqMap(P){
       const m=new Map();
-      P.edges.forEach(e=>{ const k=[e.u,e.v].sort().join('|'); m.set(k,(e.seq||[]).join('>')); });
+      P.edges.forEach(e=>{
+        const k=[e.u,e.v].sort().join('|');
+        m.set(k, canonicalSeq(e.u,e.v,e.seq||[]));
+      });
       return m;
     }
     const mapA=pairSeqMap(PA), mapB=pairSeqMap(PB);
@@ -448,7 +506,7 @@ let idx=0, paused=false, waitTimer=null;
 let responded=false;
 
 const history=[], planned=[];
-let correct=0, errors=0;
+let correct=0, errors=0, omissions=0;
 
 function planSequence(){
   planned.length=MAX;
@@ -458,30 +516,48 @@ function planSequence(){
   shuffle(eligible); for(let i=0;i<k;i++) planned[eligible[i]]=true;
 }
 
+function deriveMatchingPremise(prevStr, count){
+  // Build a logically-equivalent sentence by flipping edges (with proper sequence inversion) until it matches.
+  const P=parsePremise(prevStr);
+  const base = clone(P.edges);
+  const take = base.slice(0, Math.min(count, base.length));
+  let candidate='', tries=0;
+  while(tries++<200){
+    const edges = take.map(e=>{
+      const flip = Math.random()<0.5;
+      if(!flip) return clone(e);
+      // invert relation and swap endpoints; for sequences, reverse + invert tokens
+      return {
+        u:e.v, v:e.u,
+        rel:vecInv(e.rel),
+        seq: e.seq ? e.seq.slice().reverse().map(t=>OPP[t]||t) : null
+      };
+    });
+    candidate = renderEdges(edges);
+    if(logicMatch(prevStr, candidate)) return candidate;
+  }
+  // Fallback: return original rendered edges (guaranteed match)
+  return renderEdges(take);
+}
+
 function buildPremise(count, prevStr=null, mustMatch=false){
-  // symbol pool: keep small & stable
   const syms=pickSymbols(3);
   if(mustMatch && prevStr){
-    // derive from prev while preserving signature
-    const P=parsePremise(prevStr);
-    const edges=clone(P.edges).slice(0,Math.min(count,P.edges.length));
-    while(edges.length<count && P.edges.length) edges.push(clone(P.edges[edges.length%P.edges.length]));
-    // randomly invert some edges without changing signature
-    const flip=edges.map(e=>{
-      if(Math.random()<0.5){
-        // invert relation and swap endpoints
-        return {u:e.v, v:e.u, rel:vecInv(e.rel), seq: e.seq ? e.seq.map(t=>OPP[t]||t) : null};
-      }
-      return e;
-    });
-    return renderEdges(flip);
+    return deriveMatchingPremise(prevStr, count);
   }else{
-    // fresh
-    const edges=[];
-    for(let i=0;i<count;i++){
-      edges.push( ORDER_MODE ? buildEdgeOrdered(ORDER_LEN, syms) : buildEdgeVector(syms) );
-    }
-    return renderEdges(edges);
+    // fresh non-match sampling until signature differs from N-back (if exists)
+    let sentence, tries=0;
+    const prevSig = prevStr ? (ORDER_MODE?sigOrdered(prevStr):sigVector(prevStr)) : null;
+    do{
+      const edges=[];
+      for(let i=0;i<count;i++){
+        edges.push( ORDER_MODE ? buildEdgeOrdered(ORDER_LEN, syms) : buildEdgeVector(syms) );
+      }
+      sentence = renderEdges(edges);
+      const nowSig  = ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
+      if(prevSig==null || (nowSig!=='INVALID' && nowSig!==prevSig)) break;
+    }while(++tries<200);
+    return sentence;
   }
 }
 
@@ -518,20 +594,12 @@ async function runTrial(){
 
   const mustMatch = (idx>=N) && planned[idx];
   const prev      = (idx>=N) ? history[idx-N] : null;
+
   let sentence;
   if(mustMatch && prev){
-    // build a true logical match of prev
-    sentence = buildPremise(SESSION.RELS_PER_PREMISE, prev, true);
+    sentence = buildPremise(SESSION.RELS_PER_PREMISE, prev, true); // guaranteed logical match
   }else{
-    // build a non-match with different signature
-    let tries=0;
-    do{
-      sentence = buildPremise(SESSION.RELS_PER_PREMISE, null, false);
-      const prevSig = prev ? (ORDER_MODE?sigOrdered(prev):sigVector(prev)) : null;
-      const nowSig  = ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
-      if(prevSig==null){ break; }
-      if(nowSig!=='INVALID' && nowSig!==prevSig) break;
-    }while(++tries<200);
+    sentence = buildPremise(SESSION.RELS_PER_PREMISE, prev, false); // ensures signature differs
   }
 
   history[idx]=sentence;
@@ -541,7 +609,6 @@ async function runTrial(){
   // speak clause-by-clause
   const clauses=sentence.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
   for(let i=0;i<clauses.length;i++){
-    // highlight
     const nodes=[...document.querySelectorAll('#premiseText .rel')];
     nodes.forEach((n,k)=>n.classList.toggle('active', k===i));
     await speakLine(clauses[i]+'.');
@@ -549,9 +616,12 @@ async function runTrial(){
     await new Promise(r=>{ waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<clauses.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
     if(!SESSION.running || paused) return;
   }
-  // clear highlight
   const nodes=[...document.querySelectorAll('#premiseText .rel')];
   nodes.forEach(n=>n.classList.remove('active'));
+
+  // omission accounting (if it was a true match and user didn't respond)
+  const truth = (idx>=N) ? logicMatch(history[idx-N]||'', history[idx]||'') : false;
+  if(truth && !responded) omissions++;
 
   idx++; updateUI(); runTrial();
 }
@@ -578,7 +648,7 @@ function start(){
   RATE = +($('rate')&&$('rate').value)||25;
 
   // init state
-  idx=0; correct=0; errors=0; history.length=0; planned.length=0;
+  idx=0; correct=0; errors=0; omissions=0; history.length=0; planned.length=0;
   planSequence(); updateUI();
 
   SESSION.running=true; paused=false;
@@ -597,14 +667,17 @@ function stop(){
 function togglePause(){
   if(!SESSION.running) return;
   paused=!paused;
-  if($('pause')) $('pause').textContent = paused?'▶ Resume':'⏸ Pause';
+  // Immediately stop any speaking on pause
+  if(paused){ try{ if('speechSynthesis' in window && speechSynthesis.speaking) speechSynthesis.cancel(); }catch(_){}
+  }
+  if($('pause')) $('pause').textContent= paused?'▶ Resume':'⏸ Pause';
   if(!paused){ runTrial(); }
 }
 function reset(){
   stop();
   if($('relCount')) $('relCount').disabled=false;
   if($('premiseText')) $('premiseText').textContent='—';
-  idx=0; correct=0; errors=0; updateUI();
+  idx=0; correct=0; errors=0; omissions=0; updateUI();
 }
 
 /* ---------- Input handling ---------- */
@@ -620,7 +693,6 @@ function skip(){
   if(!SESSION.running) return;
   try{ clearTimeout(waitTimer); }catch(_){}
   waitTimer=null;
-  // fast-forward to next trial
   idx++; updateUI(); runTrial();
 }
 
@@ -629,7 +701,7 @@ function updateUI(){
   setText('ptype', (idx<MAX && idx>=N && planned[idx])?'planned MATCH':'planned NON-match');
   const actual = (idx>=N) ? String(logicMatch(history[idx-N]||'', history[idx]||'')).toUpperCase() : '—';
   setText('isMatch', actual);
-  setText('corr', correct); setText('err', errors);
+  setText('corr', correct); setText('err', errors); setText('omiss', omissions);
   setText('nVal', N); setText('tVal', MAX);
   setText('pVal', PAUSE_SEC.toFixed(1)+' s'); setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s');
   setText('rVal', RATE+'%'); setText('relCountVal', SESSION.RELS_PER_PREMISE);
@@ -662,4 +734,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
