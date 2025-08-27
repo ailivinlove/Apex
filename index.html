@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Relational N-Back — Logic-Only N-Match (6D + Reliable Audio)</title>
+<title>Relational N-Back — Logic-Only N-Match (6D + Advanced Stressors)</title>
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
@@ -29,9 +29,6 @@ select{ min-height:38px }
 .small{ font-size:12px; color:var(--mut) }
 hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
-.bad{ color:#ff8c8c }
-.good{ color:#9cff9c }
 </style>
 </head>
 <body>
@@ -78,7 +75,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
           <label><input id="banOppositesSameClause" type="checkbox"> Ban opposites in same clause</label>
 
           <label><input id="banOppositesUnion" type="checkbox"> Ban opposites across union (i−N ∪ i)</label>
-          <label><input id="speakEnabled" type="checkbox" checked> Use System TTS (speech)</label>
+          <label><input id="speakEnabled" type="checkbox" checked> Speak premises</label>
         </div>
         <div class="mut small" style="margin-top:6px">
           Max stress: enable Order + set 3 steps + enable Isomorphism + leave bans OFF.
@@ -86,30 +83,11 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
       </div>
     </div>
 
-    <!-- Audio / Controls -->
+    <!-- Controls -->
     <div class="col">
       <div class="box">
-        <div class="title">Audio & Controls</div>
-        <div class="grid2">
-          <label><input id="beepEnabled" type="checkbox" checked> Use WebAudio Beeps (fallback)</label>
-          <label>Master Volume: <span id="volVal">0.8</span>
-            <input id="audioVolume" type="range" min="0" max="1" step="0.01" value="0.8">
-          </label>
-          <label>Speech Rate: <span id="rateVal">1.0</span>
-            <input id="speechRate" type="range" min="0.6" max="1.4" step="0.05" value="1.0">
-          </label>
-          <label>Speech Pitch: <span id="pitchVal">1.0</span>
-            <input id="speechPitch" type="range" min="0.5" max="2" step="0.05" value="1.0">
-          </label>
-          <label>Voice
-            <select id="voiceSelect"><option value="">(auto)</option></select>
-          </label>
-          <label><button id="audioTest" class="btn">🔊 Audio Test</button></label>
-        </div>
-
-        <hr class="hr">
+        <div class="title">Controls / Status</div>
         <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px">
-          <button id="enableAudio" class="btn">🔓 Enable Sound</button>
           <button id="start" class="btn">▶ Start</button>
           <button id="pause" class="btn" disabled>⏸ Pause</button>
           <button id="reset" class="btn" disabled>🔄 Reset</button>
@@ -117,10 +95,9 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
           <button id="skip" class="btn" disabled>⏭ Skip</button>
         </div>
         <div class="mut" style="margin-top:8px">
-          Trial <span id="idx">0</span>/<span id="max">40</span> • Target: <span id="ptype">—</span> • Actual (logic): <span id="isMatch">—</span>
+          Trial <span id="idx">0</span>/<span id="max">40</span> • Planned: <span id="ptype">—</span> • Actual (logic): <span id="isMatch">—</span>
         </div>
-        <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span> • Omissions: <span id="omiss">0</span></div>
-        <div class="mut small" id="audioStatus" style="margin-top:6px">Audio: locked</div>
+        <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
       </div>
     </div>
   </div>
@@ -134,24 +111,21 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 
 <script>
 /* ===========================================================
-   6D COMPASS + RELIABLE AUDIO (TTS + WEB AUDIO FALLBACK)
+   6D COMPASS (PLAIN) + ADVANCED STRESSORS — NO DRIFT, NO JARGON
+   Reliable start, options hooked, speech optional. Pure axes:
+   plane (N/S/E/W), levels (up/down), depth (in/out),
+   turn (right/left), timing (ahead/behind).
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
 const $ = id => document.getElementById(id);
 const clone = o => JSON.parse(JSON.stringify(o));
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a; }
-function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
 
 /* ---------- Global knobs (read at Start) ---------- */
 let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false;
 let BAN_OPP_SAME=false, BAN_OPP_UNION=false;
-let SPEAK=true, BEEP=true;
-
-let AUDIO_CTX=null, AUDIO_GAIN=null, AUDIO_READY=false, CURRENT_OSC=null;
-let AUDIO_VOLUME=0.8, SPEECH_RATE=1.0, SPEECH_PITCH=1.0, VOICE_NAME='';
-let VOICES=[], VOICES_READY=false;
-let audioStopToken = { stop:false };
+let SPEAK=true;
 
 /* ---------- Tokens & opposites ---------- */
 const TOKENS = ['north','south','east','west','up','down','in','out','right','left','ahead','behind'];
@@ -168,8 +142,8 @@ function tokenToDelta(tok){
   else if(tok==='down') d.z-=1;
   else if(tok==='in') d.w+=1;
   else if(tok==='out') d.w-=1;
-  else if(tok==='right') d.u+=1;
-  else if(tok==='left') d.u-=1;
+  else if(tok==='right') d.u+=1;      // "turned right"
+  else if(tok==='left') d.u-=1;       // "turned left"
   else if(tok==='ahead') d.v+=1;
   else if(tok==='behind') d.v-=1;
   return d;
@@ -178,7 +152,7 @@ function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,
 function vecInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
 function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
 
-/* ---------- Render helpers ---------- */
+/* ---------- Render: plain language with NO "unit" ---------- */
 function levelsPhrase(z){
   const n=Math.abs(z);
   if(n===0) return null;
@@ -202,6 +176,7 @@ function relToStringVector(r){
   return parts.length? parts.join(' and ') : 'origin';
 }
 function seqToString(seq){
+  // ordered mode uses "then" to preserve order
   return (seq&&seq.length)? seq.map(t=>{
     if(t==='right') return 'turned right';
     if(t==='left')  return 'turned left';
@@ -221,9 +196,9 @@ function pickSymbols(k){
 function buildEdgeOrdered(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
-  const seq=[]; // WITH replacement to allow repeats
-  while(seq.length<orderLen){
-    const i=(Math.random()*TOKENS.length)|0; seq.push(TOKENS[i]);
+  const seq=[]; const bag=[...TOKENS];
+  while(seq.length<orderLen && bag.length){
+    const i=(Math.random()*bag.length)|0; seq.push(bag.splice(i,1)[0]);
   }
   let r={x:0,y:0,z:0,w:0,u:0,v:0};
   seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
@@ -232,21 +207,22 @@ function buildEdgeOrdered(orderLen, symPool){
 function buildEdgeVector(symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
+  // random composite; allow z up/down up to 3 levels; others single bumps
   let r={x:0,y:0,z:0,w:0,u:0,v:0};
   const rolls=1+((Math.random()*2)|0); // 1..2 components
   for(let i=0;i<rolls;i++){
     const axis=(Math.random()*6)|0;
-    if(axis===0){
+    if(axis===0){ // plane
       const p=['north','south','east','west'][(Math.random()*4)|0];
       r=vecAdd(r, tokenToDelta(p));
-    }else if(axis===1){
+    }else if(axis===1){ // levels with count
       const dir = (Math.random()<0.5?'up':'down');
-      const steps = 1+((Math.random()*3)|0);
+      const steps = 1+((Math.random()*3)|0); // 1..3 levels
       for(let k=0;k<steps;k++) r=vecAdd(r, tokenToDelta(dir));
     }else if(axis===2){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out')); }
     else if(axis===3){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'right':'left')); }
     else if(axis===4){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind')); }
-    else { r=vecAdd(r, tokenToDelta(['north','south','east','west'][(Math.random()*4)|0])); }
+    else { /* extra plane tick */ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'north':'east')); }
   }
   return {u,v,rel:r,seq:null};
 }
@@ -269,7 +245,9 @@ function parsePremise(sentence){
     const A=m[1], B=m[3]; nodes.add(A); nodes.add(B);
     let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
     if(ORDER_MODE){
+      // split by "then"
       seq = m[2].split(/\s+then\s+/i).map(s=>s.toLowerCase().trim());
+      // normalize phrases used in rendering
       seq = seq.map(t=>{
         if(t==='turned right') return 'right';
         if(t==='turned left') return 'left';
@@ -279,9 +257,11 @@ function parsePremise(sentence){
       });
       seq.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
     }else{
+      // vector phrases separated by 'and' already split; parse sub-phrases
       const items=m[2].split(/\s+and\s+/i).map(s=>s.toLowerCase().trim());
       items.forEach(t=>{
         if(t==='origin') return;
+        // levels forms
         const lm=t.match(/^(one|two|three|\d+)\s+levels?\s+(up|down)$/);
         if(lm){
           const n= lm[1]==='one'?1 : lm[1]==='two'?2 : lm[1]==='three'?3 : parseInt(lm[1],10);
@@ -289,7 +269,9 @@ function parsePremise(sentence){
           for(let k=0;k<n;k++) rel=vecAdd(rel, tokenToDelta(dir));
           return;
         }
+        // turned right/left
         if(t==='turned right' || t==='turned left'){ rel=vecAdd(rel, tokenToDelta(t==='turned right'?'right':'left')); return; }
+        // simple tokens
         if(TOKENS.includes(t)){ rel=vecAdd(rel, tokenToDelta(t)); return; }
       });
     }
@@ -302,7 +284,7 @@ function parsePremise(sentence){
 function hasOpposites(list){ const s=new Set(list); for(const t of s){ if(s.has(OPP[t])) return true; } return false; }
 function checkClauseConstraints(edges){
   if(!BAN_OPP_SAME) return true;
-  if(!ORDER_MODE) return true; // vector clauses allowed to cancel unless banned globally
+  if(!ORDER_MODE) return true; // vector clauses already merged
   for(const e of edges){ if(hasOpposites(e.seq||[])) return false; }
   return true;
 }
@@ -362,12 +344,7 @@ function pairwiseDeltas(coords, comps){
   return sig;
 }
 
-/* ---------- Signatures (vector vs ordered) with canonical orientation ---------- */
-function canonicalSeq(u, v, seq){
-  if (u <= v) return (seq||[]).join('>');
-  // reverse + invert when pair stored under sorted orientation
-  return (seq||[]).slice().reverse().map(t => OPP[t] || t).join('>');
-}
+/* ---------- Signatures (vector vs ordered) ---------- */
 function sigVector(sentence){
   const P=parsePremise(sentence);
   if(!checkClauseConstraints(P.edges)) return 'INVALID';
@@ -380,10 +357,11 @@ function sigVector(sentence){
 function sigOrdered(sentence){
   const P=parsePremise(sentence);
   if(!checkClauseConstraints(P.edges)) return 'INVALID';
+  // Use pair -> sequence string (order preserved)
   const map=new Map();
   P.edges.forEach(e=>{
     const k=[e.u,e.v].sort().join('|');
-    map.set(k, canonicalSeq(e.u,e.v,e.seq||[]));
+    map.set(k,(e.seq||[]).join('>'));
   });
   return [...map.keys()].sort().map(k=>`${k}:${map.get(k)}`).join('|');
 }
@@ -420,9 +398,10 @@ function isoMatch(aStr,bStr){
     }
     return false;
   } else {
+    // ordered: compare pair -> seq
     function pairSeqMap(P){
       const m=new Map();
-      P.edges.forEach(e=>{ const k=[e.u,e.v].sort().join('|'); m.set(k, canonicalSeq(e.u,e.v,e.seq||[])); });
+      P.edges.forEach(e=>{ const k=[e.u,e.v].sort().join('|'); m.set(k,(e.seq||[]).join('>')); });
       return m;
     }
     const mapA=pairSeqMap(PA), mapB=pairSeqMap(PB);
@@ -452,6 +431,7 @@ function logicMatch(aStr,bStr){
     const sol=solveCoordsFromEdges(merged); return sol.ok;
   } else {
     const A=parsePremise(aStr), B=parsePremise(bStr);
+    // all symbols from A must reappear in B
     const sA=new Set(A.nodes), sB=new Set(B.nodes); for(const s of sA){ if(!sB.has(s)) return false; }
     if(!checkClauseConstraints(A.edges)||!checkClauseConstraints(B.edges)) return false;
     const sigA = ORDER_MODE ? sigOrdered(aStr) : sigVector(aStr);
@@ -468,7 +448,7 @@ let idx=0, paused=false, waitTimer=null;
 let responded=false;
 
 const history=[], planned=[];
-let correct=0, errors=0, omissions=0;
+let correct=0, errors=0;
 
 function planSequence(){
   planned.length=MAX;
@@ -478,32 +458,46 @@ function planSequence(){
   shuffle(eligible); for(let i=0;i<k;i++) planned[eligible[i]]=true;
 }
 
-/* Build a premise; if mustMatch true, verify it truly matches prev */
 function buildPremise(count, prevStr=null, mustMatch=false){
+  // symbol pool: keep small & stable
   const syms=pickSymbols(3);
   if(mustMatch && prevStr){
+    // derive from prev while preserving signature
     const P=parsePremise(prevStr);
     const edges=clone(P.edges).slice(0,Math.min(count,P.edges.length));
-    // preserve seqs in ORDER mode; in vector mode allow occasional inversion
+    while(edges.length<count && P.edges.length) edges.push(clone(P.edges[edges.length%P.edges.length]));
+    // randomly invert some edges without changing signature
     const flip=edges.map(e=>{
-      if(ORDER_MODE) return clone(e);
       if(Math.random()<0.5){
+        // invert relation and swap endpoints
         return {u:e.v, v:e.u, rel:vecInv(e.rel), seq: e.seq ? e.seq.map(t=>OPP[t]||t) : null};
       }
-      return clone(e);
+      return e;
     });
-    let candidate = renderEdges(flip), tries=0;
-    while(!logicMatch(prevStr, candidate) && ++tries<200){
-      candidate = renderEdges(flip);
-    }
-    return candidate;
+    return renderEdges(flip);
   }else{
+    // fresh
     const edges=[];
     for(let i=0;i<count;i++){
       edges.push( ORDER_MODE ? buildEdgeOrdered(ORDER_LEN, syms) : buildEdgeVector(syms) );
     }
     return renderEdges(edges);
   }
+}
+
+/* ---------- UI helpers ---------- */
+function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
+
+/* ---------- Speaking ---------- */
+async function speakLine(text){
+  if(!SPEAK) return;
+  if(!('speechSynthesis' in window)) return;
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='en-GB'; u.rate=1.0; u.pitch=1.0; u.volume=1.0;
+  return new Promise(res=>{ let done=false; const fin=()=>{ if(!done){ done=true; res(); } };
+    u.onend=fin; u.onerror=fin;
+    try{ if(speechSynthesis.speaking) speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(_){}
+  });
 }
 
 /* ---------- Visual build ---------- */
@@ -517,155 +511,6 @@ function showPremise(sentence){
   });
 }
 
-/* ===========================================================
-   AUDIO: Robust TTS + WebAudio fallback
-   =========================================================== */
-function logAudioStatus(msg){ setText('audioStatus', 'Audio: ' + msg); }
-
-async function ensureAudio(){
-  try{
-    if(!AUDIO_CTX){
-      const AC = window.AudioContext || window.webkitAudioContext;
-      if(AC){
-        AUDIO_CTX = new AC();
-        AUDIO_GAIN = AUDIO_CTX.createGain();
-        AUDIO_GAIN.gain.value = AUDIO_VOLUME;
-        AUDIO_GAIN.connect(AUDIO_CTX.destination);
-      }
-    }
-    if(AUDIO_CTX && AUDIO_CTX.state==='suspended') await AUDIO_CTX.resume();
-    // play a 1-frame silent buffer to unlock on iOS/Chrome
-    if(AUDIO_CTX){
-      const b = AUDIO_CTX.createBuffer(1, 1, 22050);
-      const src = AUDIO_CTX.createBufferSource();
-      src.buffer = b; src.connect(AUDIO_GAIN); src.start(0);
-    }
-    AUDIO_READY=true;
-    logAudioStatus('ready');
-  }catch(e){
-    logAudioStatus('failed to init; beeps may be unavailable');
-  }
-}
-
-function stopBeep(){
-  try{ if(CURRENT_OSC){ CURRENT_OSC.stop(); CURRENT_OSC.disconnect(); CURRENT_OSC=null; } }catch(_){}
-}
-function cancelAudio(){
-  stopBeep();
-  audioStopToken.stop = true;
-  try{ if('speechSynthesis' in window){ speechSynthesis.cancel(); } }catch(_){}
-}
-
-function setVolume(v){
-  AUDIO_VOLUME = v;
-  if(AUDIO_GAIN) AUDIO_GAIN.gain.value = v;
-}
-
-function beep(duration=0.18, freq=660){
-  if(!BEEP || !AUDIO_READY || !AUDIO_CTX) return Promise.resolve();
-  return new Promise(res=>{
-    audioStopToken.stop = false;
-    const osc = AUDIO_CTX.createOscillator();
-    CURRENT_OSC = osc;
-    osc.frequency.value = freq;
-    osc.connect(AUDIO_GAIN);
-    osc.start();
-    const t = setTimeout(()=>{ try{ osc.stop(); }catch(_){}
-      if(CURRENT_OSC===osc) CURRENT_OSC=null;
-      res();
-    }, duration*1000);
-    if(audioStopToken.stop){
-      clearTimeout(t);
-      try{ osc.stop(); }catch(_){}
-      if(CURRENT_OSC===osc) CURRENT_OSC=null;
-      res();
-    }
-  });
-}
-
-// Map clause type to a tone (distinct but gentle)
-function clauseToneFor(text){
-  // very lightweight heuristic by keyword
-  if(/level up|level down/.test(text)) return 880;
-  if(/turned right|turned left/.test(text)) return 520;
-  if(/ahead|behind/.test(text)) return 390;
-  if(/in|out/.test(text)) return 620;
-  if(/north|south|east|west/.test(text)) return 700;
-  return 660;
-}
-
-function availableVoices(){
-  try{ return speechSynthesis.getVoices() || []; }catch(_){ return []; }
-}
-
-function populateVoices(){
-  if(!('speechSynthesis' in window)) return;
-  VOICES = availableVoices();
-  const sel=$('voiceSelect'); if(!sel) return;
-  const current = sel.value;
-  sel.innerHTML = '<option value="">(auto)</option>';
-  const pref = ['en-AU','en-GB','en-US'];
-  VOICES.forEach(v=>{
-    const opt=document.createElement('option');
-    opt.value = v.name;
-    opt.textContent = `${v.name} — ${v.lang}`;
-    // prefer English voices
-    if(pref.some(p=>v.lang.startsWith(p))) opt.textContent += ' ★';
-    sel.appendChild(opt);
-  });
-  if(VOICE_NAME){ sel.value = VOICE_NAME; }
-  else if(current){ sel.value = current; }
-  VOICES_READY = VOICES.length>0;
-}
-
-function waitForVoices(timeoutMs=1200){
-  return new Promise(res=>{
-    if(!('speechSynthesis' in window)) return res(false);
-    let done=false;
-    function finish(ok){ if(done) return; done=true; res(ok); }
-    const check=()=>{
-      const v=availableVoices();
-      if(v && v.length){ populateVoices(); finish(true); }
-    };
-    check();
-    speechSynthesis.onvoiceschanged = ()=>{ check(); };
-    // Nudge Chrome to populate voices on some platforms
-    try{ speechSynthesis.cancel(); }catch(_){}
-    setTimeout(()=>finish(VOICES_READY), timeoutMs);
-  });
-}
-
-async function speakTTS(text){
-  if(!SPEAK || !('speechSynthesis' in window)) return;
-  const u=new SpeechSynthesisUtterance(text);
-  u.rate = SPEECH_RATE; u.pitch = SPEECH_PITCH; u.volume = AUDIO_VOLUME;
-  u.lang = 'en-US';
-  const v = VOICES.find(v=> v.name===VOICE_NAME) ||
-            VOICES.find(v=> /^en-(AU|GB|US)/.test(v.lang)) || null;
-  if(v) u.voice = v;
-
-  return new Promise(res=>{
-    let done=false;
-    function fin(){ if(!done){ done=true; res(); } }
-    u.onend=fin; u.onerror=fin;
-    try{
-      speechSynthesis.cancel(); // flush any queued utterances
-      speechSynthesis.speak(u);
-    }catch(_){ res(); }
-  });
-}
-
-// Clause-level audio: prefer TTS; fall back to beep if TTS not available
-async function speakClause(text){
-  if(paused) return;
-  // If TTS should be used and voices are ready, use it; else beep
-  if(SPEAK && ('speechSynthesis' in window) && VOICES_READY){
-    await speakTTS(text);
-  } else if(BEEP && AUDIO_READY){
-    await beep(0.18, clauseToneFor(text));
-  }
-}
-
 /* ---------- Trial engine ---------- */
 async function runTrial(){
   if(!SESSION.running || paused) return;
@@ -675,8 +520,10 @@ async function runTrial(){
   const prev      = (idx>=N) ? history[idx-N] : null;
   let sentence;
   if(mustMatch && prev){
+    // build a true logical match of prev
     sentence = buildPremise(SESSION.RELS_PER_PREMISE, prev, true);
   }else{
+    // build a non-match with different signature
     let tries=0;
     do{
       sentence = buildPremise(SESSION.RELS_PER_PREMISE, null, false);
@@ -690,26 +537,18 @@ async function runTrial(){
   history[idx]=sentence;
   showPremise(sentence);
   responded=false;
-  audioStopToken.stop=false;
 
+  // speak clause-by-clause
   const clauses=sentence.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
   for(let i=0;i<clauses.length;i++){
-    if(!SESSION.running || paused) return;
     // highlight
     const nodes=[...document.querySelectorAll('#premiseText .rel')];
     nodes.forEach((n,k)=>n.classList.toggle('active', k===i));
-    await speakClause(clauses[i]+'.');
+    await speakLine(clauses[i]+'.');
     if(!SESSION.running || paused) return;
-    // inter-clause / inter-premise pause
-    await new Promise(r=>{
-      waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<clauses.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000);
-    });
+    await new Promise(r=>{ waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<clauses.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
+    if(!SESSION.running || paused) return;
   }
-
-  // compute omission before advancing
-  const truth = (idx>=N) ? logicMatch(history[idx-N]||'', history[idx]||'') : false;
-  if(truth && !responded) omissions++;
-
   // clear highlight
   const nodes=[...document.querySelectorAll('#premiseText .rel')];
   nodes.forEach(n=>n.classList.remove('active'));
@@ -728,11 +567,6 @@ function start(){
   BAN_OPP_SAME  = !!($('banOppositesSameClause')&&$('banOppositesSameClause').checked);
   BAN_OPP_UNION = !!($('banOppositesUnion')&&$('banOppositesUnion').checked);
   SPEAK = !!($('speakEnabled')&&$('speakEnabled').checked);
-  BEEP  = !!($('beepEnabled')&&$('beepEnabled').checked);
-
-  VOICE_NAME = ($('voiceSelect') && $('voiceSelect').value) || '';
-  SPEECH_RATE = +($('speechRate')&&$('speechRate').value)||1.0;
-  SPEECH_PITCH = +($('speechPitch')&&$('speechPitch').value)||1.0;
 
   SESSION.RELS_PER_PREMISE = Math.max(1, parseInt(($('relCount')&&$('relCount').value)||'2',10));
   if($('relCount')) $('relCount').disabled=true;
@@ -744,7 +578,7 @@ function start(){
   RATE = +($('rate')&&$('rate').value)||25;
 
   // init state
-  idx=0; correct=0; errors=0; omissions=0; history.length=0; planned.length=0;
+  idx=0; correct=0; errors=0; history.length=0; planned.length=0;
   planSequence(); updateUI();
 
   SESSION.running=true; paused=false;
@@ -753,31 +587,24 @@ function start(){
   if($('hit')) $('hit').disabled=false;
   if($('skip')) $('skip').disabled=false;
 
-  ensureAudio(); // unlock/resume audio on user gesture path
   runTrial();
 }
 function stop(){
   SESSION.running=false; paused=false;
-  try{ if(waitTimer) clearTimeout(waitTimer); }catch(_){}
+  try{ clearTimeout(waitTimer); }catch(_){}
   waitTimer=null; responded=false;
-  cancelAudio();
 }
 function togglePause(){
   if(!SESSION.running) return;
   paused=!paused;
   if($('pause')) $('pause').textContent = paused?'▶ Resume':'⏸ Pause';
-  if(paused){
-    cancelAudio();
-  }else{
-    ensureAudio();
-    runTrial();
-  }
+  if(!paused){ runTrial(); }
 }
 function reset(){
   stop();
   if($('relCount')) $('relCount').disabled=false;
   if($('premiseText')) $('premiseText').textContent='—';
-  idx=0; correct=0; errors=0; omissions=0; updateUI();
+  idx=0; correct=0; errors=0; updateUI();
 }
 
 /* ---------- Input handling ---------- */
@@ -791,8 +618,9 @@ function registerHit(){
 }
 function skip(){
   if(!SESSION.running) return;
-  try{ if(waitTimer) clearTimeout(waitTimer); }catch(_){}
+  try{ clearTimeout(waitTimer); }catch(_){}
   waitTimer=null;
+  // fast-forward to next trial
   idx++; updateUI(); runTrial();
 }
 
@@ -801,7 +629,7 @@ function updateUI(){
   setText('ptype', (idx<MAX && idx>=N && planned[idx])?'planned MATCH':'planned NON-match');
   const actual = (idx>=N) ? String(logicMatch(history[idx-N]||'', history[idx]||'')).toUpperCase() : '—';
   setText('isMatch', actual);
-  setText('corr', correct); setText('err', errors); setText('omiss', omissions);
+  setText('corr', correct); setText('err', errors);
   setText('nVal', N); setText('tVal', MAX);
   setText('pVal', PAUSE_SEC.toFixed(1)+' s'); setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s');
   setText('rVal', RATE+'%'); setText('relCountVal', SESSION.RELS_PER_PREMISE);
@@ -813,15 +641,6 @@ window.addEventListener('keydown', e=>{
   if(e.code==='Space'){ registerHit(); e.preventDefault(); }
 });
 
-document.addEventListener('visibilitychange', ()=>{
-  // be gentle with background tabs
-  if(document.hidden){
-    try{ if(AUDIO_CTX) AUDIO_CTX.suspend(); }catch(_){}
-  }else{
-    if(!paused && SESSION.running) ensureAudio();
-  }
-});
-
 document.addEventListener('DOMContentLoaded', ()=>{
   // live labels
   $('n').oninput=e=>{ if(!SESSION.running){ N=+e.target.value; setText('nVal', N); } };
@@ -831,36 +650,15 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; setText('rVal', RATE+'%'); } };
   $('relCount').oninput=e=>{ if(!SESSION.running){ SESSION.RELS_PER_PREMISE=Math.max(1,parseInt(e.target.value,10)||2); setText('relCountVal', SESSION.RELS_PER_PREMISE); } };
 
-  $('audioVolume').oninput=e=>{ const v=+e.target.value; setVolume(v); setText('volVal', v.toFixed(2)); };
-  $('speechRate').oninput=e=>{ SPEECH_RATE=+e.target.value; setText('rateVal', SPEECH_RATE.toFixed(2)); };
-  $('speechPitch').oninput=e=>{ SPEECH_PITCH=+e.target.value; setText('pitchVal', SPEECH_PITCH.toFixed(2)); };
-  $('voiceSelect').onchange=e=>{ VOICE_NAME = e.target.value || ''; };
-
   // buttons
-  $('enableAudio').onclick=async()=>{ await ensureAudio(); await waitForVoices(1500); };
-  $('audioTest').onclick=async()=>{
-    await ensureAudio();
-    await waitForVoices(1200);
-    cancelAudio();
-    if(SPEAK && ('speechSynthesis' in window) && VOICES_READY){
-      await speakTTS('Audio test. This is the system voice.');
-    }
-    if(BEEP && AUDIO_READY){
-      await beep(0.15, 660); await beep(0.15, 880); await beep(0.15, 520);
-    }
-  };
-
-  $('start').onclick=()=>{ ensureAudio().then(()=>waitForVoices(1200)).then(()=>start()); };
+  $('start').onclick=()=>{ start(); };
   $('pause').onclick=()=>{ togglePause(); };
   $('reset').onclick=()=>{ reset(); };
   $('hit').onclick=()=>{ registerHit(); };
   $('skip').onclick=()=>{ skip(); };
 
-  // Try to populate voices early (some Chrome variants require a gesture first)
-  try{ populateVoices(); }catch(_){}
   updateUI();
 });
 </script>
 </body>
 </html>
-
