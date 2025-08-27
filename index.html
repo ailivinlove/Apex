@@ -53,7 +53,14 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
         <label>Relations per premise (clauses): <span id="relCountVal">2</span></label>
         <input id="relCount" type="number" min="1" step="1" value="2">
         <div class="mut small" style="margin-top:6px">
-          8D axes (plain): plane (north/south/east/west), levels (up/down), depth (in/out), orientation (right/left), timing (ahead/behind), value (higher/lower), rotation (clockwise/anti-clockwise).
+          8D axes (plain):<br>
+          • plane (north/south/east/west)<br>
+          • levels (up/down)<br>
+          • depth (in/out)<br>
+          • turn (right/left)<br>
+          • timing (ahead/behind)<br>
+          • value (higher/lower)<br>
+          • rotation (clockwise/anti-clockwise)
         </div>
       </div>
     </div>
@@ -111,11 +118,11 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 
 <script>
 /* ===========================================================
-   8D COMPASS + ADVANCED STRESSORS — PURE LOGIC MATCH
-   Axes: plane (N/S/E/W), levels (up/down), depth (in/out),
-   orientation (right/left), timing (ahead/behind),
-   value (higher/lower), rotation (clockwise/anti-clockwise).
-   Includes: robust UK female TTS selection + 0–60s pause sliders.
+   8D COMPASS + ADVANCED STRESSORS — PURE LOGIC
+   Axes:
+   - plane (N/S/E/W), levels (up/down), depth (in/out),
+     turn (right/left), timing (ahead/behind),
+     value (higher/lower), rotation (clockwise/anticlockwise)
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
@@ -132,26 +139,20 @@ let SPEAK=true;
 const TOKENS = [
   'north','south','east','west',
   'up','down','in','out',
-  'right','left',
-  'ahead','behind',
-  'higher','lower',
-  'clockwise','anticlockwise'
+  'right','left','ahead','behind',
+  'higher','lower','clockwise','anticlockwise'
 ];
 const OPP = {
-  north:'south', south:'north',
-  east:'west', west:'east',
-  up:'down', down:'up',
-  in:'out', out:'in',
-  right:'left', left:'right',
-  ahead:'behind', behind:'ahead',
-  higher:'lower', lower:'higher',
-  clockwise:'anticlockwise', anticlockwise:'clockwise'
+  north:'south', south:'north', east:'west', west:'east',
+  up:'down', down:'up', in:'out', out:'in',
+  right:'left', left:'right', ahead:'behind', behind:'ahead',
+  higher:'lower', lower:'higher', clockwise:'anticlockwise', anticlockwise:'clockwise'
 };
 
 /* ---------- Vector math (8D) ---------- */
-function zeroVec(){ return {x:0,y:0,z:0,w:0,u:0,v:0,p:0,q:0}; } // p=value, q=rotation
+function zero(){ return {x:0,y:0,z:0,w:0,u:0,v:0,val:0,rot:0}; }
 function tokenToDelta(tok){
-  const d=zeroVec();
+  const d=zero();
   if(tok==='north') d.y-=1;
   else if(tok==='south') d.y+=1;
   else if(tok==='east') d.x+=1;
@@ -160,58 +161,64 @@ function tokenToDelta(tok){
   else if(tok==='down') d.z-=1;
   else if(tok==='in') d.w+=1;
   else if(tok==='out') d.w-=1;
-  else if(tok==='right') d.u+=1;
-  else if(tok==='left') d.u-=1;
+  else if(tok==='right') d.u+=1;      // "turned right"
+  else if(tok==='left') d.u-=1;       // "turned left"
   else if(tok==='ahead') d.v+=1;
   else if(tok==='behind') d.v-=1;
-  else if(tok==='higher') d.p+=1;
-  else if(tok==='lower') d.p-=1;
-  else if(tok==='clockwise') d.q+=1;
-  else if(tok==='anticlockwise') d.q-=1;
+  else if(tok==='higher') d.val+=1;   // value priority axis
+  else if(tok==='lower') d.val-=1;
+  else if(tok==='clockwise') d.rot+=1;      // rotation axis (cyclic)
+  else if(tok==='anticlockwise') d.rot-=1;
   return d;
 }
 function vecAdd(a,b){ return {
   x:a.x+b.x, y:a.y+b.y, z:a.z+b.z, w:a.w+b.w,
-  u:a.u+b.u, v:a.v+b.v, p:a.p+b.p, q:a.q+b.q
+  u:a.u+b.u, v:a.v+b.v, val:a.val+b.val, rot:a.rot+b.rot
 }; }
-function vecInv(a){ return { x:-a.x, y:-a.y, z:-a.z, w:-a.w, u:-a.u, v:-a.v, p:-a.p, q:-a.q }; }
+function vecInv(a){ return {
+  x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v,val:-a.val,rot:-a.rot
+}; }
 function vecEq(a,b){ return (
-  a.x===b.x && a.y===b.y && a.z===b.z && a.w===b.w &&
-  a.u===b.u && a.v===b.v && a.p===b.p && a.q===b.q
+  a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&
+  a.u===b.u&&a.v===b.v&&a.val===b.val&&a.rot===b.rot
 ); }
 
-/* ---------- Natural language renderers ---------- */
+/* ---------- Natural language helpers ---------- */
 function levelsPhrase(z){
   const n=Math.abs(z); if(n===0) return null;
   const word = (n===1?'one level':`${n} levels`);
   return `${word} ${z>0?'up':'down'}`;
 }
-function valuePhrase(p){ if(p===0) return null; return p>0 ? 'higher priority' : 'lower priority'; }
-function rotationPhrase(q){ if(q===0) return null; return q>0 ? 'rotated clockwise' : 'rotated anti-clockwise'; }
-function planePhrase(x,y){
-  let s='';
-  if(y<0) s+='north';
-  if(y>0) s+='south';
-  if(x>0) s+=(s?' ':'')+'east';
-  if(x<0) s+=(s?' ':'')+'west';
-  return s||null;
+function valuePhrase(val){
+  const n=Math.abs(val); if(n===0) return null;
+  if(n===1) return val>0?'higher priority':'lower priority';
+  return `${n} steps ${val>0?'higher priority':'lower priority'}`;
 }
-function orientationPhrase(u){ if(u===0) return null; return u>0 ? 'turned right' : 'turned left'; }
-function timingPhrase(v){ if(v===0) return null; return v>0 ? 'ahead' : 'behind'; }
-
+function rotationPhrase(rot){
+  const n=Math.abs(rot); if(n===0) return null;
+  const word = (n===1?'':' steps ');
+  return `${n===1?'':n}${n===1?'':' '}${rot>0?'clockwise':'anti-clockwise'}`.trim();
+}
 function relToStringVector(r){
   const parts=[];
-  const plane = planePhrase(r.x, r.y); if(plane) parts.push(plane);
+  if(r.y!==0||r.x!==0){
+    let s='';
+    if(r.y<0) s+='north';
+    if(r.y>0) s+='south';
+    if(r.x>0) s+=(s?' ':'')+'east';
+    if(r.x<0) s+=(s?' ':'')+'west';
+    if(s) parts.push(s);
+  }
   const lp=levelsPhrase(r.z); if(lp) parts.push(lp);
   if(r.w!==0) parts.push(r.w>0?'in':'out');
-  const orp=orientationPhrase(r.u); if(orp) parts.push(orp);
-  const tmp=timingPhrase(r.v); if(tmp) parts.push(tmp);
-  const val=valuePhrase(r.p); if(val) parts.push(val);
-  const rot=rotationPhrase(r.q); if(rot) parts.push(rot);
+  if(r.u!==0) parts.push(r.u>0?'turned right':'turned left');
+  if(r.v!==0) parts.push(r.v>0?'ahead':'behind');
+  const vp=valuePhrase(r.val); if(vp) parts.push(vp);
+  const rp=rotationPhrase(r.rot); if(rp) parts.push(rp);
   return parts.length? parts.join(' and ') : 'origin';
 }
-
 function seqToString(seq){
+  // ordered mode uses "then" to preserve order
   return (seq&&seq.length)? seq.map(t=>{
     if(t==='right') return 'turned right';
     if(t==='left')  return 'turned left';
@@ -219,8 +226,7 @@ function seqToString(seq){
     if(t==='down')  return 'one level down';
     if(t==='higher') return 'higher priority';
     if(t==='lower')  return 'lower priority';
-    if(t==='clockwise') return 'rotated clockwise';
-    if(t==='anticlockwise') return 'rotated anti-clockwise';
+    if(t==='anticlockwise') return 'anti-clockwise';
     return t;
   }).join(' then ') : 'origin';
 }
@@ -234,25 +240,43 @@ function buildEdgeOrdered(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
   const seq=[];
-  while(seq.length<orderLen){ seq.push(TOKENS[(Math.random()*TOKENS.length)|0]); }
-  let r=zeroVec(); seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
+  // allow repeats (with replacement) to increase non-commutative load
+  while(seq.length<orderLen){
+    seq.push(TOKENS[(Math.random()*TOKENS.length)|0]);
+  }
+  let r=zero();
+  seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq};
 }
 function buildEdgeVector(symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
-  let r=zeroVec();
-  const rolls=1+((Math.random()*3)|0);
+  // random composite; allow z/val/rot multi-steps; others single bumps
+  let r=zero();
+  const rolls=1+((Math.random()*2)|0); // 1..2 components
   for(let i=0;i<rolls;i++){
     const axis=(Math.random()*8)|0;
-    if(axis===0){ const p=['north','south','east','west'][(Math.random()*4)|0]; r=vecAdd(r, tokenToDelta(p)); }
-    else if(axis===1){ const dir=(Math.random()<0.5?'up':'down'); const steps=1+((Math.random()*3)|0); for(let k=0;k<steps;k++) r=vecAdd(r, tokenToDelta(dir)); }
-    else if(axis===2){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out')); }
+    if(axis===0){ // plane (N/S/E/W)
+      const p=['north','south','east','west'][(Math.random()*4)|0];
+      r=vecAdd(r, tokenToDelta(p));
+    }else if(axis===1){ // levels with count 1..3
+      const dir = (Math.random()<0.5?'up':'down');
+      const steps = 1+((Math.random()*3)|0);
+      for(let k=0;k<steps;k++) r=vecAdd(r, tokenToDelta(dir));
+    }else if(axis===2){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out')); }
     else if(axis===3){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'right':'left')); }
     else if(axis===4){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind')); }
-    else if(axis===5){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'higher':'lower')); }
-    else if(axis===6){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'clockwise':'anticlockwise')); }
-    else { const t=TOKENS[(Math.random()*TOKENS.length)|0]; r=vecAdd(r, tokenToDelta(t)); }
+    else if(axis===5){ // value axis multi-steps 1..3
+      const dir=(Math.random()<0.5?'higher':'lower');
+      const n=1+((Math.random()*3)|0); for(let k=0;k<n;k++) r=vecAdd(r, tokenToDelta(dir));
+    }
+    else if(axis===6){ // rotation axis multi-steps 1..3
+      const dir=(Math.random()<0.5?'clockwise':'anticlockwise');
+      const n=1+((Math.random()*3)|0); for(let k=0;k<n;k++) r=vecAdd(r, tokenToDelta(dir));
+    }
+    else { // extra plane tick to diversify
+      r=vecAdd(r, tokenToDelta(Math.random()<0.5?'north':'east'));
+    }
   }
   return {u,v,rel:r,seq:null};
 }
@@ -273,9 +297,11 @@ function parsePremise(sentence){
     const m=part.match(/^([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)$/i);
     if(!m) return;
     const A=m[1], B=m[3]; nodes.add(A); nodes.add(B);
-    let rel=zeroVec(), seq=null;
+    let rel=zero(), seq=null;
     if(ORDER_MODE){
+      // split by "then"
       seq = m[2].split(/\s+then\s+/i).map(s=>s.toLowerCase().trim());
+      // normalize phrases used in rendering
       seq = seq.map(t=>{
         if(t==='turned right') return 'right';
         if(t==='turned left') return 'left';
@@ -283,26 +309,49 @@ function parsePremise(sentence){
         if(t==='one level down') return 'down';
         if(t==='higher priority') return 'higher';
         if(t==='lower priority') return 'lower';
-        if(t==='rotated anti-clockwise' || t==='rotated anticlockwise') return 'anticlockwise';
-        if(t==='rotated clockwise') return 'clockwise';
+        if(t==='anti-clockwise') return 'anticlockwise';
+        // also allow "one step clockwise" forms
+        const rm=t.match(/^(one|two|three|\d+)\s+steps?\s+(clockwise|anti-?clockwise)$/);
+        if(rm){
+          const n = rm[1]==='one'?1:rm[1]==='two'?2:rm[1]==='three'?3:parseInt(rm[1],10);
+          return Array(n).fill(rm[2]==='anti-clockwise'?'anticlockwise':'clockwise').join('>');
+        }
         return t;
-      });
-      seq.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
+      }).flatMap(s=>s.includes('>')?s.split('>'):s? [s] : []);
+      seq.forEach(t=>{ if(TOKENS.includes(t)) rel=vecAdd(rel, tokenToDelta(t)); });
     }else{
+      // vector phrases separated by 'and'; parse sub-phrases
       const items=m[2].split(/\s+and\s+/i).map(s=>s.toLowerCase().trim());
       items.forEach(t=>{
         if(t==='origin') return;
-        const lm=t.match(/^(one|two|three|\d+)\s+levels?\s+(up|down)$/);
-        if(lm){
-          const n= lm[1]==='one'?1 : lm[1]==='two'?2 : lm[1]==='three'?3 : parseInt(lm[1],10);
-          const dir= lm[2]; for(let k=0;k<n;k++) rel=vecAdd(rel, tokenToDelta(dir)); return;
+
+        // levels forms
+        let mm=t.match(/^(one|two|three|\d+)\s+levels?\s+(up|down)$/);
+        if(mm){
+          const n= mm[1]==='one'?1 : mm[1]==='two'?2 : mm[1]==='three'?3 : parseInt(mm[1],10);
+          const dir= mm[2]; for(let k=0;k<n;k++) rel=vecAdd(rel, tokenToDelta(dir)); return;
         }
-        if(t==='turned right'){ rel=vecAdd(rel, tokenToDelta('right')); return; }
-        if(t==='turned left'){  rel=vecAdd(rel, tokenToDelta('left')); return; }
-        if(t==='higher priority'){ rel=vecAdd(rel, tokenToDelta('higher')); return; }
-        if(t==='lower priority'){  rel=vecAdd(rel, tokenToDelta('lower')); return; }
-        if(t==='rotated clockwise'){ rel=vecAdd(rel, tokenToDelta('clockwise')); return; }
-        if(t==='rotated anti-clockwise' || t==='rotated anticlockwise'){ rel=vecAdd(rel, tokenToDelta('anticlockwise')); return; }
+
+        // value axis forms
+        mm=t.match(/^(one|two|three|\d+)\s+(?:steps?\s+)?(higher|lower)\s+priority$/);
+        if(mm){
+          const n= mm[1]==='one'?1 : mm[1]==='two'?2 : mm[1]==='three'?3 : parseInt(mm[1],10);
+          const tok = mm[2]; for(let k=0;k<n;k++) rel=vecAdd(rel, tokenToDelta(tok)); return;
+        }
+        if(t==='higher priority' || t==='lower priority'){ rel=vecAdd(rel, tokenToDelta(t.split(' ')[0])); return; }
+
+        // rotation forms
+        mm=t.match(/^(one|two|three|\d+)\s+steps?\s+(clockwise|anti-?clockwise)$/);
+        if(mm){
+          const n= mm[1]==='one'?1 : mm[1]==='two'?2 : mm[1]==='three'?3 : parseInt(mm[1],10);
+          const tok = (mm[2]==='anti-clockwise'?'anticlockwise':mm[2]);
+          for(let k=0;k<n;k++) rel=vecAdd(rel, tokenToDelta(tok)); return;
+        }
+
+        // turned right/left
+        if(t==='turned right' || t==='turned left'){ rel=vecAdd(rel, tokenToDelta(t==='turned right'?'right':'left')); return; }
+
+        // simple tokens
         if(TOKENS.includes(t)){ rel=vecAdd(rel, tokenToDelta(t)); return; }
       });
     }
@@ -315,7 +364,7 @@ function parsePremise(sentence){
 function hasOpposites(list){ const s=new Set(list); for(const t of s){ if(s.has(OPP[t])) return true; } return false; }
 function checkClauseConstraints(edges){
   if(!BAN_OPP_SAME) return true;
-  if(!ORDER_MODE) return true;
+  if(!ORDER_MODE) return true; // vector clauses already merged
   for(const e of edges){ if(hasOpposites(e.seq||[])) return false; }
   return true;
 }
@@ -325,9 +374,8 @@ function checkUnionConstraints(merged){
   merged.forEach(e=>{
     const key=[e.u,e.v].sort().join('|');
     const set=pairs.get(key)||new Set();
-    if(ORDER_MODE){
-      (e.seq||[]).forEach(t=>set.add(t));
-    } else {
+    if(ORDER_MODE){ (e.seq||[]).forEach(t=>set.add(t)); }
+    else{
       const r=e.rel;
       if(r.y<0) set.add('north'); if(r.y>0) set.add('south');
       if(r.x>0) set.add('east');  if(r.x<0) set.add('west');
@@ -335,8 +383,8 @@ function checkUnionConstraints(merged){
       if(r.w>0) set.add('in');    if(r.w<0) set.add('out');
       if(r.u>0) set.add('right'); if(r.u<0) set.add('left');
       if(r.v>0) set.add('ahead'); if(r.v<0) set.add('behind');
-      if(r.p>0) set.add('higher'); if(r.p<0) set.add('lower');
-      if(r.q>0) set.add('clockwise'); if(r.q<0) set.add('anticlockwise');
+      if(r.val>0) set.add('higher'); if(r.val<0) set.add('lower');
+      if(r.rot>0) set.add('clockwise'); if(r.rot<0) set.add('anticlockwise');
     }
     pairs.set(key,set);
   });
@@ -352,7 +400,7 @@ function solveCoordsFromEdges(edges){
   const coords=new Map(), comps=[], seen=new Set(); let ok=true;
   nodes.forEach(root=>{
     if(seen.has(root)) return;
-    coords.set(root, zeroVec()); seen.add(root);
+    coords.set(root,zero()); seen.add(root);
     const comp=[root]; comps.push(comp);
     const st=[root];
     while(st.length){
@@ -372,16 +420,19 @@ function pairwiseDeltas(coords, comps){
     const a=comp.slice().sort();
     for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++){
       const u=a[i], v=a[j], cu=coords.get(u), cv=coords.get(v);
-      sig.set(`${u}|${v}`, { x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w, u:cv.u-cu.u, v:cv.v-cu.v, p:cv.p-cu.p, q:cv.q-cu.q });
+      sig.set(`${u}|${v}`, {
+        x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w,
+        u:cv.u-cu.u, v:cv.v-cu.v, val:cv.val-cu.val, rot:cv.rot-cu.rot
+      });
     }
   });
   return sig;
 }
 
-/* ---------- Ordered signature canonicalization ---------- */
+/* ---------- Ordered canonicalization (prevents inversion drift) ---------- */
 function canonicalSeq(u, v, seq){
-  if(u <= v) return (seq||[]).join('>');
-  const inv = (seq||[]).slice().reverse().map(t=>OPP[t]||t);
+  if (u <= v) return (seq||[]).join('>');
+  const inv = (seq||[]).slice().reverse().map(t => OPP[t] || t);
   return inv.join('>');
 }
 
@@ -393,7 +444,7 @@ function sigVector(sentence){
   const sig=pairwiseDeltas(sol.coords, sol.comps);
   return [...sig.keys()].sort().map(k=>{
     const d=sig.get(k);
-    return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v},${d.p},${d.q}`;
+    return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v},${d.val},${d.rot}`;
   }).join('|');
 }
 function sigOrdered(sentence){
@@ -430,10 +481,8 @@ function isoMatch(aStr,bStr){
       let ok=true;
       for(let i=0;i<A.length;i++){
         for(let j=i+1;j<A.length;j++){
-          const a=A[i], b=A[j];
-          const dA=sigA.get(`${a}|${b}`); if(!dA){ ok=false; break; }
-          const aa=map.get(a), bb=map.get(b);
-          const dB=sigB.get([aa,bb].sort().join('|')); if(!dB||!vecEq(dA,dB)){ ok=false; break; }
+          const a=A[i], b=A[j]; const dA=sigA.get(`${a}|${b}`); if(!dA){ ok=false; break; }
+          const aa=map.get(a), bb=map.get(b); const dB=sigB.get([aa,bb].sort().join('|')); if(!dB||!vecEq(dA,dB)){ ok=false; break; }
         }
         if(!ok) break;
       }
@@ -451,15 +500,12 @@ function isoMatch(aStr,bStr){
     }
     const mapA=pairSeqMap(PA), mapB=pairSeqMap(PB);
     for(const perm of permutations(B.slice(0,A.length))){
-      const relabel=new Map(); for(let i=0;i<A.length;i++) relabel.set(A[i], perm[i]);
+      const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i], perm[i]);
       let ok=true;
       for(let i=0;i<A.length;i++){
         for(let j=i+1;j<A.length;j++){
-          const a=A[i], b=A[j];
-          const sA=mapA.get(`${a}|${b}`); if(sA==null){ ok=false; break; }
-          const aa=relabel.get(a), bb=relabel.get(b);
-          const sB=mapB.get([aa,bb].sort().join('|'));
-          if(sB==null || sB!==sA){ ok=false; break; }
+          const a=A[i], b=A[j]; const sA=mapA.get(`${a}|${b}`); if(sA==null){ ok=false; break; }
+          const aa=map.get(a), bb=map.get(b); const sB=mapB.get([aa,bb].sort().join('|')); if(sB==null || sB!==sA){ ok=false; break; }
         }
         if(!ok) break;
       }
@@ -489,85 +535,6 @@ function logicMatch(aStr,bStr){
   }
 }
 
-/* ---------- British female speech (robust selection) ---------- */
-let preferredVoice = null;
-let voiceReadyResolve = null;
-const voiceReady = new Promise(res => { voiceReadyResolve = res; });
-
-function chooseBritishFemaleVoice(voices){
-  // 1) Name preferences commonly found
-  const namePrefs = [
-    'Google UK English Female',
-    'Microsoft Hazel',
-    'Microsoft Sonia',
-    'Serena',
-    'Kate',
-    'Libby',
-    'Abbi'
-  ];
-  for(const n of namePrefs){
-    const v = voices.find(v=> (v.name||'').toLowerCase().includes(n.toLowerCase()));
-    if(v) return v;
-  }
-  // 2) Any explicit female en-GB
-  let v = voices.find(v=> (v.lang||'').toLowerCase()==='en-gb' && /(female|fem|woman)/i.test(v.name||''));
-  if(v) return v;
-  // 3) Any en-GB
-  v = voices.find(v=> (v.lang||'').toLowerCase()==='en-gb');
-  if(v) return v;
-  // 4) Any English female-ish
-  v = voices.find(v=> (v.lang||'').toLowerCase().startsWith('en') && /(female|fem|woman|susan|sara|amy|emma|olivia|kate|samantha|victoria)/i.test(v.name||''));
-  if(v) return v;
-  // 5) Any English
-  v = voices.find(v=> (v.lang||'').toLowerCase().startsWith('en'));
-  return v || null;
-}
-
-function loadVoicesAndSelect(){
-  try{
-    const voices = window.speechSynthesis.getVoices() || [];
-    if(voices.length){
-      preferredVoice = chooseBritishFemaleVoice(voices);
-      if(voiceReadyResolve){ voiceReadyResolve(); voiceReadyResolve=null; }
-      return;
-    }
-  }catch(_){}
-  // Retry until voices populate
-  setTimeout(loadVoicesAndSelect, 100);
-}
-
-async function speakLine(text){
-  if(!SPEAK) return;
-  if(!('speechSynthesis' in window)) return;
-  // ensure voices loaded and preferred selected
-  await voiceReady;
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'en-GB';
-  u.rate = 0.95;     // slightly slower, clearer
-  u.pitch = 1.15;    // brighter, more lyrical
-  u.volume = 1.0;
-  if(preferredVoice) u.voice = preferredVoice;
-  return new Promise(res=>{
-    let done=false; const fin=()=>{ if(!done){ done=true; res(); } };
-    u.onend=fin; u.onerror=fin;
-    try{
-      if(speechSynthesis.speaking){ speechSynthesis.cancel(); }
-      speechSynthesis.speak(u);
-    }catch(_){ res(); }
-  });
-}
-
-/* ---------- Visual build ---------- */
-function showPremise(sentence){
-  const el=$('premiseText'); if(!el) return;
-  const parts=sentence.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
-  el.innerHTML='';
-  parts.forEach((p,i)=>{
-    const span=document.createElement('span'); span.className='rel'; span.textContent=p; el.appendChild(span);
-    if(i<parts.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
-  });
-}
-
 /* ---------- Build trials ---------- */
 let N=2, MAX=40, PAUSE_SEC=2.7, PREMISE_INTERVAL_SEC=0.9, RATE=25;
 let idx=0, paused=false, waitTimer=null;
@@ -584,21 +551,25 @@ function planSequence(){
   shuffle(eligible); for(let i=0;i<k;i++) planned[eligible[i]]=true;
 }
 
-/* ---------- Trial engine ---------- */
 function buildPremise(count, prevStr=null, mustMatch=false){
   const syms=pickSymbols(3);
   if(mustMatch && prevStr){
+    // derive from prev while preserving signature; avoid flipping seqs in ORDER mode
     const P=parsePremise(prevStr);
-    const edges=clone(P.edges).slice(0,Math.min(count,P.edges.length));
-    while(edges.length<count && P.edges.length) edges.push(clone(P.edges[edges.length%P.edges.length]));
-    const flip=edges.map(e=>{
-      if(ORDER_MODE) return clone(e); // keep order intact
-      if(Math.random()<0.5){ return {u:e.v, v:e.u, rel:vecInv(e.rel), seq: e.seq ? e.seq.map(t=>OPP[t]||t) : null}; }
-      return clone(e);
+    const baseEdges=clone(P.edges).slice(0,Math.min(count,P.edges.length));
+    while(baseEdges.length<count && P.edges.length) baseEdges.push(clone(P.edges[baseEdges.length%P.edges.length]));
+    const adjusted = baseEdges.map(e=>{
+      if(ORDER_MODE) return clone(e); // preserve sequence orientation
+      if(Math.random()<0.5){
+        return {u:e.v, v:e.u, rel:vecInv(e.rel), seq: e.seq ? e.seq.map(t=>OPP[t]||t) : null};
+      }
+      return e;
     });
-    let candidate = renderEdges(flip);
+    let candidate = renderEdges(adjusted);
     let tries=0;
-    while(!logicMatch(prevStr, candidate) && ++tries<200){ candidate = renderEdges(flip); }
+    while(!logicMatch(prevStr, candidate) && ++tries<200){
+      candidate = renderEdges(adjusted);
+    }
     return candidate;
   }else{
     const edges=[];
@@ -609,6 +580,62 @@ function buildPremise(count, prevStr=null, mustMatch=false){
   }
 }
 
+/* ---------- UI helpers ---------- */
+function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
+
+/* ---------- Speech (UK female preference) ---------- */
+let selectedVoice=null;
+function chooseUKFemaleVoice(){
+  const voices = speechSynthesis.getVoices ? speechSynthesis.getVoices() : [];
+  // Prefer explicit UK English female names
+  const preferredNames = [
+    'Google UK English Female','Microsoft Sonia - English (United Kingdom)',
+    'UK English Female','Serena','Martha','Libby'
+  ];
+  // 1) exact name match
+  for(const name of preferredNames){
+    const v = voices.find(v=>v.name===name);
+    if(v) return v;
+  }
+  // 2) any en-GB female-ish
+  const gb = voices.filter(v=>/en-GB/i.test(v.lang||'') || /UK|British/i.test(v.name||''));
+  if(gb.length) return gb[0];
+  // 3) any English female-ish
+  const en = voices.filter(v=>/en/i.test(v.lang||''));
+  return en[0] || null;
+}
+async function speakLine(text){
+  if(!SPEAK) return;
+  if(!('speechSynthesis' in window)) return;
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='en-GB'; u.rate=1.0; u.pitch=1.05; u.volume=1.0;
+  if(!selectedVoice) selectedVoice = chooseUKFemaleVoice();
+  if(selectedVoice) u.voice = selectedVoice;
+  return new Promise(res=>{
+    let done=false; const fin=()=>{ if(!done){ done=true; res(); } };
+    u.onend=fin; u.onerror=fin;
+    try{
+      if(speechSynthesis.speaking) speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    }catch(_){ res(); }
+  });
+}
+if('speechSynthesis' in window){
+  speechSynthesis.onvoiceschanged = () => { selectedVoice = chooseUKFemaleVoice(); };
+}
+
+/* ---------- Visual build ---------- */
+function showPremise(sentence){
+  const el=$('premiseText'); if(!el) return;
+  const parts=sentence.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
+  el.innerHTML='';
+  parts.forEach((p,i)=>{
+    const span=document.createElement('span'); span.className='rel'; span.textContent=p; el.appendChild(span);
+    if(i<parts.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
+  });
+}
+
+/* ---------- Trial engine ---------- */
 async function runTrial(){
   if(!SESSION.running || paused) return;
   if(idx>=MAX){ stop(); return; }
@@ -616,18 +643,17 @@ async function runTrial(){
   const mustMatch = (idx>=N) && planned[idx];
   const prev      = (idx>=N) ? history[idx-N] : null;
   let sentence;
-
   if(mustMatch && prev){
-    let tries=0;
-    do{ sentence = buildPremise(SESSION.RELS_PER_PREMISE, prev, true); }
-    while(!logicMatch(prev, sentence) && ++tries<200);
+    sentence = buildPremise(SESSION.RELS_PER_PREMISE, prev, true);
   }else{
+    // build a non-match with different signature
     let tries=0;
     do{
       sentence = buildPremise(SESSION.RELS_PER_PREMISE, null, false);
       const prevSig = prev ? (ORDER_MODE?sigOrdered(prev):sigVector(prev)) : null;
       const nowSig  = ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
-      if(prevSig==null || (nowSig!=='INVALID' && nowSig!==prevSig)) break;
+      if(prevSig==null){ break; }
+      if(nowSig!=='INVALID' && nowSig!==prevSig) break;
     }while(++tries<200);
   }
 
@@ -635,16 +661,14 @@ async function runTrial(){
   showPremise(sentence);
   responded=false;
 
-  // speak clause-by-clause in a UK female voice
+  // speak clause-by-clause
   const clauses=sentence.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
   for(let i=0;i<clauses.length;i++){
     const nodes=[...document.querySelectorAll('#premiseText .rel')];
     nodes.forEach((n,k)=>n.classList.toggle('active', k===i));
     await speakLine(clauses[i]+'.');
     if(!SESSION.running || paused) return;
-    await new Promise(r=>{
-      waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<clauses.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000);
-    });
+    await new Promise(r=>{ waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<clauses.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
     if(!SESSION.running || paused) return;
   }
   const nodes=[...document.querySelectorAll('#premiseText .rel')];
@@ -687,13 +711,14 @@ function start(){
 function stop(){
   SESSION.running=false; paused=false;
   try{ clearTimeout(waitTimer); }catch(_){}
-  try{ if('speechSynthesis' in window && speechSynthesis.speaking) speechSynthesis.cancel(); }catch(_){}
   waitTimer=null; responded=false;
 }
 function togglePause(){
   if(!SESSION.running) return;
   paused=!paused;
-  if(paused){ try{ if('speechSynthesis' in window && speechSynthesis.speaking) speechSynthesis.cancel(); }catch(_){ } }
+  if(paused){
+    try{ if(speechSynthesis.speaking) speechSynthesis.cancel(); }catch(_){}
+  }
   if($('pause')) $('pause').textContent = paused?'▶ Resume':'⏸ Pause';
   if(!paused){ runTrial(); }
 }
@@ -707,16 +732,17 @@ function reset(){
 /* ---------- Input handling ---------- */
 function registerHit(){
   if(!SESSION.running) return;
-  if(responded) return;
+  if(responded) return; // one response per trial
   responded=true;
-  const truth = (idx>=N) ? logicMatch(history[idx-N], history[idx]) : false;
+  const truth = (idx>=N) ? logicMatch(history[idx-N], history[idx-0]) : false;
   if(truth) correct++; else errors++;
   updateUI();
 }
 function skip(){
   if(!SESSION.running) return;
   try{ clearTimeout(waitTimer); }catch(_){}
-  waitTimer=null; idx++; updateUI(); runTrial();
+  waitTimer=null;
+  idx++; updateUI(); runTrial();
 }
 
 function updateUI(){
@@ -730,21 +756,15 @@ function updateUI(){
   setText('rVal', RATE+'%'); setText('relCountVal', SESSION.RELS_PER_PREMISE);
 }
 
-/* ---------- Bind UI & initialize voices ---------- */
+/* ---------- Bind UI ---------- */
 window.addEventListener('keydown', e=>{
   if(!SESSION.running) return;
   if(e.code==='Space'){ registerHit(); e.preventDefault(); }
 });
 
 document.addEventListener('DOMContentLoaded', ()=>{
-  // Initialize voices robustly
-  if('speechSynthesis' in window){
-    try{
-      window.speechSynthesis.onvoiceschanged = loadVoicesAndSelect;
-      loadVoicesAndSelect();
-    }catch(_){}
-  }
-
+  // warm voices
+  if('speechSynthesis' in window){ speechSynthesis.getVoices(); }
   // live labels
   $('n').oninput=e=>{ if(!SESSION.running){ N=+e.target.value; setText('nVal', N); } };
   $('trials').oninput=e=>{ if(!SESSION.running){ MAX=+e.target.value; setText('tVal', MAX); setText('max', MAX); } };
