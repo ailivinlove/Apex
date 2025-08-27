@@ -29,10 +29,6 @@ select{ min-height:38px }
 .small{ font-size:12px; color:var(--mut) }
 hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.flex{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-.badge-ok{color:#9fffcf;border-color:rgba(0,255,170,.35)}
-.badge-warn{color:#ffd48f;border-color:rgba(255,200,0,.35)}
-.badge-err{color:#ff9fb1;border-color:rgba(255,0,85,.35)}
 </style>
 </head>
 <body>
@@ -57,7 +53,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
         <label>Relations per premise (clauses): <span id="relCountVal">2</span></label>
         <input id="relCount" type="number" min="1" step="1" value="2">
         <div class="mut small" style="margin-top:6px">
-          8D axes: plane (north/south/east/west), levels (up/down), depth (in/out), orientation (right/left), timing (ahead/behind), value (higher/lower), rotation (clockwise/anti-clockwise).
+          8D axes (plain): plane (north/south/east/west), levels (up/down), depth (in/out), orientation (right/left), timing (ahead/behind), value (higher/lower), rotation (clockwise/anti-clockwise).
         </div>
       </div>
     </div>
@@ -79,7 +75,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
           <label><input id="banOppositesSameClause" type="checkbox"> Ban opposites in same clause</label>
 
           <label><input id="banOppositesUnion" type="checkbox"> Ban opposites across union (i−N ∪ i)</label>
-          <label><input id="speakEnabled" type="checkbox" checked> Speak premises</label>
+          <label><input id="speakEnabled" type="checkbox" checked> Speak premises (UK female)</label>
         </div>
         <div class="mut small" style="margin-top:6px">
           Max stress: enable Order + set 3 steps + enable Isomorphism + leave bans OFF.
@@ -91,21 +87,17 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
     <div class="col">
       <div class="box">
         <div class="title">Controls / Status</div>
-        <div class="flex" style="margin-top:6px">
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px">
           <button id="start" class="btn">▶ Start</button>
           <button id="pause" class="btn" disabled>⏸ Pause</button>
           <button id="reset" class="btn" disabled>🔄 Reset</button>
           <button id="hit" class="btn" disabled>✓ Match (<span class="kbd">Space</span>)</button>
           <button id="skip" class="btn" disabled>⏭ Skip</button>
-          <button id="testVoice" class="btn">🔊 Test Voice</button>
         </div>
         <div class="mut" style="margin-top:8px">
           Trial <span id="idx">0</span>/<span id="max">40</span> • Planned: <span id="ptype">—</span> • Actual (logic): <span id="isMatch">—</span>
         </div>
         <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
-        <div class="mut" style="margin-top:6px">
-          Voice: <span id="voiceName">—</span> <span id="voiceBadge" class="badge">initializing…</span>
-        </div>
       </div>
     </div>
   </div>
@@ -120,8 +112,10 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 <script>
 /* ===========================================================
    8D COMPASS + ADVANCED STRESSORS — PURE LOGIC MATCH
-   Robust British female TTS with voice detection & test button.
-   Sliders allow up to 60s pauses (relations & inter-premise).
+   Axes: plane (N/S/E/W), levels (up/down), depth (in/out),
+   orientation (right/left), timing (ahead/behind),
+   value (higher/lower), rotation (clockwise/anti-clockwise).
+   Includes: robust UK female TTS selection + 0–60s pause sliders.
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
@@ -129,7 +123,7 @@ const $ = id => document.getElementById(id);
 const clone = o => JSON.parse(JSON.stringify(o));
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a; }
 
-/* ---------- Global knobs ---------- */
+/* ---------- Global knobs (read at Start) ---------- */
 let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false;
 let BAN_OPP_SAME=false, BAN_OPP_UNION=false;
 let SPEAK=true;
@@ -180,10 +174,7 @@ function vecAdd(a,b){ return {
   x:a.x+b.x, y:a.y+b.y, z:a.z+b.z, w:a.w+b.w,
   u:a.u+b.u, v:a.v+b.v, p:a.p+b.p, q:a.q+b.q
 }; }
-function vecInv(a){ return {
-  x:-a.x, y:-a.y, z:-a.z, w:-a.w,
-  u:-a.u, v:-a.v, p:-a.p, q:-a.q
-}; }
+function vecInv(a){ return { x:-a.x, y:-a.y, z:-a.z, w:-a.w, u:-a.u, v:-a.v, p:-a.p, q:-a.q }; }
 function vecEq(a,b){ return (
   a.x===b.x && a.y===b.y && a.z===b.z && a.w===b.w &&
   a.u===b.u && a.v===b.v && a.p===b.p && a.q===b.q
@@ -198,8 +189,11 @@ function levelsPhrase(z){
 function valuePhrase(p){ if(p===0) return null; return p>0 ? 'higher priority' : 'lower priority'; }
 function rotationPhrase(q){ if(q===0) return null; return q>0 ? 'rotated clockwise' : 'rotated anti-clockwise'; }
 function planePhrase(x,y){
-  let s=''; if(y<0) s+='north'; if(y>0) s+='south';
-  if(x>0) s+=(s?' ':'')+'east'; if(x<0) s+=(s?' ':'')+'west';
+  let s='';
+  if(y<0) s+='north';
+  if(y>0) s+='south';
+  if(x>0) s+=(s?' ':'')+'east';
+  if(x<0) s+=(s?' ':'')+'west';
   return s||null;
 }
 function orientationPhrase(u){ if(u===0) return null; return u>0 ? 'turned right' : 'turned left'; }
@@ -248,7 +242,7 @@ function buildEdgeVector(symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
   let r=zeroVec();
-  const rolls=1+((Math.random()*3)|0); // 1..3 components
+  const rolls=1+((Math.random()*3)|0);
   for(let i=0;i<rolls;i++){
     const axis=(Math.random()*8)|0;
     if(axis===0){ const p=['north','south','east','west'][(Math.random()*4)|0]; r=vecAdd(r, tokenToDelta(p)); }
@@ -258,7 +252,7 @@ function buildEdgeVector(symPool){
     else if(axis===4){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind')); }
     else if(axis===5){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'higher':'lower')); }
     else if(axis===6){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'clockwise':'anticlockwise')); }
-    else { const t = TOKENS[(Math.random()*TOKENS.LENGTH)|0]; r=vecAdd(r, tokenToDelta(t||'north')); } // guard
+    else { const t=TOKENS[(Math.random()*TOKENS.length)|0]; r=vecAdd(r, tokenToDelta(t)); }
   }
   return {u,v,rel:r,seq:null};
 }
@@ -289,8 +283,8 @@ function parsePremise(sentence){
         if(t==='one level down') return 'down';
         if(t==='higher priority') return 'higher';
         if(t==='lower priority') return 'lower';
-        if(t==='rotated clockwise') return 'clockwise';
         if(t==='rotated anti-clockwise' || t==='rotated anticlockwise') return 'anticlockwise';
+        if(t==='rotated clockwise') return 'clockwise';
         return t;
       });
       seq.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
@@ -301,9 +295,7 @@ function parsePremise(sentence){
         const lm=t.match(/^(one|two|three|\d+)\s+levels?\s+(up|down)$/);
         if(lm){
           const n= lm[1]==='one'?1 : lm[1]==='two'?2 : lm[1]==='three'?3 : parseInt(lm[1],10);
-          const dir= lm[2];
-          for(let k=0;k<n;k++) rel=vecAdd(rel, tokenToDelta(dir));
-          return;
+          const dir= lm[2]; for(let k=0;k<n;k++) rel=vecAdd(rel, tokenToDelta(dir)); return;
         }
         if(t==='turned right'){ rel=vecAdd(rel, tokenToDelta('right')); return; }
         if(t==='turned left'){  rel=vecAdd(rel, tokenToDelta('left')); return; }
@@ -333,8 +325,9 @@ function checkUnionConstraints(merged){
   merged.forEach(e=>{
     const key=[e.u,e.v].sort().join('|');
     const set=pairs.get(key)||new Set();
-    if(ORDER_MODE){ (e.seq||[]).forEach(t=>set.add(t)); }
-    else{
+    if(ORDER_MODE){
+      (e.seq||[]).forEach(t=>set.add(t));
+    } else {
       const r=e.rel;
       if(r.y<0) set.add('north'); if(r.y>0) set.add('south');
       if(r.x>0) set.add('east');  if(r.x<0) set.add('west');
@@ -379,10 +372,7 @@ function pairwiseDeltas(coords, comps){
     const a=comp.slice().sort();
     for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++){
       const u=a[i], v=a[j], cu=coords.get(u), cv=coords.get(v);
-      sig.set(`${u}|${v}`, {
-        x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w,
-        u:cv.u-cu.u, v:cv.v-cu.v, p:cv.p-cu.p, q:cv.q-cu.q
-      });
+      sig.set(`${u}|${v}`, { x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w, u:cv.u-cu.u, v:cv.v-cu.v, p:cv.p-cu.p, q:cv.q-cu.q });
     }
   });
   return sig;
@@ -395,7 +385,7 @@ function canonicalSeq(u, v, seq){
   return inv.join('>');
 }
 
-/* ---------- Signatures ---------- */
+/* ---------- Signatures (vector vs ordered) ---------- */
 function sigVector(sentence){
   const P=parsePremise(sentence);
   if(!checkClauseConstraints(P.edges)) return 'INVALID';
@@ -417,7 +407,7 @@ function sigOrdered(sentence){
   return [...map.keys()].sort().map(k=>`${k}:${map.get(k)}`).join('|');
 }
 
-/* ---------- Isomorphism ---------- */
+/* ---------- Isomorphism (symbol relabeling) ---------- */
 function permutations(arr){
   const out=[]; const used=Array(arr.length).fill(false); const cur=[];
   function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; }
@@ -499,109 +489,69 @@ function logicMatch(aStr,bStr){
   }
 }
 
-/* ---------- TTS (British female) ---------- */
+/* ---------- British female speech (robust selection) ---------- */
 let preferredVoice = null;
-let voiceReady = false;
+let voiceReadyResolve = null;
+const voiceReady = new Promise(res => { voiceReadyResolve = res; });
 
-function listVoices(){ try{ return window.speechSynthesis.getVoices() || []; }catch(_){ return []; } }
-
-function chooseBritishFemaleVoice(){
-  const voices = listVoices();
-  if(!voices.length) return null;
-
+function chooseBritishFemaleVoice(voices){
+  // 1) Name preferences commonly found
   const namePrefs = [
     'Google UK English Female',
     'Microsoft Hazel',
     'Microsoft Sonia',
     'Serena',
     'Kate',
+    'Libby',
+    'Abbi'
   ];
-
-  // 1) Preferred names
   for(const n of namePrefs){
     const v = voices.find(v=> (v.name||'').toLowerCase().includes(n.toLowerCase()));
     if(v) return v;
   }
-  // 2) Any en-GB with "female" hint in name
-  const gbFemale = voices.find(v=> (v.lang||'').toLowerCase()==='en-gb' && (v.name||'').toLowerCase().includes('female'));
-  if(gbFemale) return gbFemale;
+  // 2) Any explicit female en-GB
+  let v = voices.find(v=> (v.lang||'').toLowerCase()==='en-gb' && /(female|fem|woman)/i.test(v.name||''));
+  if(v) return v;
   // 3) Any en-GB
-  const gbAny = voices.find(v=> (v.lang||'').toLowerCase()==='en-gb');
-  if(gbAny) return gbAny;
+  v = voices.find(v=> (v.lang||'').toLowerCase()==='en-gb');
+  if(v) return v;
   // 4) Any English female-ish
-  const enFemale = voices.find(v=> (v.lang||'').toLowerCase().startsWith('en') && (v.name||'').toLowerCase().includes('female'));
-  if(enFemale) return enFemale;
+  v = voices.find(v=> (v.lang||'').toLowerCase().startsWith('en') && /(female|fem|woman|susan|sara|amy|emma|olivia|kate|samantha|victoria)/i.test(v.name||''));
+  if(v) return v;
   // 5) Any English
-  const enAny = voices.find(v=> (v.lang||'').toLowerCase().startsWith('en'));
-  return enAny || voices[0] || null;
+  v = voices.find(v=> (v.lang||'').toLowerCase().startsWith('en'));
+  return v || null;
 }
 
-function updateVoiceUI(){
-  const badge = $('voiceBadge'), nm = $('voiceName');
-  if(!('speechSynthesis' in window)){ nm.textContent='(no TTS)'; badge.textContent='unavailable'; badge.className='badge badge-err'; return; }
-  if(preferredVoice){
-    nm.textContent = `${preferredVoice.name} (${preferredVoice.lang})`;
-    badge.textContent='ready'; badge.className='badge badge-ok';
-  }else if(voiceReady){
-    nm.textContent='(fallback English)'; badge.textContent='ready'; badge.className='badge badge-warn';
-  }else{
-    nm.textContent='—'; badge.textContent='initializing…'; badge.className='badge';
-  }
-}
-
-function ensureVoiceReady(timeoutMs=4000){
-  return new Promise(resolve=>{
-    if(!('speechSynthesis' in window)){ voiceReady=false; updateVoiceUI(); resolve(false); return; }
-
-    let done=false;
-    const finish=(ok)=>{
-      if(done) return; done=true; voiceReady=ok; if(!preferredVoice && ok) preferredVoice=chooseBritishFemaleVoice(); updateVoiceUI(); resolve(ok);
-    };
-
-    // Attempt immediate selection
-    const immediate = listVoices();
-    if(immediate.length){
-      preferredVoice = chooseBritishFemaleVoice();
-      finish(true); return;
+function loadVoicesAndSelect(){
+  try{
+    const voices = window.speechSynthesis.getVoices() || [];
+    if(voices.length){
+      preferredVoice = chooseBritishFemaleVoice(voices);
+      if(voiceReadyResolve){ voiceReadyResolve(); voiceReadyResolve=null; }
+      return;
     }
-
-    // Wait for async load
-    const onvc = ()=>{
-      const vs = listVoices();
-      if(vs.length){
-        preferredVoice = chooseBritishFemaleVoice();
-        window.speechSynthesis.onvoiceschanged = null;
-        finish(true);
-      }
-    };
-    window.speechSynthesis.onvoiceschanged = onvc;
-
-    // Timeout safety
-    setTimeout(()=>finish(false), timeoutMs);
-    // Nudge some browsers
-    try{ window.speechSynthesis.getVoices(); }catch(_){}
-  });
+  }catch(_){}
+  // Retry until voices populate
+  setTimeout(loadVoicesAndSelect, 100);
 }
 
 async function speakLine(text){
   if(!SPEAK) return;
   if(!('speechSynthesis' in window)) return;
-
-  // Ensure voices are loaded and a voice is chosen
-  if(!voiceReady) await ensureVoiceReady();
-
-  const u=new SpeechSynthesisUtterance(text);
-  u.lang='en-GB';
-  u.rate=0.95;   // slightly slower, elegant pacing
-  u.pitch=1.05;  // slightly brighter timbre
-  u.volume=1.0;
+  // ensure voices loaded and preferred selected
+  await voiceReady;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'en-GB';
+  u.rate = 0.95;     // slightly slower, clearer
+  u.pitch = 1.15;    // brighter, more lyrical
+  u.volume = 1.0;
   if(preferredVoice) u.voice = preferredVoice;
-
   return new Promise(res=>{
     let done=false; const fin=()=>{ if(!done){ done=true; res(); } };
     u.onend=fin; u.onerror=fin;
     try{
-      if(speechSynthesis.speaking) speechSynthesis.cancel();
+      if(speechSynthesis.speaking){ speechSynthesis.cancel(); }
       speechSynthesis.speak(u);
     }catch(_){ res(); }
   });
@@ -618,9 +568,11 @@ function showPremise(sentence){
   });
 }
 
-/* ---------- Trial engine ---------- */
+/* ---------- Build trials ---------- */
 let N=2, MAX=40, PAUSE_SEC=2.7, PREMISE_INTERVAL_SEC=0.9, RATE=25;
-let idx=0, paused=false, waitTimer=null, responded=false;
+let idx=0, paused=false, waitTimer=null;
+let responded=false;
+
 const history=[], planned=[];
 let correct=0, errors=0;
 
@@ -632,8 +584,7 @@ function planSequence(){
   shuffle(eligible); for(let i=0;i<k;i++) planned[eligible[i]]=true;
 }
 
-function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
-
+/* ---------- Trial engine ---------- */
 function buildPremise(count, prevStr=null, mustMatch=false){
   const syms=pickSymbols(3);
   if(mustMatch && prevStr){
@@ -641,17 +592,13 @@ function buildPremise(count, prevStr=null, mustMatch=false){
     const edges=clone(P.edges).slice(0,Math.min(count,P.edges.length));
     while(edges.length<count && P.edges.length) edges.push(clone(P.edges[edges.length%P.edges.length]));
     const flip=edges.map(e=>{
-      if(ORDER_MODE) return clone(e);
-      if(Math.random()<0.5){
-        return {u:e.v, v:e.u, rel:vecInv(e.rel), seq: e.seq ? e.seq.map(t=>OPP[t]||t) : null};
-      }
+      if(ORDER_MODE) return clone(e); // keep order intact
+      if(Math.random()<0.5){ return {u:e.v, v:e.u, rel:vecInv(e.rel), seq: e.seq ? e.seq.map(t=>OPP[t]||t) : null}; }
       return clone(e);
     });
     let candidate = renderEdges(flip);
     let tries=0;
-    while(!logicMatch(prevStr, candidate) && ++tries<200){
-      candidate = renderEdges(flip);
-    }
+    while(!logicMatch(prevStr, candidate) && ++tries<200){ candidate = renderEdges(flip); }
     return candidate;
   }else{
     const edges=[];
@@ -672,17 +619,15 @@ async function runTrial(){
 
   if(mustMatch && prev){
     let tries=0;
-    do{
-      sentence = buildPremise(SESSION.RELS_PER_PREMISE, prev, true);
-    }while(!logicMatch(prev, sentence) && ++tries<200);
+    do{ sentence = buildPremise(SESSION.RELS_PER_PREMISE, prev, true); }
+    while(!logicMatch(prev, sentence) && ++tries<200);
   }else{
     let tries=0;
     do{
       sentence = buildPremise(SESSION.RELS_PER_PREMISE, null, false);
       const prevSig = prev ? (ORDER_MODE?sigOrdered(prev):sigVector(prev)) : null;
       const nowSig  = ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
-      if(prevSig==null){ break; }
-      if(nowSig!=='INVALID' && nowSig!==prevSig) break;
+      if(prevSig==null || (nowSig!=='INVALID' && nowSig!==prevSig)) break;
     }while(++tries<200);
   }
 
@@ -690,6 +635,7 @@ async function runTrial(){
   showPremise(sentence);
   responded=false;
 
+  // speak clause-by-clause in a UK female voice
   const clauses=sentence.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
   for(let i=0;i<clauses.length;i++){
     const nodes=[...document.querySelectorAll('#premiseText .rel')];
@@ -710,7 +656,7 @@ async function runTrial(){
 /* ---------- Game state ---------- */
 const SESSION={ running:false, RELS_PER_PREMISE:2 };
 
-async function start(){
+function start(){
   ORDER_MODE = !!($('orderMode')&&$('orderMode').checked);
   ORDER_LEN  = $('orderLen') ? parseInt($('orderLen').value,10) : 2;
   ISO_MODE   = !!($('isoMode')&&$('isoMode').checked);
@@ -730,10 +676,6 @@ async function start(){
   idx=0; correct=0; errors=0; history.length=0; planned.length=0;
   planSequence(); updateUI();
 
-  // Ensure voice is ready AFTER a user gesture (Start click) — required by some browsers
-  await ensureVoiceReady();
-  await speakLine('Voice ready. Beginning the session.');
-
   SESSION.running=true; paused=false;
   if($('pause')) $('pause').disabled=false;
   if($('reset')) $('reset').disabled=false;
@@ -751,7 +693,7 @@ function stop(){
 function togglePause(){
   if(!SESSION.running) return;
   paused=!paused;
-  if(paused){ try{ if('speechSynthesis' in window && speechSynthesis.speaking) speechSynthesis.cancel(); }catch(_){} }
+  if(paused){ try{ if('speechSynthesis' in window && speechSynthesis.speaking) speechSynthesis.cancel(); }catch(_){ } }
   if($('pause')) $('pause').textContent = paused?'▶ Resume':'⏸ Pause';
   if(!paused){ runTrial(); }
 }
@@ -762,6 +704,7 @@ function reset(){
   idx=0; correct=0; errors=0; updateUI();
 }
 
+/* ---------- Input handling ---------- */
 function registerHit(){
   if(!SESSION.running) return;
   if(responded) return;
@@ -773,8 +716,7 @@ function registerHit(){
 function skip(){
   if(!SESSION.running) return;
   try{ clearTimeout(waitTimer); }catch(_){}
-  waitTimer=null;
-  idx++; updateUI(); runTrial();
+  waitTimer=null; idx++; updateUI(); runTrial();
 }
 
 function updateUI(){
@@ -786,23 +728,21 @@ function updateUI(){
   setText('nVal', N); setText('tVal', MAX);
   setText('pVal', PAUSE_SEC.toFixed(1)+' s'); setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s');
   setText('rVal', RATE+'%'); setText('relCountVal', SESSION.RELS_PER_PREMISE);
-  updateVoiceUI();
 }
 
-/* ---------- Bind UI ---------- */
+/* ---------- Bind UI & initialize voices ---------- */
 window.addEventListener('keydown', e=>{
   if(!SESSION.running) return;
   if(e.code==='Space'){ registerHit(); e.preventDefault(); }
 });
 
 document.addEventListener('DOMContentLoaded', ()=>{
-  // Init voice UX early
+  // Initialize voices robustly
   if('speechSynthesis' in window){
-    window.speechSynthesis.onvoiceschanged = ()=>{ preferredVoice = chooseBritishFemaleVoice(); updateVoiceUI(); };
-    // poke voices
-    try{ window.speechSynthesis.getVoices(); }catch(_){}
-  } else {
-    updateVoiceUI();
+    try{
+      window.speechSynthesis.onvoiceschanged = loadVoicesAndSelect;
+      loadVoicesAndSelect();
+    }catch(_){}
   }
 
   // live labels
@@ -819,10 +759,6 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('reset').onclick=()=>{ reset(); };
   $('hit').onclick=()=>{ registerHit(); };
   $('skip').onclick=()=>{ skip(); };
-  $('testVoice').onclick=async ()=>{
-    await ensureVoiceReady();
-    await speakLine('Hello. This is a British English voice check.');
-  };
 
   updateUI();
 });
