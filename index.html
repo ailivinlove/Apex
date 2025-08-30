@@ -39,20 +39,20 @@ pre.builder{white-space:pre-wrap;font-size:11px;line-height:1.3;background:#0e11
     <div class="col">
       <div class="box">
         <div class="title">Timing & Complexity</div>
-        <label>N-back level: <span id="nVal">2</span></label>
-        <input id="n" type="range" min="1" max="10" value="2">
-        <label>Trials per block: <span id="tVal">40</span></label>
-        <input id="trials" type="range" min="10" max="500" step="1" value="40">
-        <label>Pause between relations in a premise (seconds): <span id="pVal">0.6 s</span></label>
-        <input id="pauseTime" type="range" min="0" max="60" step="0.1" value="0.6">
-        <label>Pause between premises (seconds): <span id="premiseIntervalVal">0.8 s</span></label>
-        <input id="premiseInterval" type="range" min="0" max="60" step="0.1" value="0.8">
+        <label>N-back level: <span id="nVal">1</span></label>
+        <input id="n" type="range" min="1" max="10" value="1">
+        <label>Trials per block: <span id="tVal">500</span></label>
+        <input id="trials" type="range" min="10" max="500" step="1" value="500">
+        <label>Pause between relations in a premise (seconds): <span id="pVal">30.0 s</span></label>
+        <input id="pauseTime" type="range" min="0" max="60" step="0.1" value="30">
+        <label>Pause between premises (seconds): <span id="premiseIntervalVal">30.0 s</span></label>
+        <input id="premiseInterval" type="range" min="0" max="60" step="0.1" value="30">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="0" max="100" step="1" value="25">
         <hr class="hr">
         <div class="title">Relational Complexity</div>
-        <label>Relations per premise (clauses): <span id="relCountVal">2</span></label>
-        <input id="relCount" type="number" min="1" step="1" value="2">
+        <label>Relations per premise (clauses): <span id="relCountVal">1</span></label>
+        <input id="relCount" type="number" min="1" step="1" value="1">
         <div class="mut small" style="margin-top:6px">
           6D axes (plain): plane (north/south/east/west), levels (up/down), depth (in/out), turn (right/left), timing (ahead/behind).
         </div>
@@ -93,7 +93,7 @@ pre.builder{white-space:pre-wrap;font-size:11px;line-height:1.3;background:#0e11
           <button id="skip" class="btn" disabled>⏭ Skip</button>
         </div>
         <div class="mut" style="margin-top:8px">
-          Trial <span id="idx">0</span>/<span id="max">40</span> • Planned: <span id="ptype">—</span> • Actual (logic): <span id="isMatch">—</span>
+          Trial <span id="idx">0</span>/<span id="max">500</span> • Planned: <span id="ptype">—</span> • Actual (logic): <span id="isMatch">—</span>
         </div>
         <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
       </div>
@@ -116,7 +116,7 @@ pre.builder{white-space:pre-wrap;font-size:11px;line-height:1.3;background:#0e11
 <script>
 /* ===========================================================
    LOGIC-ONLY GENERATOR (6D) — MATCHES BY STRUCTURE, NOT WORDING
-   Opposites-ban toggles removed per request; logic gates retained.
+   Defaults updated per request (N=1, MAX=500, pauses=30s, rels=1).
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
@@ -287,7 +287,7 @@ function parsePremise(sentence){
   return {nodes:[...nodes], edges};
 }
 
-/* ---------- Constraint stubs (always pass; toggles removed) ---------- */
+/* ---------- Constraint stubs (opposites-ban removed) ---------- */
 function checkClauseConstraints(_edges){ return true; }
 function checkUnionConstraints(_merged){ return true; }
 
@@ -478,8 +478,8 @@ function randomStyle(){
   };
 }
 
-/* ---------- Generator core ---------- */
-let N=2, MAX=40, PAUSE_SEC=0.6, PREMISE_INTERVAL_SEC=0.8, RATE=25;
+/* ---------- Generator core (defaults updated) ---------- */
+let N=1, MAX=500, PAUSE_SEC=30, PREMISE_INTERVAL_SEC=30, RATE=25;
 let idx=0, paused=false, waitTimer=null;
 let responded=false;
 
@@ -499,22 +499,18 @@ function buildMatchFrom(prevStr){
   const P=parsePremise(prevStr);
   let edges=clone(P.edges);
 
-  // invert 30–60% edges
   const countToInvert = Math.round(edges.length * (0.3 + Math.random()*0.3));
   const idxs = shuffle([...Array(edges.length).keys()]).slice(0, countToInvert);
   edges = edges.map((e,i)=> idxs.includes(i) ? invertEdge(e) : clone(e));
 
-  // optional symbol bijection (ISO only)
   if(ISO_MODE){
     const syms=uniqueSymbols(edges);
     const bij=randomBijection(syms);
     edges = permuteSymbols(edges, bij);
   }
 
-  // reorder clauses
   edges = reorderClauses(edges);
 
-  // render
   const style = randomStyle();
   const sentence = renderEdges(edges, style);
   return sentence;
@@ -578,7 +574,6 @@ async function runTrial(){
 
       const nowSig = ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
 
-      // consistency gates
       const mergedOk = (function(){
         const A=parsePremise(prev), B=parsePremise(sentence);
         const merged=[...A.edges, ...B.edges];
@@ -667,7 +662,7 @@ async function runTrial(){
 }
 
 /* ---------- Game state ---------- */
-const SESSION={ running:false, RELS_PER_PREMISE:2 };
+const SESSION={ running:false, RELS_PER_PREMISE:1 };
 
 function start(){
   ORDER_MODE = !!($('orderMode')&&$('orderMode').checked);
@@ -675,13 +670,13 @@ function start(){
   ISO_MODE   = !!($('isoMode')&&$('isoMode').checked);
   SPEAK = !!($('speakEnabled')&&$('speakEnabled').checked);
 
-  SESSION.RELS_PER_PREMISE = Math.max(1, parseInt(($('relCount')&&$('relCount').value)||'2',10));
+  SESSION.RELS_PER_PREMISE = Math.max(1, parseInt(($('relCount')&&$('relCount').value)||'1',10));
   if($('relCount')) $('relCount').disabled=true;
 
-  N = +($('n')&&$('n').value)||2;
-  MAX = +($('trials')&&$('trials').value)||40;
-  PAUSE_SEC = +($('pauseTime')&&$('pauseTime').value)||0.6;
-  PREMISE_INTERVAL_SEC = +($('premiseInterval')&&$('premiseInterval').value)||0.8;
+  N = +($('n')&&$('n').value)||1;
+  MAX = +($('trials')&&$('trials').value)||500;
+  PAUSE_SEC = +($('pauseTime')&&$('pauseTime').value)||30;
+  PREMISE_INTERVAL_SEC = +($('premiseInterval')&&$('premiseInterval').value)||30;
   RATE = +($('rate')&&$('rate').value)||25;
 
   idx=0; correct=0; errors=0; history.length=0; planned.length=0;
@@ -753,7 +748,7 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('pauseTime').oninput=e=>{ if(!SESSION.running){ PAUSE_SEC=+e.target.value; setText('pVal', PAUSE_SEC.toFixed(1)+' s'); } };
   $('premiseInterval').oninput=e=>{ if(!SESSION.running){ PREMISE_INTERVAL_SEC=+e.target.value; setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s'); } };
   $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; setText('rVal', RATE+'%'); } };
-  $('relCount').oninput=e=>{ if(!SESSION.running){ SESSION.RELS_PER_PREMISE=Math.max(1,parseInt(e.target.value,10)||2); setText('relCountVal', SESSION.RELS_PER_PREMISE); } };
+  $('relCount').oninput=e=>{ if(!SESSION.running){ SESSION.RELS_PER_PREMISE=Math.max(1,parseInt(e.target.value,10)||1); setText('relCountVal', SESSION.RELS_PER_PREMISE); } };
 
   $('start').onclick=()=>{ start(); };
   $('pause').onclick=()=>{ togglePause(); };
