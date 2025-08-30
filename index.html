@@ -73,13 +73,10 @@ pre.builder{white-space:pre-wrap;font-size:11px;line-height:1.3;background:#0e11
           </label>
 
           <label><input id="isoMode" type="checkbox"> Isomorphism (allow relabeling)</label>
-          <label><input id="banOppositesSameClause" type="checkbox"> Ban opposites in same clause</label>
-
-          <label><input id="banOppositesUnion" type="checkbox"> Ban opposites across union (i−N ∪ i)</label>
           <label><input id="speakEnabled" type="checkbox" checked> Speak premises</label>
         </div>
         <div class="mut small" style="margin-top:6px">
-          Max stress: enable Order + set 3 steps + enable Isomorphism + leave bans OFF.
+          Max stress: enable Order + set 3 steps + enable Isomorphism.
         </div>
       </div>
     </div>
@@ -106,7 +103,7 @@ pre.builder{white-space:pre-wrap;font-size:11px;line-height:1.3;background:#0e11
   <!-- Builder's prompt (for reference / auditing) -->
   <div class="box" style="margin-top:12px">
     <div class="title">Logic-Only Generator Constraint (reference)</div>
-    <pre class="builder">Goal: MATCH/NON-MATCH is decided only by structural logic (graph displacements / ordered sequences). Surface wording is decorrelated and never a cue. Grammar must be "X9 is (REL) of P5 and ...". Vocabulary strictly: north/south/east/west, one|two|three levels up|down, in/out, turned right/turned left, ahead/behind. For MATCH at i: signature(S_i)==signature(S_{i-N}) and merged edges solve; for NON-MATCH: signatures differ (and not iso-equivalent if ISO on), and all solves pass. Surface anti-leak: never reuse identical sentence within last 120; ensure S_i ≠ S_{i-N}; diversify with edge inversions, clause reorder, symbol bijection (ISO only), level-sum splitting, and component shuffle. Reject any clause with opposites if bans enabled; reject union-opposites if union-ban enabled. Hard gate: parser round-trip, solver on candidate and merged, diagnostics logged.</pre>
+    <pre class="builder">Goal: MATCH/NON-MATCH is decided only by structural logic (graph displacements / ordered sequences). Surface wording is decorrelated and never a cue. Grammar must be "X9 is (REL) of P5 and ...". Vocabulary strictly: north/south/east/west, one|two|three levels up|down, in/out, turned right/turned left, ahead/behind. For MATCH at i: signature(S_i)==signature(S_{i-N}) and merged edges solve; for NON-MATCH: signatures differ (and not iso-equivalent if ISO on), and all solves pass. Surface anti-leak: never reuse identical sentence within last 120; ensure S_i ≠ S_{i-N}; diversify with edge inversions, clause reorder, symbol bijection (ISO only), level-sum splitting, and component shuffle. Hard gate: parser round-trip and solver on candidate + merged; diagnostics logged.</pre>
   </div>
 
   <!-- Premise -->
@@ -119,7 +116,7 @@ pre.builder{white-space:pre-wrap;font-size:11px;line-height:1.3;background:#0e11
 <script>
 /* ===========================================================
    LOGIC-ONLY GENERATOR (6D) — MATCHES BY STRUCTURE, NOT WORDING
-   This implements the "builder's prompt" constraints end-to-end.
+   Opposites-ban toggles removed per request; logic gates retained.
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
@@ -131,7 +128,6 @@ function randBool(p=0.5){ return Math.random()<p; }
 
 /* ---------- Global knobs (read at Start) ---------- */
 let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false;
-let BAN_OPP_SAME=false, BAN_OPP_UNION=false;
 let SPEAK=true;
 
 /* ---------- Tokens & opposites ---------- */
@@ -162,42 +158,28 @@ function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.
 /* ---------- Rendering helpers (vector mode) ---------- */
 function levelsPhraseZ(z, expand=false){
   const n=Math.abs(z); if(n===0) return [];
-  if(expand && n>1){
-    return Array(n).fill(z>0?'one level up':'one level down');
-  }
+  if(expand && n>1){ return Array(n).fill(z>0?'one level up':'one level down'); }
   if(n===1) return [z>0?'one level up':'one level down'];
   if(n===2) return [z>0?'two levels up':'two levels down'];
   if(n===3) return [z>0?'three levels up':'three levels down'];
-  // larger than 3 shouldn't occur, but fall back to repeated ones
   return Array(n).fill(z>0?'one level up':'one level down');
 }
 function repeats(word, n){ return Array(Math.abs(n)).fill(word); }
 function vectorComponents(r, style){
-  // Build component phrases (strings) for vector mode; order shuffles later
   const comps=[];
-  // plane: y then x tokens
   if(r.y<0) comps.push('north');
   if(r.y>0) comps.push('south');
   if(r.x>0) comps.push('east');
   if(r.x<0) comps.push('west');
 
-  // levels
-  const zParts = levelsPhraseZ(r.z, style.expandLevels);
-  comps.push(...zParts);
-
-  // depth
+  comps.push(...levelsPhraseZ(r.z, style.expandLevels));
   if(r.w>0) comps.push('in');
   if(r.w<0) comps.push('out');
-
-  // rotation (repeat if magnitude > 1)
   if(r.u>0) comps.push(...repeats('turned right', r.u));
   if(r.u<0) comps.push(...repeats('turned left', r.u));
-
-  // timing
   if(r.v>0) comps.push(...repeats('ahead', r.v));
   if(r.v<0) comps.push(...repeats('behind', r.v));
 
-  // shuffle if chosen
   if(style.shuffleComponents) shuffle(comps);
   return comps;
 }
@@ -208,7 +190,6 @@ function relToStringVectorStyled(r, style){
 
 /* ---------- Rendering helpers (ordered mode) ---------- */
 function seqToString(seq){
-  // ordered mode uses "then" to preserve order; normalize words here
   return (seq&&seq.length)? seq.map(t=>{
     if(t==='right') return 'turned right';
     if(t==='left')  return 'turned left';
@@ -228,16 +209,10 @@ function pickSymbols(k){
 function buildEdgeOrdered(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
-  const seq=[]; const bag=[...TOKENS];
-  // sample with replacement to allow repeats in order mode
+  const seq=[];
   while(seq.length<orderLen){
-    const tok = bag[(Math.random()*bag.length)|0];
-    if(tok==='up'||tok==='down'||tok==='in'||tok==='out'||tok==='right'||tok==='left'||tok==='ahead'||tok==='behind'){
-      seq.push(tok);
-    }else{
-      // plane tokens are okay too in ordered mode; treat as single-step plane moves
-      seq.push(tok);
-    }
+    const tok = TOKENS[(Math.random()*TOKENS.length)|0];
+    seq.push(tok);
   }
   let r={x:0,y:0,z:0,w:0,u:0,v:0};
   seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
@@ -255,7 +230,7 @@ function buildEdgeVector(symPool){
       r=vecAdd(r, tokenToDelta(p));
     }else if(axis===1){
       const dir = (Math.random()<0.5?'up':'down');
-      const steps = 1+((Math.random()*3)|0); // 1..3
+      const steps = 1+((Math.random()*3)|0);
       for(let k=0;k<steps;k++) r=vecAdd(r, tokenToDelta(dir));
     }else if(axis===2){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out')); }
     else if(axis===3){ r=vecAdd(r, tokenToDelta(Math.random()<0.5?'right':'left')); }
@@ -284,7 +259,6 @@ function parsePremise(sentence){
     let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
     if(ORDER_MODE){
       seq = m[2].split(/\s+then\s+/i).map(s=>s.toLowerCase().trim());
-      // normalize phrases
       seq = seq.map(t=>{
         if(t==='turned right') return 'right';
         if(t==='turned left') return 'left';
@@ -313,35 +287,9 @@ function parsePremise(sentence){
   return {nodes:[...nodes], edges};
 }
 
-/* ---------- Constraints ---------- */
-function hasOpposites(list){ const s=new Set(list); for(const t of s){ if(s.has(OPP[t])) return true; } return false; }
-function checkClauseConstraints(edges){
-  if(!BAN_OPP_SAME) return true;
-  if(!ORDER_MODE) return true;
-  for(const e of edges){ if(hasOpposites(e.seq||[])) return false; }
-  return true;
-}
-function checkUnionConstraints(merged){
-  if(!BAN_OPP_UNION) return true;
-  const pairs=new Map();
-  merged.forEach(e=>{
-    const key=[e.u,e.v].sort().join('|');
-    const set=pairs.get(key)||new Set();
-    if(ORDER_MODE){ (e.seq||[]).forEach(t=>set.add(t)); }
-    else{
-      const r=e.rel;
-      if(r.y<0) set.add('north'); if(r.y>0) set.add('south');
-      if(r.x>0) set.add('east');  if(r.x<0) set.add('west');
-      if(r.z>0) set.add('up');    if(r.z<0) set.add('down');
-      if(r.w>0) set.add('in');    if(r.w<0) set.add('out');
-      if(r.u>0) set.add('right'); if(r.u<0) set.add('left');
-      if(r.v>0) set.add('ahead'); if(r.v<0) set.add('behind');
-    }
-    pairs.set(key,set);
-  });
-  for(const set of pairs.values()){ for(const t of set){ if(set.has(OPP[t])) return false; } }
-  return true;
-}
+/* ---------- Constraint stubs (always pass; toggles removed) ---------- */
+function checkClauseConstraints(_edges){ return true; }
+function checkUnionConstraints(_merged){ return true; }
 
 /* ---------- Solver ---------- */
 function solveCoordsFromEdges(edges){
@@ -379,7 +327,6 @@ function pairwiseDeltas(coords, comps){
 
 /* ---------- Ordered signature canonicalization ---------- */
 function canonicalSeq(u, v, seq){
-  // Store under sorted key; if original order reversed, invert+reverse tokens
   const needFlip = (u > v);
   if (!needFlip) return (seq||[]).join('>');
   const inv = (seq||[]).slice().reverse().map(t => OPP[t] || t);
@@ -467,8 +414,8 @@ function logicMatch(aStr,bStr){
     if(!isoMatch(aStr,bStr)) return false;
     const A=parsePremise(aStr), B=parsePremise(bStr);
     const merged=[...A.edges, ...B.edges];
-    if(!checkUnionConstraints(merged)) return false;
-    const sol=solveCoordsFromEdges(merged); return sol.ok;
+    const sol=solveCoordsFromEdges(merged);
+    return sol.ok;
   } else {
     const A=parsePremise(aStr), B=parsePremise(bStr);
     const sA=new Set(A.nodes), sB=new Set(B.nodes); for(const s of sA){ if(!sB.has(s)) return false; }
@@ -476,8 +423,9 @@ function logicMatch(aStr,bStr){
     const sigA = ORDER_MODE ? sigOrdered(aStr) : sigVector(aStr);
     const sigB = ORDER_MODE ? sigOrdered(bStr) : sigVector(bStr);
     if(sigA==='INVALID'||sigB==='INVALID'||sigA!==sigB) return false;
-    const merged=[...A.edges, ...B.edges]; if(!checkUnionConstraints(merged)) return false;
-    const sol=solveCoordsFromEdges(merged); return sol.ok;
+    const merged=[...A.edges, ...B.edges];
+    const sol=solveCoordsFromEdges(merged);
+    return sol.ok;
   }
 }
 
@@ -493,9 +441,7 @@ function rememberSurface(s){
 function seenSurface(s){ return RECENT_SURF.includes(s); }
 function rememberLogic(sig){
   if(!sig) return;
-  if(RECENT_LOGIC.size>400){ // trim
-    RECENT_LOGIC.clear();
-  }
+  if(RECENT_LOGIC.size>400){ RECENT_LOGIC.clear(); }
   RECENT_LOGIC.add(sig);
 }
 function seenLogic(sig){ return RECENT_LOGIC.has(sig); }
@@ -503,7 +449,6 @@ function seenLogic(sig){ return RECENT_LOGIC.has(sig); }
 /* ---------- Neutral transforms for MATCH generation ---------- */
 function invertSeq(seq){ return (seq||[]).slice().reverse().map(t=>OPP[t]||t); }
 function invertEdge(e){
-  // swap endpoints, invert relation; ordered needs reverse+invert sequence
   return {
     u:e.v, v:e.u,
     rel: vecInv(e.rel),
@@ -528,8 +473,8 @@ function uniqueSymbols(edges){
 /* ---------- Render with diversified style ---------- */
 function randomStyle(){
   return {
-    expandLevels: randBool(0.5),       // split "two levels up" → "one... and one..."
-    shuffleComponents: randBool(0.7)   // shuffle component order in vector clauses
+    expandLevels: randBool(0.5),
+    shuffleComponents: randBool(0.7)
   };
 }
 
@@ -554,25 +499,24 @@ function buildMatchFrom(prevStr){
   const P=parsePremise(prevStr);
   let edges=clone(P.edges);
 
-  // 1) randomly invert 30–60% edges
+  // invert 30–60% edges
   const countToInvert = Math.round(edges.length * (0.3 + Math.random()*0.3));
   const idxs = shuffle([...Array(edges.length).keys()]).slice(0, countToInvert);
   edges = edges.map((e,i)=> idxs.includes(i) ? invertEdge(e) : clone(e));
 
-  // 2) optional symbol bijection (ISO only)
+  // optional symbol bijection (ISO only)
   if(ISO_MODE){
     const syms=uniqueSymbols(edges);
     const bij=randomBijection(syms);
     edges = permuteSymbols(edges, bij);
   }
 
-  // 3) reorder clauses
+  // reorder clauses
   edges = reorderClauses(edges);
 
-  // 4) render with diversified style (vector mode); ordered mode fixed phrasing
+  // render
   const style = randomStyle();
   const sentence = renderEdges(edges, style);
-
   return sentence;
 }
 
@@ -629,12 +573,12 @@ async function runTrial(){
     do{
       sentence = buildMatchFrom(prev);
 
-      // surface gates
       if(sentence===prev) { sentence=null; continue; }
       if(seenSurface(sentence)) { sentence=null; continue; }
 
-      // logic gates
       const nowSig = ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
+
+      // consistency gates
       const mergedOk = (function(){
         const A=parsePremise(prev), B=parsePremise(sentence);
         const merged=[...A.edges, ...B.edges];
@@ -650,37 +594,29 @@ async function runTrial(){
       if(nowSig!==prevSig) { sentence=null; continue; }
       if(!mergedOk){ sentence=null; continue; }
 
-      // when ISO disabled, ensure symbol reappearance subset holds
       if(!ISO_MODE){
         const A=parsePremise(prev), B=parsePremise(sentence);
         const sA=new Set(A.nodes), sB=new Set(B.nodes);
         let ok=true; for(const s of sA){ if(!sB.has(s)) {ok=false; break;} }
         if(!ok){ sentence=null; continue; }
       }
-
-      // accept
       break;
     } while(++tries<300);
   }else{
-    // NON-MATCH: ensure different signature (and not iso-equivalent if ISO on)
     const prevSig = prev ? (ORDER_MODE?sigOrdered(prev):sigVector(prev)) : null;
     do{
       sentence = buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
 
-      // surface gates
       if(prev && sentence===prev){ sentence=null; continue; }
       if(seenSurface(sentence)) { sentence=null; continue; }
 
-      // logic gates
       const nowSig = ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
       if(nowSig==='INVALID'){ sentence=null; continue; }
 
-      // reject if signature equals or (ISO on) is iso-equivalent
       if(prev){
         if(nowSig===prevSig){ sentence=null; continue; }
         if(ISO_MODE && isoMatch(prev, sentence)){ sentence=null; continue; }
 
-        // union must solve and respect constraints
         const A=parsePremise(prev), B=parsePremise(sentence);
         const merged=[...A.edges, ...B.edges];
         const s1=solveCoordsFromEdges(A.edges).ok, s2=solveCoordsFromEdges(B.edges).ok, s3=solveCoordsFromEdges(merged).ok;
@@ -688,32 +624,25 @@ async function runTrial(){
         const c2=checkUnionConstraints(merged);
         if(!(s1&&s2&&s3&&c1&&c2)){ sentence=null; continue; }
       }else{
-        // first N trials: just require candidate consistency
         const B=parsePremise(sentence);
         if(!solveCoordsFromEdges(B.edges).ok || !checkClauseConstraints(B.edges)){ sentence=null; continue; }
       }
 
-      // also avoid reusing recent logic signatures to diversify
       if(seenLogic(nowSig)){ sentence=null; continue; }
-
-      // accept
       break;
     } while(++tries<300);
   }
 
   if(!sentence){
-    // as a last resort (surface-only relaxation): rebuild minimally but NEVER relax logic
     sentence = mustMatch && prev ? buildMatchFrom(prev) : buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
   }
 
-  // Diagnostics
   try{
     const prevSig = prev ? (ORDER_MODE?sigOrdered(prev):sigVector(prev)) : '—';
     const nowSig  = ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
     console.log(`[trial ${idx}] planned=${mustMatch?'MATCH':'NON-MATCH'} tries=${tries} prevSig=${prevSig} nowSig=${nowSig} iso=${ISO_MODE}`);
   }catch(_){}
 
-  // Remember surface + logic signature
   rememberSurface(sentence);
   const nowSigF = ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
   rememberLogic(nowSigF);
@@ -722,7 +651,6 @@ async function runTrial(){
   showPremise(sentence);
   responded=false;
 
-  // speak clause-by-clause
   const clauses=sentence.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
   for(let i=0;i<clauses.length;i++){
     const nodes=[...document.querySelectorAll('#premiseText .rel')];
@@ -742,12 +670,9 @@ async function runTrial(){
 const SESSION={ running:false, RELS_PER_PREMISE:2 };
 
 function start(){
-  // read settings
   ORDER_MODE = !!($('orderMode')&&$('orderMode').checked);
   ORDER_LEN  = $('orderLen') ? parseInt($('orderLen').value,10) : 2;
   ISO_MODE   = !!($('isoMode')&&$('isoMode').checked);
-  BAN_OPP_SAME  = !!($('banOppositesSameClause')&&$('banOppositesSameClause').checked);
-  BAN_OPP_UNION = !!($('banOppositesUnion')&&$('banOppositesUnion').checked);
   SPEAK = !!($('speakEnabled')&&$('speakEnabled').checked);
 
   SESSION.RELS_PER_PREMISE = Math.max(1, parseInt(($('relCount')&&$('relCount').value)||'2',10));
@@ -759,7 +684,6 @@ function start(){
   PREMISE_INTERVAL_SEC = +($('premiseInterval')&&$('premiseInterval').value)||0.8;
   RATE = +($('rate')&&$('rate').value)||25;
 
-  // init state
   idx=0; correct=0; errors=0; history.length=0; planned.length=0;
   RECENT_SURF.length=0; RECENT_LOGIC.clear();
   planSequence(); updateUI();
@@ -793,7 +717,7 @@ function reset(){
 /* ---------- Input handling ---------- */
 function registerHit(){
   if(!SESSION.running) return;
-  if(responded) return; // one response per trial
+  if(responded) return;
   responded=true;
   const truth = (idx>=N) ? logicMatch(history[idx-N], history[idx-0]) : false;
   if(truth) correct++; else errors++;
@@ -803,7 +727,6 @@ function skip(){
   if(!SESSION.running) return;
   try{ clearTimeout(waitTimer); }catch(_){}
   waitTimer=null;
-  // fast-forward to next trial
   idx++; updateUI(); runTrial();
 }
 
