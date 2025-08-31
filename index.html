@@ -21,7 +21,7 @@ input[type=range], input[type=number], select{ width:100% }
 select{ min-height:38px }
 .kbd{ border:1px solid rgba(255,255,255,.25); padding:2px 6px; border-radius:6px; background:#0b0d10 }
 .mut{ color:var(--mut); font-size:12px }
-.badge{ display:inline-block; padding:2px 6px; border:1px solid rgba(0,200,255,.3); border-radius:8px; font-size:12px; color:var(--mut); margin-left:6px }
+.badge{ display:inline-block; padding:2px 6px; border:1px solid rgba(0,200,255,.3); border-radius:8px; font-size:12px; color:#8fe7ff; margin-left:6px }
 #premiseText{ margin-top:12px; min-height:110px; background:#0e1113; border:1px solid rgba(0,200,255,.25); border-radius:12px; padding:10px; font-size:18px; line-height:1.6; word-break:break-word }
 #premiseText .rel{ padding:0 4px; border-radius:6px }
 #premiseText .rel.active{ background:rgba(0,200,255,.20); outline:1px solid rgba(0,200,255,.45) }
@@ -60,7 +60,7 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
       </div>
     </div>
 
-    <!-- Stressors (visible) -->
+    <!-- Stressors -->
     <div class="col">
       <div class="box">
         <div class="title">Advanced Stressors</div>
@@ -116,7 +116,7 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
 <script>
 /* ===========================================================
    LOGIC-ONLY GENERATOR (6D + DIAGONALS) — STRUCTURE, NOT WORDING
-   Rotation terms updated: "rotated right" / "rotated left".
+   Fixes: robust timers (pause/skip/reset), unified speech, safe gates
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
@@ -255,17 +255,16 @@ function pickSymbols(k){ const s=new Set(); while(s.size<k) s.add(sym()); return
 function buildEdgeOrdered(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
+  const plane = ['north','south','east','west','northeast','northwest','southeast','southwest'];
+  const choicePool = plane.concat([
+    'in','out','ahead','behind',
+    'one level up','two levels up','three levels up',
+    'one level down','two levels down','three levels down',
+    'rotated right','rotated left'
+  ]);
   const seq=[];
-  while(seq.length<orderLen){
-    const plane = ['north','south','east','west','northeast','northwest','southeast','southwest'];
-    const choicePool = plane.concat([
-      'in','out','ahead','behind',
-      'one level up','two levels up','three levels up',
-      'one level down','two levels down','three levels down',
-      'rotated right','rotated left'
-    ]);
-    seq.push(choicePool[(Math.random()*choicePool.length)|0]);
-  }
+  while(seq.length<orderLen) seq.push(choicePool[(Math.random()*choicePool.length)|0]);
+
   let r={x:0,y:0,z:0,w:0,u:0,v:0};
   seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq};
@@ -302,13 +301,11 @@ function renderEdges(edges, style){
   }).join(' and ');
 }
 
-/* ---------- Edge extractor ---------- */
+/* ---------- Edge extractor (robust against 'and' inside components) ---------- */
 function extractEdges(sentence){
   const re=/([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)/gi;
   const out=[]; let m;
-  while((m=re.exec(String(sentence||'')))){
-    out.push({raw:m[0], A:m[1], core:m[2], B:m[3]});
-  }
+  while((m=re.exec(String(sentence||'')))) out.push({raw:m[0], A:m[1], core:m[2], B:m[3]});
   return out;
 }
 
@@ -333,8 +330,6 @@ function parsePremise(sentence){
 }
 
 /* ---------- Constraint checks (always ON) ---------- */
-function repeats(word, n){ return Array(Math.abs(n)).fill(word); } // re-declared for local usage above; harmless
-
 function containsOpposites(tokens){
   const set=new Set(tokens);
   for(const t of set){ const opp=OPP[t]; if(opp && set.has(opp)) return true; }
@@ -538,8 +533,20 @@ function reorderClauses(edges){ const arr=edges.slice(); return shuffle(arr); }
 function randomBijection(symbols){ const B=symbols.slice(); shuffle(B); const bij=new Map(); for(let i=0;i<symbols.length;i++) bij.set(symbols[i], B[i]); return bij; }
 function uniqueSymbols(edges){ const s=new Set(); edges.forEach(e=>{ s.add(e.u); s.add(e.v); }); return [...s]; }
 
-/* ---------- Render with diversified style ---------- */
-function randomStyle(){ return { shuffleComponents: Math.random()<0.7, splitLevels: Math.random()<0.5 }; }
+/* ---------- Speech (safe) ---------- */
+async function speakLine(text){
+  if(!SPEAK) return;
+  if(typeof window==='undefined' || !('speechSynthesis' in window)) return;
+  return new Promise(res=>{
+    try{
+      const u=new SpeechSynthesisUtterance(text);
+      u.lang='en-GB'; u.rate=1.0; u.pitch=1.0; u.volume=1.0;
+      u.onend=res; u.onerror=res;
+      if(window.speechSynthesis.speaking) window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    }catch(_){ res(); }
+  });
+}
 
 /* ---------- Generator core ---------- */
 let N=1, MAX=500, PAUSE_SEC=30, PREMISE_INTERVAL_SEC=30, RATE=25;
@@ -572,7 +579,7 @@ function buildMatchFrom(prevStr){
 
   edges = reorderClauses(edges);
 
-  const style = randomStyle();
+  const style = { shuffleComponents: Math.random()<0.7, splitLevels: Math.random()<0.5 };
   return renderEdges(edges, style);
 }
 
@@ -583,24 +590,12 @@ function buildNonMatch(prevStr, relsPerPremise){
   for(let i=0;i<relsPerPremise;i++){
     edges.push( ORDER_MODE ? buildEdgeOrdered(ORDER_LEN, syms) : buildEdgeVector(syms) );
   }
-  const style=randomStyle();
+  const style = { shuffleComponents: Math.random()<0.7, splitLevels: Math.random()<0.5 };
   return renderEdges(edges, style);
 }
 
 /* ---------- UI helpers ---------- */
 function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
-
-/* ---------- Speaking ---------- */
-async function speakLine(text){
-  if(!SPEAK) return;
-  if(!('speechSynthesis' in window)) return;
-  const u=new SpeechSynthesisUtterance(text);
-  u.lang='en-GB'; u.rate=1.0; u.pitch=1.0; u.volume=1.0;
-  return new Promise(res=>{ let done=false; const fin=()=>{ if(!done){ done=true; res(); } };
-    u.onend=fin; u.onerror=fin;
-    try{ if(speechSynthesis.speaking) speechSynthesis.cancel(); speechSynthesis.speak(u); }catch(_){}
-  });
-}
 
 /* ---------- Visual build ---------- */
 function showPremise(sentence){
@@ -700,15 +695,19 @@ async function runTrial(){
   showPremise(sentence);
   responded=false;
 
+  // Speak and wait with cancellable timers
   const edges=extractEdges(sentence);
   for(let i=0;i<edges.length;i++){
     const nodes=[...document.querySelectorAll('#premiseText .rel')];
     nodes.forEach((n,k)=>n.classList.toggle('active', k===i));
-    if(SPEAK) await (async()=>{ 
-      const u=new SpeechSynthesisUtterance(edges[i].raw + '.'); u.lang='en-GB'; 
-      return new Promise(res=>{ u.onend=res; u.onerror=res; try{ if(speechSynthesis.speaking) speechSynthesis.cancel(); speechSynthesis.speak(u);}catch(_){res();} }); 
-    })();
-    await new Promise(r=>{ setTimeout(r, (i<edges.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
+
+    await speakLine(edges[i].raw + '.');
+    if(!SESSION.running || paused) return;
+
+    await new Promise(r=>{
+      clearTimeout(waitTimer);
+      waitTimer = setTimeout(()=>{ waitTimer=null; r(); }, (i<edges.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000);
+    });
     if(!SESSION.running || paused) return;
   }
   const nodes=[...document.querySelectorAll('#premiseText .rel')];
@@ -720,11 +719,9 @@ async function runTrial(){
 /* ---------- Game state ---------- */
 const SESSION={ running:false, RELS_PER_PREMISE:1 };
 
-let N=1, MAX=500, PAUSE_SEC=30, PREMISE_INTERVAL_SEC=30, RATE=25;
-
 function start(){
   ORDER_MODE = !!($('orderMode')&&$('orderMode').checked);
-  ORDER_LEN  = $('orderLen') ? parseInt($('orderLen').value,10) : 2;
+  ORDER_LEN  = $('orderLen') ? parseInt($('orderLen').value,10) : 2; // used by buildEdgeOrdered
   ISO_MODE   = !!($('isoMode')&&$('isoMode').checked);
   SPEAK = !!($('speakEnabled')&&$('speakEnabled').checked);
 
@@ -750,14 +747,20 @@ function start(){
 }
 function stop(){
   SESSION.running=false; paused=false;
-  try{ clearTimeout(waitTimer); }catch(_){}
-  waitTimer=null; responded=false;
+  if(waitTimer){ clearTimeout(waitTimer); waitTimer=null; }
+  try{ if(typeof window!=='undefined' && window.speechSynthesis){ window.speechSynthesis.cancel(); } }catch(_){}
+  responded=false;
 }
 function togglePause(){
   if(!SESSION.running) return;
   paused=!paused;
   $('pause').textContent = paused?'▶ Resume':'⏸ Pause';
-  if(!paused){ runTrial(); }
+  if(paused){
+    if(waitTimer){ clearTimeout(waitTimer); waitTimer=null; }
+    try{ if(typeof window!=='undefined' && window.speechSynthesis){ window.speechSynthesis.cancel(); } }catch(_){}
+  }else{
+    runTrial();
+  }
 }
 function reset(){
   stop();
@@ -777,20 +780,19 @@ function registerHit(){
 }
 function skip(){
   if(!SESSION.running) return;
-  try{ clearTimeout(waitTimer); }catch(_){}
-  waitTimer=null;
+  if(waitTimer){ clearTimeout(waitTimer); waitTimer=null; }
   idx++; updateUI(); runTrial();
 }
 
 function updateUI(){
-  $('idx').textContent=idx; $('max').textContent=MAX;
-  $('ptype').textContent = (idx<MAX && idx>=N && planned[idx])?'planned MATCH':'planned NON-match';
+  setText('idx', idx); setText('max', MAX);
+  setText('ptype', (idx<MAX && idx>=N && planned[idx])?'planned MATCH':'planned NON-match');
   const actual = (idx>=N) ? String(logicMatch(history[idx-N]||'', history[idx]||'')).toUpperCase() : '—';
-  $('isMatch').textContent = actual;
-  $('corr').textContent=correct; $('err').textContent=errors;
-  $('nVal').textContent=N; $('tVal').textContent=MAX;
-  $('pVal').textContent=PAUSE_SEC.toFixed(1)+' s'; $('premiseIntervalVal').textContent=PREMISE_INTERVAL_SEC.toFixed(1)+' s';
-  $('rVal').textContent=RATE+'%'; $('relCountVal').textContent=SESSION.RELS_PER_PREMISE;
+  setText('isMatch', actual);
+  setText('corr', correct); setText('err', errors);
+  setText('nVal', N); setText('tVal', MAX);
+  setText('pVal', PAUSE_SEC.toFixed(1)+' s'); setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s');
+  setText('rVal', RATE+'%'); setText('relCountVal', SESSION.RELS_PER_PREMISE);
 }
 
 /* ---------- Bind UI ---------- */
@@ -799,12 +801,12 @@ window.addEventListener('keydown', e=>{
   if(e.code==='Space'){ registerHit(); e.preventDefault(); }
 });
 document.addEventListener('DOMContentLoaded', ()=>{
-  $('n').oninput=e=>{ if(!SESSION.running){ N=+e.target.value; $('nVal').textContent=N; } };
-  $('trials').oninput=e=>{ if(!SESSION.running){ MAX=+e.target.value; $('tVal').textContent=MAX; $('max').textContent=MAX; } };
-  $('pauseTime').oninput=e=>{ if(!SESSION.running){ PAUSE_SEC=+e.target.value; $('pVal').textContent=PAUSE_SEC.toFixed(1)+' s'; } };
-  $('premiseInterval').oninput=e=>{ if(!SESSION.running){ PREMISE_INTERVAL_SEC=+e.target.value; $('premiseIntervalVal').textContent=PREMISE_INTERVAL_SEC.toFixed(1)+' s'; } };
-  $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; $('rVal').textContent=RATE+'%'; } };
-  $('relCount').oninput=e=>{ if(!SESSION.running){ SESSION.RELS_PER_PREMISE=Math.max(1,parseInt(e.target.value,10)||1); $('relCountVal').textContent=SESSION.RELS_PER_PREMISE; } };
+  $('n').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; N=v; setText('nVal', v); } };
+  $('trials').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; MAX=v; setText('tVal', v); setText('max', v); } };
+  $('pauseTime').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; PAUSE_SEC=v; setText('pVal', v.toFixed(1)+' s'); } };
+  $('premiseInterval').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; PREMISE_INTERVAL_SEC=v; setText('premiseIntervalVal', v.toFixed(1)+' s'); } };
+  $('rate').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; RATE=v; setText('rVal', v+'%'); } };
+  $('relCount').oninput=e=>{ if(!SESSION.running){ const v=Math.max(1,parseInt(e.target.value,10)||1); SESSION.RELS_PER_PREMISE=v; setText('relCountVal', v); } };
 
   $('start').onclick=start;
   $('pause').onclick=togglePause;
