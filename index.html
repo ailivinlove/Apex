@@ -55,12 +55,12 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
         <input id="relCount" type="number" min="1" step="1" value="1">
         <div class="mut small" style="margin-top:6px">
           Axes: plane (north/south/east/west + diagonals), level (up/down),
-          embedding (in/out), time (ahead/behind), turn (right/left).
+          embedding (in/out), time (ahead/behind), rotation (rotated right/rotated left).
         </div>
       </div>
     </div>
 
-    <!-- Stressors (pruned options visible to user) -->
+    <!-- Stressors (visible) -->
     <div class="col">
       <div class="box">
         <div class="title">Advanced Stressors</div>
@@ -116,32 +116,31 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
 <script>
 /* ===========================================================
    LOGIC-ONLY GENERATOR (6D + DIAGONALS) — STRUCTURE, NOT WORDING
-   Visual reference removed; constraint logic remains internal.
+   Rotation terms updated: "rotated right" / "rotated left".
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
 const $ = id => document.getElementById(id);
 const clone = o => JSON.parse(JSON.stringify(o));
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a; }
-function randBool(p=0.5){ return Math.random()<p; }
 function logLine(s){ const el=$('log'); if(!el) return; el.textContent = (el.textContent==='—'?'':el.textContent+'\n') + s; }
 
 /* ---------- Global knobs (read at Start) ---------- */
 let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false;
 let SPEAK=true;
 
-/* Internal hard gates (no UI toggles) */
+/* Internal hard gates (always ON) */
 const BAN_OPP_CLAUSE = true;
 const BAN_OPP_UNION  = true;
 
-/* ---------- Tokens & opposites (6D + diagonals) ---------- */
+/* ---------- Tokens & opposites (with diagonals and rotation) ---------- */
 const TOKENS = [
   'north','south','east','west',
   'northeast','northwest','southeast','southwest',
   'in','out','ahead','behind',
   'one level up','two levels up','three levels up',
   'one level down','two levels down','three levels down',
-  'turned right','turned left'
+  'rotated right','rotated left'
 ];
 
 const OPP = {
@@ -150,7 +149,7 @@ const OPP = {
   in:'out', out:'in', ahead:'behind', behind:'ahead',
   'one level up':'one level down','two levels up':'two levels down','three levels up':'three levels down',
   'one level down':'one level up','two levels down':'two levels up','three levels down':'three levels up',
-  'turned right':'turned left','turned left':'turned right'
+  'rotated right':'rotated left','rotated left':'rotated right'
 };
 
 /* ---------- Vector math (6D: x,y,z,w,u,v) ---------- */
@@ -160,22 +159,28 @@ function tokenToDelta(tok){
   else if(tok==='south') d.y+=1;
   else if(tok==='east')  d.x+=1;
   else if(tok==='west')  d.x-=1;
+
   else if(tok==='northeast'){ d.x+=1; d.y-=1; }
   else if(tok==='northwest'){ d.x-=1; d.y-=1; }
   else if(tok==='southeast'){ d.x+=1; d.y+=1; }
   else if(tok==='southwest'){ d.x-=1; d.y+=1; }
+
   else if(tok==='in')    d.w+=1;
   else if(tok==='out')   d.w-=1;
+
   else if(tok==='ahead') d.v+=1;
   else if(tok==='behind')d.v-=1;
+
   else if(tok==='one level up')    d.z+=1;
   else if(tok==='two levels up')   d.z+=2;
   else if(tok==='three levels up') d.z+=3;
   else if(tok==='one level down')    d.z-=1;
   else if(tok==='two levels down')   d.z-=2;
   else if(tok==='three levels down') d.z-=3;
-  else if(tok==='turned right') d.u+=1;
-  else if(tok==='turned left')  d.u-=1;
+
+  else if(tok==='rotated right') d.u+=1;
+  else if(tok==='rotated left')  d.u-=1;
+
   return d;
 }
 function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
@@ -199,8 +204,7 @@ function planeComponentsCompressed(x,y){
   return out;
 }
 function levelComponents(z, splitLevels=false){
-  const out=[];
-  const abs = Math.abs(z), dir = z>=0?'up':'down';
+  const out=[]; const abs=Math.abs(z); const dir=z>=0?'up':'down';
   if(abs===0) return out;
   if(!splitLevels){
     if(abs===1) out.push(`one level ${dir}`);
@@ -212,10 +216,10 @@ function levelComponents(z, splitLevels=false){
   }
   return out;
 }
-function turnComponents(u){
+function rotationComponents(u){
   const out=[];
-  if(u>0) out.push(...repeats('turned right', u));
-  if(u<0) out.push(...repeats('turned left', -u));
+  if(u>0) out.push(...repeats('rotated right', u));
+  if(u<0) out.push(...repeats('rotated left', -u));
   return out;
 }
 function timeComponents(v){
@@ -230,7 +234,7 @@ function vectorComponents(r, style){
   comps.push(...levelComponents(r.z, style.splitLevels));
   if(r.w>0) comps.push(...repeats('in',    r.w));
   if(r.w<0) comps.push(...repeats('out',  -r.w));
-  comps.push(...turnComponents(r.u));
+  comps.push(...rotationComponents(r.u));
   comps.push(...timeComponents(r.v));
   if(style.shuffleComponents) shuffle(comps);
   return comps;
@@ -254,7 +258,12 @@ function buildEdgeOrdered(orderLen, symPool){
   const seq=[];
   while(seq.length<orderLen){
     const plane = ['north','south','east','west','northeast','northwest','southeast','southwest'];
-    const choicePool = plane.concat(['in','out','ahead','behind','one level up','two levels up','three levels up','one level down','two levels down','three levels down','turned right','turned left']);
+    const choicePool = plane.concat([
+      'in','out','ahead','behind',
+      'one level up','two levels up','three levels up',
+      'one level down','two levels down','three levels down',
+      'rotated right','rotated left'
+    ]);
     seq.push(choicePool[(Math.random()*choicePool.length)|0]);
   }
   let r={x:0,y:0,z:0,w:0,u:0,v:0};
@@ -267,7 +276,7 @@ function buildEdgeVector(symPool){
   let r={x:0,y:0,z:0,w:0,u:0,v:0};
   const rolls=1+((Math.random()*2)|0); // 1..2 components per clause
   for(let i=0;i<rolls;i++){
-    const axis=(Math.random()*4)|0; // 0 plane, 1 level, 2 embed, 3 time/turn
+    const axis=(Math.random()*4)|0; // 0 plane, 1 level, 2 embed, 3 time/rotation
     if(axis===0){
       const plane = ['north','south','east','west','northeast','northwest','southeast','southwest'][(Math.random()*8)|0];
       r=vecAdd(r, tokenToDelta(plane));
@@ -277,8 +286,9 @@ function buildEdgeVector(symPool){
     }else if(axis===2){
       r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out'));
     }else{
-      if(Math.random()<0.5) r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind'));
-      else r=vecAdd(r, tokenToDelta(Math.random()<0.5?'turned right':'turned left'));
+      const pick = Math.random();
+      if(pick<0.5) r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind'));
+      else r=vecAdd(r, tokenToDelta(Math.random()<0.5?'rotated right':'rotated left'));
     }
   }
   return {u,v,rel:r,seq:null};
@@ -292,7 +302,7 @@ function renderEdges(edges, style){
   }).join(' and ');
 }
 
-/* ---------- Edge extractor (robust against 'and' inside components) ---------- */
+/* ---------- Edge extractor ---------- */
 function extractEdges(sentence){
   const re=/([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)/gi;
   const out=[]; let m;
@@ -322,7 +332,9 @@ function parsePremise(sentence){
   return {nodes:[...nodes], edges};
 }
 
-/* ---------- Constraint checks (always ON internally) ---------- */
+/* ---------- Constraint checks (always ON) ---------- */
+function repeats(word, n){ return Array(Math.abs(n)).fill(word); } // re-declared for local usage above; harmless
+
 function containsOpposites(tokens){
   const set=new Set(tokens);
   for(const t of set){ const opp=OPP[t]; if(opp && set.has(opp)) return true; }
@@ -334,8 +346,10 @@ function clauseTokens(e){
   parts.push(...levelComponents(e.rel.z, false));
   if(e.rel.w>0) parts.push(...repeats('in', e.rel.w));
   if(e.rel.w<0) parts.push(...repeats('out', -e.rel.w));
-  parts.push(...turnComponents(e.rel.u));
-  parts.push(...timeComponents(e.rel.v));
+  if(e.rel.u>0) parts.push(...repeats('rotated right', e.rel.u));
+  if(e.rel.u<0) parts.push(...repeats('rotated left', -e.rel.u));
+  if(e.rel.v>0) parts.push(...repeats('ahead', e.rel.v));
+  if(e.rel.v<0) parts.push(...repeats('behind', -e.rel.v));
   return parts;
 }
 function checkClauseConstraints(edges){
@@ -690,9 +704,11 @@ async function runTrial(){
   for(let i=0;i<edges.length;i++){
     const nodes=[...document.querySelectorAll('#premiseText .rel')];
     nodes.forEach((n,k)=>n.classList.toggle('active', k===i));
-    await speakLine(edges[i].raw + '.');
-    if(!SESSION.running || paused) return;
-    await new Promise(r=>{ waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<edges.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
+    if(SPEAK) await (async()=>{ 
+      const u=new SpeechSynthesisUtterance(edges[i].raw + '.'); u.lang='en-GB'; 
+      return new Promise(res=>{ u.onend=res; u.onerror=res; try{ if(speechSynthesis.speaking) speechSynthesis.cancel(); speechSynthesis.speak(u);}catch(_){res();} }); 
+    })();
+    await new Promise(r=>{ setTimeout(r, (i<edges.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
     if(!SESSION.running || paused) return;
   }
   const nodes=[...document.querySelectorAll('#premiseText .rel')];
@@ -703,6 +719,8 @@ async function runTrial(){
 
 /* ---------- Game state ---------- */
 const SESSION={ running:false, RELS_PER_PREMISE:1 };
+
+let N=1, MAX=500, PAUSE_SEC=30, PREMISE_INTERVAL_SEC=30, RATE=25;
 
 function start(){
   ORDER_MODE = !!($('orderMode')&&$('orderMode').checked);
@@ -719,16 +737,14 @@ function start(){
   PREMISE_INTERVAL_SEC = +($('premiseInterval')&&$('premiseInterval').value)||30;
   RATE = +($('rate')&&$('rate').value)||25;
 
-  idx=0; correct=0; errors=0; history.length=0; planned.length=0;
+  idx=0; responded=false;
+  correct=0; errors=0; history.length=0; planned.length=0;
   RECENT_SURF.length=0; RECENT_LOGIC.clear();
   $('log').textContent='—';
   planSequence(); updateUI();
 
   SESSION.running=true; paused=false;
-  if($('pause')) $('pause').disabled=false;
-  if($('reset')) $('reset').disabled=false;
-  if($('hit')) $('hit').disabled=false;
-  if($('skip')) $('skip').disabled=false;
+  $('pause').disabled=false; $('reset').disabled=false; $('hit').disabled=false; $('skip').disabled=false;
 
   runTrial();
 }
@@ -740,21 +756,20 @@ function stop(){
 function togglePause(){
   if(!SESSION.running) return;
   paused=!paused;
-  if($('pause')) $('pause').textContent = paused?'▶ Resume':'⏸ Pause';
+  $('pause').textContent = paused?'▶ Resume':'⏸ Pause';
   if(!paused){ runTrial(); }
 }
 function reset(){
   stop();
-  if($('relCount')) $('relCount').disabled=false;
-  if($('premiseText')) $('premiseText').textContent='—';
+  $('relCount').disabled=false;
+  $('premiseText').textContent='—';
   $('log').textContent='—';
   idx=0; correct=0; errors=0; updateUI();
 }
 
 /* ---------- Input handling ---------- */
 function registerHit(){
-  if(!SESSION.running) return;
-  if(responded) return;
+  if(!SESSION.running || responded) return;
   responded=true;
   const truth = (idx>=N) ? logicMatch(history[idx-N], history[idx-0]) : false;
   if(truth) correct++; else errors++;
@@ -768,14 +783,14 @@ function skip(){
 }
 
 function updateUI(){
-  setText('idx', idx); setText('max', MAX);
-  setText('ptype', (idx<MAX && idx>=N && planned[idx])?'planned MATCH':'planned NON-match');
+  $('idx').textContent=idx; $('max').textContent=MAX;
+  $('ptype').textContent = (idx<MAX && idx>=N && planned[idx])?'planned MATCH':'planned NON-match';
   const actual = (idx>=N) ? String(logicMatch(history[idx-N]||'', history[idx]||'')).toUpperCase() : '—';
-  setText('isMatch', actual);
-  setText('corr', correct); setText('err', errors);
-  setText('nVal', N); setText('tVal', MAX);
-  setText('pVal', PAUSE_SEC.toFixed(1)+' s'); setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s');
-  setText('rVal', RATE+'%'); setText('relCountVal', SESSION.RELS_PER_PREMISE);
+  $('isMatch').textContent = actual;
+  $('corr').textContent=correct; $('err').textContent=errors;
+  $('nVal').textContent=N; $('tVal').textContent=MAX;
+  $('pVal').textContent=PAUSE_SEC.toFixed(1)+' s'; $('premiseIntervalVal').textContent=PREMISE_INTERVAL_SEC.toFixed(1)+' s';
+  $('rVal').textContent=RATE+'%'; $('relCountVal').textContent=SESSION.RELS_PER_PREMISE;
 }
 
 /* ---------- Bind UI ---------- */
@@ -784,18 +799,18 @@ window.addEventListener('keydown', e=>{
   if(e.code==='Space'){ registerHit(); e.preventDefault(); }
 });
 document.addEventListener('DOMContentLoaded', ()=>{
-  $('n').oninput=e=>{ if(!SESSION.running){ N=+e.target.value; setText('nVal', N); } };
-  $('trials').oninput=e=>{ if(!SESSION.running){ MAX=+e.target.value; setText('tVal', MAX); setText('max', MAX); } };
-  $('pauseTime').oninput=e=>{ if(!SESSION.running){ PAUSE_SEC=+e.target.value; setText('pVal', PAUSE_SEC.toFixed(1)+' s'); } };
-  $('premiseInterval').oninput=e=>{ if(!SESSION.running){ PREMISE_INTERVAL_SEC=+e.target.value; setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s'); } };
-  $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; setText('rVal', RATE+'%'); } };
-  $('relCount').oninput=e=>{ if(!SESSION.running){ SESSION.RELS_PER_PREMISE=Math.max(1,parseInt(e.target.value,10)||1); setText('relCountVal', SESSION.RELS_PER_PREMISE); } };
+  $('n').oninput=e=>{ if(!SESSION.running){ N=+e.target.value; $('nVal').textContent=N; } };
+  $('trials').oninput=e=>{ if(!SESSION.running){ MAX=+e.target.value; $('tVal').textContent=MAX; $('max').textContent=MAX; } };
+  $('pauseTime').oninput=e=>{ if(!SESSION.running){ PAUSE_SEC=+e.target.value; $('pVal').textContent=PAUSE_SEC.toFixed(1)+' s'; } };
+  $('premiseInterval').oninput=e=>{ if(!SESSION.running){ PREMISE_INTERVAL_SEC=+e.target.value; $('premiseIntervalVal').textContent=PREMISE_INTERVAL_SEC.toFixed(1)+' s'; } };
+  $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; $('rVal').textContent=RATE+'%'; } };
+  $('relCount').oninput=e=>{ if(!SESSION.running){ SESSION.RELS_PER_PREMISE=Math.max(1,parseInt(e.target.value,10)||1); $('relCountVal').textContent=SESSION.RELS_PER_PREMISE; } };
 
-  $('start').onclick=()=>{ start(); };
-  $('pause').onclick=()=>{ togglePause(); };
-  $('reset').onclick=()=>{ reset(); };
-  $('hit').onclick=()=>{ registerHit(); };
-  $('skip').onclick=()=>{ skip(); };
+  $('start').onclick=start;
+  $('pause').onclick=togglePause;
+  $('reset').onclick=reset;
+  $('hit').onclick=registerHit;
+  $('skip').onclick=skip;
 
   updateUI();
 });
