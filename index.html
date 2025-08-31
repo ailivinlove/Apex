@@ -29,7 +29,6 @@ select{ min-height:38px }
 .small{ font-size:12px; color:var(--mut) }
 hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-pre.builder{white-space:pre-wrap;font-size:11px;line-height:1.3;background:#0e1113;border:1px solid rgba(0,200,255,.25);padding:10px;border-radius:12px;color:#8fe7ff}
 pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;border:1px solid rgba(0,200,255,.25);padding:10px;border-radius:12px;color:#c9f6ff;max-height:220px;overflow:auto}
 </style>
 </head>
@@ -55,15 +54,16 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
         <label>Relations per premise (clauses): <span id="relCountVal">1</span></label>
         <input id="relCount" type="number" min="1" step="1" value="1">
         <div class="mut small" style="margin-top:6px">
-          Axes: plane (north/south/east/west + diagonals), level (up/down), embedding (in/out), time (ahead/behind), turn (right/left).
+          Axes: plane (north/south/east/west + diagonals), level (up/down),
+          embedding (in/out), time (ahead/behind), turn (right/left).
         </div>
       </div>
     </div>
 
-    <!-- Stressors / Constraints -->
+    <!-- Stressors (pruned options visible to user) -->
     <div class="col">
       <div class="box">
-        <div class="title">Advanced Stressors & Gates</div>
+        <div class="title">Advanced Stressors</div>
         <div class="grid2">
           <label><input id="orderMode" type="checkbox"> Order matters (non-commutative)</label>
           <label>Sequence length (if order matters)
@@ -73,12 +73,10 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
             </select>
           </label>
           <label><input id="isoMode" type="checkbox"> Isomorphism (allow relabeling)</label>
-          <label><input id="banOppClause" type="checkbox"> Ban opposites in same clause</label>
-          <label><input id="banOppUnion" type="checkbox"> Ban opposites in union</label>
           <label><input id="speakEnabled" type="checkbox" checked> Speak premises</label>
         </div>
         <div class="mut small" style="margin-top:6px">
-          Max stress: Order ON + 3 steps + Isomorphism ON + both bans ON.
+          Max stress: Order ON + 3 steps + Isomorphism ON.
         </div>
       </div>
     </div>
@@ -102,46 +100,6 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
     </div>
   </div>
 
-  <!-- Builder's prompt (for reference / auditing) -->
-  <div class="box" style="margin-top:12px">
-    <div class="title">Logic-Only Generator Constraint (reference)</div>
-    <pre class="builder">Goal: Generate premises for an N-back task such that “match” is decided only by structural logic (pairwise 6D deltas / ordered token sequences), never by identical wording. Surface text must be diverse and uninformative about match status.
-
-Invariants & Parsability
-• Grammar must be: ([A-Z]\d+) is (RELATION) of ([A-Z]\d+) and ... (lowercase "and", spaces).
-• Vocabulary: north/south/east/west, northeast/northwest/southeast/southwest (as canonical plane shorthands), one|two|three levels up|down, in/out, turned right/turned left, ahead/behind.
-• Do not remove "and" or introduce punctuation that breaks splitting.
-
-Core Structural Rules
-• If planned MATCH at i: logicSignature(S_i) == logicSignature(S_{i-N}) and merged edges solve.
-• If planned NON-MATCH at i: logicSignature(S_i) != logicSignature(S_{i-N}); each clause and the merged union solve.
-• If Order mode ON: signatures are ordered token sequences per pair; else commutative vectors.
-
-Surface Diversity (anti-leak)
-• Never reuse identical surface strings within last 120; enforce S_i ≠ S_{i-N}.
-• Reduce text similarity via: 30–60% edge inversions; symbol bijection; clause reorder; diagonal vs decomposed plane; level-sum splitting; repeated turn/time tokens when net is preserved. All variants must stay within approved vocabulary.
-
-Consistency & Constraint Gate
-• If "ban opposites in same clause" enabled: reject clauses containing token + its opposite.
-• If "ban opposites in union" enabled: reject unions containing contradictions.
-• Run solver on candidate and on candidate∪S_{i-N}; require ok==true.
-• With ISO ON: matching may hold up to relabeling; with ISO OFF: require strict symbol reappearance for A-side. For NON-MATCH under ISO ON, also require not iso-equivalent.
-
-Generation Algorithm (per trial)
-1) Determine planned type (MATCH/NON-MATCH).
-2) MATCH: start from S_{i-N} graph; apply neutral transforms that preserve signature; render text; ensure not seen in RECENT_SURF.
-3) NON-MATCH: sample fresh consistent graphs; reject equality (and iso-equality under ISO); prefer unseen logic signatures.
-4) Final gate: parser round-trip, solver consistency, constraint checks, similarity thresholds.
-
-Negative Controls
-• Do not key matches on identical strings or fixed phrase patterns.
-• Do not emit outside vocabulary or punctuation that breaks parsing.
-
-Diagnostics (runtime)
-• Log: planned type, signatures (prev/now), iso-flag, attempts, rejection reasons.
-• If >300 attempts fail, relax only surface constraints, never the logic constraints.</pre>
-  </div>
-
   <!-- Premise -->
   <div class="box" style="margin-top:12px">
     <div class="title">Premise (spoken + visual)</div>
@@ -158,6 +116,7 @@ Diagnostics (runtime)
 <script>
 /* ===========================================================
    LOGIC-ONLY GENERATOR (6D + DIAGONALS) — STRUCTURE, NOT WORDING
+   Visual reference removed; constraint logic remains internal.
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
@@ -169,28 +128,26 @@ function logLine(s){ const el=$('log'); if(!el) return; el.textContent = (el.tex
 
 /* ---------- Global knobs (read at Start) ---------- */
 let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false;
-let BAN_OPP_CLAUSE=false, BAN_OPP_UNION=false;
 let SPEAK=true;
+
+/* Internal hard gates (no UI toggles) */
+const BAN_OPP_CLAUSE = true;
+const BAN_OPP_UNION  = true;
 
 /* ---------- Tokens & opposites (6D + diagonals) ---------- */
 const TOKENS = [
   'north','south','east','west',
   'northeast','northwest','southeast','southwest',
   'in','out','ahead','behind',
-  // level and turn must be emitted as approved phrases:
   'one level up','two levels up','three levels up',
   'one level down','two levels down','three levels down',
   'turned right','turned left'
 ];
 
-// Canonical atomization to base atoms for signature math
-const ATOMS = ['north','south','east','west','in','out','ahead','behind','up','down','right','left'];
-
 const OPP = {
   north:'south', south:'north', east:'west', west:'east',
   northeast:'southwest', northwest:'southeast', southeast:'northwest', southwest:'northeast',
   in:'out', out:'in', ahead:'behind', behind:'ahead',
-  up:'down', down:'up', right:'left', left:'right',
   'one level up':'one level down','two levels up':'two levels down','three levels up':'three levels down',
   'one level down':'one level up','two levels down':'two levels up','three levels down':'three levels up',
   'turned right':'turned left','turned left':'turned right'
@@ -199,38 +156,26 @@ const OPP = {
 /* ---------- Vector math (6D: x,y,z,w,u,v) ---------- */
 function tokenToDelta(tok){
   const d={x:0,y:0,z:0,w:0,u:0,v:0};
-  // plane cardinals
   if(tok==='north') d.y-=1;
   else if(tok==='south') d.y+=1;
   else if(tok==='east')  d.x+=1;
   else if(tok==='west')  d.x-=1;
-
-  // plane diagonals
   else if(tok==='northeast'){ d.x+=1; d.y-=1; }
   else if(tok==='northwest'){ d.x-=1; d.y-=1; }
   else if(tok==='southeast'){ d.x+=1; d.y+=1; }
   else if(tok==='southwest'){ d.x-=1; d.y+=1; }
-
-  // embedding
   else if(tok==='in')    d.w+=1;
   else if(tok==='out')   d.w-=1;
-
-  // time
   else if(tok==='ahead') d.v+=1;
   else if(tok==='behind')d.v-=1;
-
-  // level (approved phrases)
   else if(tok==='one level up')    d.z+=1;
   else if(tok==='two levels up')   d.z+=2;
   else if(tok==='three levels up') d.z+=3;
   else if(tok==='one level down')    d.z-=1;
   else if(tok==='two levels down')   d.z-=2;
   else if(tok==='three levels down') d.z-=3;
-
-  // turn (orientation)
   else if(tok==='turned right') d.u+=1;
   else if(tok==='turned left')  d.u-=1;
-
   return d;
 }
 function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
@@ -263,7 +208,6 @@ function levelComponents(z, splitLevels=false){
     else if(abs===3) out.push(`three levels ${dir}`);
     else for(let i=0;i<abs;i++) out.push(`one level ${dir}`);
   }else{
-    // level-sum splitting to diversify surface
     for(let i=0;i<abs;i++) out.push(`one level ${dir}`);
   }
   return out;
@@ -309,7 +253,6 @@ function buildEdgeOrdered(orderLen, symPool){
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
   const seq=[];
   while(seq.length<orderLen){
-    // draw from a pool that includes allowed phrases
     const plane = ['north','south','east','west','northeast','northwest','southeast','southwest'];
     const choicePool = plane.concat(['in','out','ahead','behind','one level up','two levels up','three levels up','one level down','two levels down','three levels down','turned right','turned left']);
     seq.push(choicePool[(Math.random()*choicePool.length)|0]);
@@ -379,18 +322,13 @@ function parsePremise(sentence){
   return {nodes:[...nodes], edges};
 }
 
-/* ---------- Constraint checks ---------- */
+/* ---------- Constraint checks (always ON internally) ---------- */
 function containsOpposites(tokens){
-  // tokens are surface tokens for a single clause or union projection
   const set=new Set(tokens);
-  for(const t of set){
-    const opp = OPP[t];
-    if(opp && set.has(opp)) return true;
-  }
+  for(const t of set){ const opp=OPP[t]; if(opp && set.has(opp)) return true; }
   return false;
 }
 function clauseTokens(e){
-  // approximate surface tokens of a clause for opposite-ban evaluation
   const parts=[];
   parts.push(...planeComponentsCompressed(e.rel.x, e.rel.y));
   parts.push(...levelComponents(e.rel.z, false));
@@ -402,17 +340,13 @@ function clauseTokens(e){
 }
 function checkClauseConstraints(edges){
   if(!BAN_OPP_CLAUSE) return true;
-  for(const e of edges){
-    if(containsOpposites(clauseTokens(e))) return false;
-  }
+  for(const e of edges){ if(containsOpposites(clauseTokens(e))) return false; }
   return true;
 }
 function checkUnionConstraints(merged){
   if(!BAN_OPP_UNION) return true;
-  // build a multiset per unordered pair of nodes with net deltas; if exact opposite deltas appear, mark violation
   const sol = solveCoordsFromEdges(merged);
   if(!sol.ok) return false;
-  // naive check: project all token lists together
   const tokens=[];
   for(const e of merged) tokens.push(...clauseTokens(e));
   return !containsOpposites(tokens);
@@ -474,7 +408,7 @@ function sigVector(sentence){
 function sigOrdered(sentence){
   const P=parsePremise(sentence);
   if(!checkClauseConstraints(P.edges)) return 'INVALID';
-  const bag=new Map(); // key -> multiset of seq strings
+  const bag=new Map();
   P.edges.forEach(e=>{
     const k=[e.u,e.v].sort().join('|');
     const s=canonicalSeq(e.u,e.v,e.seq||[]);
@@ -556,6 +490,7 @@ function logicMatch(aStr,bStr){
     const A=parsePremise(aStr), B=parsePremise(bStr);
     const merged=[...A.edges, ...B.edges];
     const sol=solveCoordsFromEdges(merged);
+    if(!checkUnionConstraints(merged)) return false;
     return sol.ok;
   } else {
     const A=parsePremise(aStr), B=parsePremise(bStr);
@@ -581,9 +516,7 @@ function seenLogic(sig){ return RECENT_LOGIC.has(sig); }
 
 /* ---------- Neutral transforms for MATCH generation ---------- */
 function invertSeq(seq){ return (seq||[]).slice().reverse().map(t=>OPP[t]||t); }
-function invertEdge(e){
-  return { u:e.v, v:e.u, rel: vecInv(e.rel), seq: ORDER_MODE ? invertSeq(e.seq) : null };
-}
+function invertEdge(e){ return { u:e.v, v:e.u, rel: vecInv(e.rel), seq: ORDER_MODE ? invertSeq(e.seq) : null }; }
 function permuteSymbols(edges, bij){
   return edges.map(e=>({u:bij.get(e.u)||e.u, v:bij.get(e.v)||e.v, rel:clone(e.rel), seq: e.seq?e.seq.slice():null}));
 }
@@ -592,12 +525,7 @@ function randomBijection(symbols){ const B=symbols.slice(); shuffle(B); const bi
 function uniqueSymbols(edges){ const s=new Set(); edges.forEach(e=>{ s.add(e.u); s.add(e.v); }); return [...s]; }
 
 /* ---------- Render with diversified style ---------- */
-function randomStyle(){
-  return {
-    shuffleComponents: Math.random()<0.7,
-    splitLevels: Math.random()<0.5
-  };
-}
+function randomStyle(){ return { shuffleComponents: Math.random()<0.7, splitLevels: Math.random()<0.5 }; }
 
 /* ---------- Generator core ---------- */
 let N=1, MAX=500, PAUSE_SEC=30, PREMISE_INTERVAL_SEC=30, RATE=25;
@@ -618,22 +546,18 @@ function buildMatchFrom(prevStr){
   const P=parsePremise(prevStr);
   let edges=clone(P.edges);
 
-  // 30–60% inversions
   const countToInvert = Math.round(edges.length * (0.3 + Math.random()*0.3));
   const idxs = shuffle([...Array(edges.length).keys()]).slice(0, Math.max(0, Math.min(edges.length, countToInvert)));
   edges = edges.map((e,i)=> idxs.includes(i) ? invertEdge(e) : clone(e));
 
-  // Relabel symbols if ISO on, else keep same set (A-side must reappear)
   if(ISO_MODE){
     const syms=uniqueSymbols(edges);
     const bij=randomBijection(syms);
     edges = permuteSymbols(edges, bij);
   }
 
-  // Clause reorder
   edges = reorderClauses(edges);
 
-  // Style diversification (diagonal vs decomposed handled at render time by compression)
   const style = randomStyle();
   return renderEdges(edges, style);
 }
@@ -707,7 +631,6 @@ async function runTrial(){
       if(!checkUnionConstraints(merged)){ sentence=null; lastReject='union constraint failed'; continue; }
 
       if(!ISO_MODE){
-        // enforce strict symbol overlap for A-side
         const sA=new Set(A.nodes), sB=new Set(B.nodes); let ok=true;
         for(const s of sA){ if(!sB.has(s)) {ok=false; break;} }
         if(!ok){ sentence=null; lastReject='symbol set mismatch (ISO off)'; continue; }
@@ -750,7 +673,6 @@ async function runTrial(){
   }
 
   if(!sentence){
-    // hard floor: relax only surface memory, never logic constraints
     const fallback = mustMatch && prev ? buildMatchFrom(prev) : buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
     sentence = fallback;
     logLine(`[trial ${idx}] fallback used (surface relaxed only)`);
@@ -786,8 +708,6 @@ function start(){
   ORDER_MODE = !!($('orderMode')&&$('orderMode').checked);
   ORDER_LEN  = $('orderLen') ? parseInt($('orderLen').value,10) : 2;
   ISO_MODE   = !!($('isoMode')&&$('isoMode').checked);
-  BAN_OPP_CLAUSE = !!($('banOppClause')&&$('banOppClause').checked);
-  BAN_OPP_UNION  = !!($('banOppUnion')&&$('banOppUnion').checked);
   SPEAK = !!($('speakEnabled')&&$('speakEnabled').checked);
 
   SESSION.RELS_PER_PREMISE = Math.max(1, parseInt(($('relCount')&&$('relCount').value)||'1',10));
