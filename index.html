@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Relational N-Back — Logic-Only N-Match (6D sans Turn + Diagonals)</title>
+<title>Relational N-Back — Logic-Only N-Match (6D minus Turn + Diagonals)</title>
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
@@ -54,9 +54,7 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
         <label>Relations per premise (clauses): <span id="relCountVal">1</span></label>
         <input id="relCount" type="number" min="1" step="1" value="1">
         <div class="mut small" style="margin-top:6px">
-          Axes: plane (north/south/east/west + diagonals), level (up/down),
-          embedding (in/out), time (ahead/behind).
-          <!-- Turn/facing removed entirely -->
+          Axes: plane (north/south/east/west + diagonals), level (up/down), embedding (in/out), time (ahead/behind).
         </div>
       </div>
     </div>
@@ -116,9 +114,7 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
 
 <script>
 /* ===========================================================
-   LOGIC-ONLY GENERATOR — 6D WITHOUT TURN, WITH DIAGONALS
-   Core axes: plane (cardinals+diagonals), level, embedding, time.
-   Turn/facing removed from tokens, parsing, signatures, generation.
+   LOGIC-ONLY GENERATOR (turn removed) — STRUCTURE, NOT WORDING
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
@@ -135,7 +131,7 @@ let SPEAK=true;
 const BAN_OPP_CLAUSE = true;
 const BAN_OPP_UNION  = true;
 
-/* ---------- Tokens & opposites (no turn) ---------- */
+/* ---------- Tokens & opposites (turn removed) ---------- */
 const TOKENS = [
   'north','south','east','west',
   'northeast','northwest','southeast','southwest',
@@ -143,7 +139,6 @@ const TOKENS = [
   'one level up','two levels up','three levels up',
   'one level down','two levels down','three levels down'
 ];
-
 const OPP = {
   north:'south', south:'north', east:'west', west:'east',
   northeast:'southwest', northwest:'southeast', southeast:'northwest', southwest:'northeast',
@@ -159,20 +154,25 @@ function tokenToDelta(tok){
   else if(tok==='south') d.y+=1;
   else if(tok==='east')  d.x+=1;
   else if(tok==='west')  d.x-=1;
+
   else if(tok==='northeast'){ d.x+=1; d.y-=1; }
   else if(tok==='northwest'){ d.x-=1; d.y-=1; }
   else if(tok==='southeast'){ d.x+=1; d.y+=1; }
   else if(tok==='southwest'){ d.x-=1; d.y+=1; }
+
   else if(tok==='in')    d.w+=1;
   else if(tok==='out')   d.w-=1;
+
   else if(tok==='ahead') d.v+=1;
   else if(tok==='behind')d.v-=1;
+
   else if(tok==='one level up')    d.z+=1;
   else if(tok==='two levels up')   d.z+=2;
   else if(tok==='three levels up') d.z+=3;
   else if(tok==='one level down')    d.z-=1;
   else if(tok==='two levels down')   d.z-=2;
   else if(tok==='three levels down') d.z-=3;
+
   return d;
 }
 function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,v:a.v+b.v}; }
@@ -181,7 +181,6 @@ function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.v===b.
 
 /* ---------- Rendering helpers ---------- */
 function repeats(word, n){ return Array(Math.abs(n)).fill(word); }
-
 function planeComponentsCompressed(x,y){
   const out=[]; let dx=x, dy=y;
   while(dx!==0 && dy!==0){
@@ -196,9 +195,9 @@ function planeComponentsCompressed(x,y){
   if(dy>0)  out.push(...repeats('south', dy));
   return out;
 }
-
 function levelComponents(z, splitLevels=false){
-  const out=[]; const abs=Math.abs(z), dir=z>=0?'up':'down';
+  const out=[];
+  const abs = Math.abs(z), dir = z>=0?'up':'down';
   if(abs===0) return out;
   if(!splitLevels){
     if(abs===1) out.push(`one level ${dir}`);
@@ -210,20 +209,18 @@ function levelComponents(z, splitLevels=false){
   }
   return out;
 }
-
 function timeComponents(v){
   const out=[];
   if(v>0) out.push(...repeats('ahead', v));
   if(v<0) out.push(...repeats('behind', -v));
   return out;
 }
-
 function vectorComponents(r, style){
   const comps=[];
   comps.push(...planeComponentsCompressed(r.x, r.y));
   comps.push(...levelComponents(r.z, style.splitLevels));
-  if(r.w>0) comps.push(...repeats('in', r.w));
-  if(r.w<0) comps.push(...repeats('out', -r.w));
+  if(r.w>0) comps.push(...repeats('in',    r.w));
+  if(r.w<0) comps.push(...repeats('out',  -r.w));
   comps.push(...timeComponents(r.v));
   if(style.shuffleComponents) shuffle(comps);
   return comps;
@@ -381,6 +378,7 @@ function canonicalSeq(u, v, seq){
   const needFlip = (u > v);
   const s = (seq||[]);
   if(!needFlip) return s.join('>');
+  // invert by reversing and mapping opposites for tokens that have defined opposites
   const inv = s.slice().reverse().map(t => OPP[t] || t);
   return inv.join('>');
 }
@@ -398,7 +396,7 @@ function sigVector(sentence){
 function sigOrdered(sentence){
   const P=parsePremise(sentence);
   if(!checkClauseConstraints(P.edges)) return 'INVALID';
-  const bag=new Map();
+  const bag=new Map(); // pair -> multiset of seq strings
   P.edges.forEach(e=>{
     const k=[e.u,e.v].sort().join('|');
     const s=canonicalSeq(e.u,e.v,e.seq||[]);
@@ -505,9 +503,10 @@ function rememberLogic(sig){ if(!sig) return; if(RECENT_LOGIC.size>800){ RECENT_
 function seenLogic(sig){ return RECENT_LOGIC.has(sig); }
 
 /* ---------- Neutral transforms for MATCH generation ---------- */
-function invertSeq(seq){ return (seq||[]).slice().reverse().map(t=>OPP[t]||t); }
-function invertEdge(e){ return { u:e.v, v:e.u, rel: vecInv(e.rel), seq: ORDER_MODE ? invertSeq(e.seq) : null }; }
-function permuteSymbols(edges, bij){ return edges.map(e=>({u:bij.get(e.u)||e.u, v:bij.get(e.v)||e.v, rel:clone(e.rel), seq: e.seq?e.seq.slice():null})); }
+function invertEdge(e){ return { u:e.v, v:e.u, rel: vecInv(e.rel), seq: ORDER_MODE ? (e.seq?e.seq.slice().reverse().map(t=>OPP[t]||t):null) : null }; }
+function permuteSymbols(edges, bij){
+  return edges.map(e=>({u:bij.get(e.u)||e.u, v:bij.get(e.v)||e.v, rel:clone(e.rel), seq: e.seq?e.seq.slice():null}));
+}
 function reorderClauses(edges){ const arr=edges.slice(); return shuffle(arr); }
 function randomBijection(symbols){ const B=symbols.slice(); shuffle(B); const bij=new Map(); for(let i=0;i<symbols.length;i++) bij.set(symbols[i], B[i]); return bij; }
 function uniqueSymbols(edges){ const s=new Set(); edges.forEach(e=>{ s.add(e.u); s.add(e.v); }); return [...s]; }
@@ -680,7 +679,7 @@ async function runTrial(){
     nodes.forEach((n,k)=>n.classList.toggle('active', k===i));
     await speakLine(edges[i].raw + '.');
     if(!SESSION.running || paused) return;
-    await new Promise(r=>{ waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<edges.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
+    await new Promise(r=>{ setTimeout(r, (i<edges.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
     if(!SESSION.running || paused) return;
   }
   const nodes=[...document.querySelectorAll('#premiseText .rel')];
@@ -694,19 +693,8 @@ const SESSION={ running:false, RELS_PER_PREMISE:1 };
 
 let N=1, MAX=500, PAUSE_SEC=30, PREMISE_INTERVAL_SEC=30, RATE=25;
 let idx=0, paused=false, waitTimer=null, responded=false;
-let correct=0, errors=0;
 const history=[], planned=[];
-
-function planSequence(){
-  planned.length=MAX;
-  for(let i=0;i<MAX;i++) planned[i]=false;
-  const eligible=[]; for(let i=+N;i<MAX;i++) eligible.push(i);
-  const k=Math.round((RATE/100)*eligible.length);
-  shuffle(eligible); for(let i=0;i<k;i++) planned[eligible[i]]=true;
-}
-
-/* ---------- UI helpers ---------- */
-function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
+let correct=0, errors=0;
 
 function start(){
   ORDER_MODE = !!($('orderMode')&&$('orderMode').checked);
@@ -729,10 +717,10 @@ function start(){
   planSequence(); updateUI();
 
   SESSION.running=true; paused=false;
-  if($('pause')) $('pause').disabled=false;
-  if($('reset')) $('reset').disabled=false;
-  if($('hit')) $('hit').disabled=false;
-  if($('skip')) $('skip').disabled=false;
+  $('pause').disabled=false;
+  $('reset').disabled=false;
+  $('hit').disabled=false;
+  $('skip').disabled=false;
 
   runTrial();
 }
@@ -744,13 +732,13 @@ function stop(){
 function togglePause(){
   if(!SESSION.running) return;
   paused=!paused;
-  if($('pause')) $('pause').textContent = paused?'▶ Resume':'⏸ Pause';
+  $('pause').textContent = paused?'▶ Resume':'⏸ Pause';
   if(!paused){ runTrial(); }
 }
 function reset(){
   stop();
-  if($('relCount')) $('relCount').disabled=false;
-  if($('premiseText')) $('premiseText').textContent='—';
+  $('relCount').disabled=false;
+  $('premiseText').textContent='—';
   $('log').textContent='—';
   idx=0; correct=0; errors=0; updateUI();
 }
@@ -760,7 +748,7 @@ function registerHit(){
   if(!SESSION.running) return;
   if(responded) return;
   responded=true;
-  const truth = (idx>=N) ? logicMatch(history[idx-N], history[idx-0]) : false;
+  const truth = (idx>=N) ? logicMatch(history[idx-N], history[idx]) : false;
   if(truth) correct++; else errors++;
   updateUI();
 }
@@ -795,11 +783,11 @@ document.addEventListener('DOMContentLoaded', ()=>{
   $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; setText('rVal', RATE+'%'); } };
   $('relCount').oninput=e=>{ if(!SESSION.running){ SESSION.RELS_PER_PREMISE=Math.max(1,parseInt(e.target.value,10)||1); setText('relCountVal', SESSION.RELS_PER_PREMISE); } };
 
-  $('start').onclick=()=>{ start(); };
-  $('pause').onclick=()=>{ togglePause(); };
-  $('reset').onclick=()=>{ reset(); };
-  $('hit').onclick=()=>{ registerHit(); };
-  $('skip').onclick=()=>{ skip(); };
+  $('start').onclick=start;
+  $('pause').onclick=togglePause;
+  $('reset').onclick=reset;
+  $('hit').onclick=registerHit;
+  $('skip').onclick=skip;
 
   updateUI();
 });
