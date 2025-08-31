@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Relational N-Back — Logic-Only N-Match (6D + Diagonals + Hard Gates)</title>
+<title>Relational N-Back — Logic-Only N-Match (6D sans Turn + Diagonals)</title>
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
@@ -55,12 +55,13 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
         <input id="relCount" type="number" min="1" step="1" value="1">
         <div class="mut small" style="margin-top:6px">
           Axes: plane (north/south/east/west + diagonals), level (up/down),
-          embedding (in/out), time (ahead/behind), turn (right/left).
+          embedding (in/out), time (ahead/behind).
+          <!-- Turn/facing removed entirely -->
         </div>
       </div>
     </div>
 
-    <!-- Stressors (pruned options visible to user) -->
+    <!-- Stressors -->
     <div class="col">
       <div class="box">
         <div class="title">Advanced Stressors</div>
@@ -115,33 +116,32 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
 
 <script>
 /* ===========================================================
-   LOGIC-ONLY GENERATOR (6D + DIAGONALS) — STRUCTURE, NOT WORDING
-   Visual reference removed; constraint logic remains internal.
+   LOGIC-ONLY GENERATOR — 6D WITHOUT TURN, WITH DIAGONALS
+   Core axes: plane (cardinals+diagonals), level, embedding, time.
+   Turn/facing removed from tokens, parsing, signatures, generation.
    =========================================================== */
 
 /* ---------- Mini utilities ---------- */
 const $ = id => document.getElementById(id);
 const clone = o => JSON.parse(JSON.stringify(o));
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a; }
-function randBool(p=0.5){ return Math.random()<p; }
 function logLine(s){ const el=$('log'); if(!el) return; el.textContent = (el.textContent==='—'?'':el.textContent+'\n') + s; }
 
 /* ---------- Global knobs (read at Start) ---------- */
 let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false;
 let SPEAK=true;
 
-/* Internal hard gates (no UI toggles) */
+/* Internal hard gates (always on; no UI toggles) */
 const BAN_OPP_CLAUSE = true;
 const BAN_OPP_UNION  = true;
 
-/* ---------- Tokens & opposites (6D + diagonals) ---------- */
+/* ---------- Tokens & opposites (no turn) ---------- */
 const TOKENS = [
   'north','south','east','west',
   'northeast','northwest','southeast','southwest',
   'in','out','ahead','behind',
   'one level up','two levels up','three levels up',
-  'one level down','two levels down','three levels down',
-  'turned right','turned left'
+  'one level down','two levels down','three levels down'
 ];
 
 const OPP = {
@@ -149,13 +149,12 @@ const OPP = {
   northeast:'southwest', northwest:'southeast', southeast:'northwest', southwest:'northeast',
   in:'out', out:'in', ahead:'behind', behind:'ahead',
   'one level up':'one level down','two levels up':'two levels down','three levels up':'three levels down',
-  'one level down':'one level up','two levels down':'two levels up','three levels down':'three levels up',
-  'turned right':'turned left','turned left':'turned right'
+  'one level down':'one level up','two levels down':'two levels up','three levels down':'three levels up'
 };
 
-/* ---------- Vector math (6D: x,y,z,w,u,v) ---------- */
+/* ---------- Vector math (5D: x,y,z,w,v) ---------- */
 function tokenToDelta(tok){
-  const d={x:0,y:0,z:0,w:0,u:0,v:0};
+  const d={x:0,y:0,z:0,w:0,v:0};
   if(tok==='north') d.y-=1;
   else if(tok==='south') d.y+=1;
   else if(tok==='east')  d.x+=1;
@@ -174,16 +173,15 @@ function tokenToDelta(tok){
   else if(tok==='one level down')    d.z-=1;
   else if(tok==='two levels down')   d.z-=2;
   else if(tok==='three levels down') d.z-=3;
-  else if(tok==='turned right') d.u+=1;
-  else if(tok==='turned left')  d.u-=1;
   return d;
 }
-function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
-function vecInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
-function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
+function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,v:a.v+b.v}; }
+function vecInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,v:-a.v}; }
+function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.v===b.v; }
 
 /* ---------- Rendering helpers ---------- */
 function repeats(word, n){ return Array(Math.abs(n)).fill(word); }
+
 function planeComponentsCompressed(x,y){
   const out=[]; let dx=x, dy=y;
   while(dx!==0 && dy!==0){
@@ -198,9 +196,9 @@ function planeComponentsCompressed(x,y){
   if(dy>0)  out.push(...repeats('south', dy));
   return out;
 }
+
 function levelComponents(z, splitLevels=false){
-  const out=[];
-  const abs = Math.abs(z), dir = z>=0?'up':'down';
+  const out=[]; const abs=Math.abs(z), dir=z>=0?'up':'down';
   if(abs===0) return out;
   if(!splitLevels){
     if(abs===1) out.push(`one level ${dir}`);
@@ -212,25 +210,20 @@ function levelComponents(z, splitLevels=false){
   }
   return out;
 }
-function turnComponents(u){
-  const out=[];
-  if(u>0) out.push(...repeats('turned right', u));
-  if(u<0) out.push(...repeats('turned left', -u));
-  return out;
-}
+
 function timeComponents(v){
   const out=[];
   if(v>0) out.push(...repeats('ahead', v));
   if(v<0) out.push(...repeats('behind', -v));
   return out;
 }
+
 function vectorComponents(r, style){
   const comps=[];
   comps.push(...planeComponentsCompressed(r.x, r.y));
   comps.push(...levelComponents(r.z, style.splitLevels));
-  if(r.w>0) comps.push(...repeats('in',    r.w));
-  if(r.w<0) comps.push(...repeats('out',  -r.w));
-  comps.push(...turnComponents(r.u));
+  if(r.w>0) comps.push(...repeats('in', r.w));
+  if(r.w<0) comps.push(...repeats('out', -r.w));
   comps.push(...timeComponents(r.v));
   if(style.shuffleComponents) shuffle(comps);
   return comps;
@@ -254,31 +247,29 @@ function buildEdgeOrdered(orderLen, symPool){
   const seq=[];
   while(seq.length<orderLen){
     const plane = ['north','south','east','west','northeast','northwest','southeast','southwest'];
-    const choicePool = plane.concat(['in','out','ahead','behind','one level up','two levels up','three levels up','one level down','two levels down','three levels down','turned right','turned left']);
+    const choicePool = plane.concat(['in','out','ahead','behind','one level up','two levels up','three levels up','one level down','two levels down','three levels down']);
     seq.push(choicePool[(Math.random()*choicePool.length)|0]);
   }
-  let r={x:0,y:0,z:0,w:0,u:0,v:0};
+  let r={x:0,y:0,z:0,w:0,v:0};
   seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq};
 }
 function buildEdgeVector(symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
-  let r={x:0,y:0,z:0,w:0,u:0,v:0};
+  let r={x:0,y:0,z:0,w:0,v:0};
   const rolls=1+((Math.random()*2)|0); // 1..2 components per clause
   for(let i=0;i<rolls;i++){
-    const axis=(Math.random()*4)|0; // 0 plane, 1 level, 2 embed, 3 time/turn
+    const axis=(Math.random()*3)|0; // 0 plane, 1 level, 2 embed/time
     if(axis===0){
       const plane = ['north','south','east','west','northeast','northwest','southeast','southwest'][(Math.random()*8)|0];
       r=vecAdd(r, tokenToDelta(plane));
     }else if(axis===1){
       const lvlN = 1+((Math.random()*3)|0); const dir = Math.random()<0.5?'up':'down';
       r=vecAdd(r, tokenToDelta(`${['one','two','three'][lvlN-1]} level${lvlN>1?'s':''} ${dir}`));
-    }else if(axis===2){
-      r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out'));
     }else{
-      if(Math.random()<0.5) r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind'));
-      else r=vecAdd(r, tokenToDelta(Math.random()<0.5?'turned right':'turned left'));
+      if(Math.random()<0.5) r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out'));
+      else r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind'));
     }
   }
   return {u,v,rel:r,seq:null};
@@ -308,7 +299,7 @@ function parsePremise(sentence){
   const parts = extractEdges(sentence);
   parts.forEach(part=>{
     const A=part.A, B=part.B; nodes.add(A); nodes.add(B);
-    let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
+    let rel={x:0,y:0,z:0,w:0,v:0}, seq=null;
     if(ORDER_MODE){
       const items = part.core.split(/\s+then\s+/i).map(s=>s.trim()).filter(Boolean);
       seq = items.map(tok => tok.toLowerCase());
@@ -334,7 +325,6 @@ function clauseTokens(e){
   parts.push(...levelComponents(e.rel.z, false));
   if(e.rel.w>0) parts.push(...repeats('in', e.rel.w));
   if(e.rel.w<0) parts.push(...repeats('out', -e.rel.w));
-  parts.push(...turnComponents(e.rel.u));
   parts.push(...timeComponents(e.rel.v));
   return parts;
 }
@@ -360,7 +350,7 @@ function solveCoordsFromEdges(edges){
   const coords=new Map(), comps=[], seen=new Set(); let ok=true;
   nodes.forEach(root=>{
     if(seen.has(root)) return;
-    coords.set(root,{x:0,y:0,z:0,w:0,u:0,v:0}); seen.add(root);
+    coords.set(root,{x:0,y:0,z:0,w:0,v:0}); seen.add(root);
     const comp=[root]; comps.push(comp);
     const st=[root];
     while(st.length){
@@ -380,7 +370,7 @@ function pairwiseDeltas(coords, comps){
     const a=comp.slice().sort();
     for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++){
       const u=a[i], v=a[j], cu=coords.get(u), cv=coords.get(v);
-      sig.set(`${u}|${v}`, {x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w, u:cv.u-cu.u, v:cv.v-cu.v});
+      sig.set(`${u}|${v}`, {x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w, v:cv.v-cu.v});
     }
   });
   return sig;
@@ -402,7 +392,7 @@ function sigVector(sentence){
   const sol=solveCoordsFromEdges(P.edges); if(!sol.ok) return 'INVALID';
   const sig=pairwiseDeltas(sol.coords, sol.comps);
   return [...sig.keys()].sort().map(k=>{
-    const d=sig.get(k); return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v}`;
+    const d=sig.get(k); return `${k}:${d.x},${d.y},${d.z},${d.w},${d.v}`;
   }).join('|');
 }
 function sigOrdered(sentence){
@@ -517,9 +507,7 @@ function seenLogic(sig){ return RECENT_LOGIC.has(sig); }
 /* ---------- Neutral transforms for MATCH generation ---------- */
 function invertSeq(seq){ return (seq||[]).slice().reverse().map(t=>OPP[t]||t); }
 function invertEdge(e){ return { u:e.v, v:e.u, rel: vecInv(e.rel), seq: ORDER_MODE ? invertSeq(e.seq) : null }; }
-function permuteSymbols(edges, bij){
-  return edges.map(e=>({u:bij.get(e.u)||e.u, v:bij.get(e.v)||e.v, rel:clone(e.rel), seq: e.seq?e.seq.slice():null}));
-}
+function permuteSymbols(edges, bij){ return edges.map(e=>({u:bij.get(e.u)||e.u, v:bij.get(e.v)||e.v, rel:clone(e.rel), seq: e.seq?e.seq.slice():null})); }
 function reorderClauses(edges){ const arr=edges.slice(); return shuffle(arr); }
 function randomBijection(symbols){ const B=symbols.slice(); shuffle(B); const bij=new Map(); for(let i=0;i<symbols.length;i++) bij.set(symbols[i], B[i]); return bij; }
 function uniqueSymbols(edges){ const s=new Set(); edges.forEach(e=>{ s.add(e.u); s.add(e.v); }); return [...s]; }
@@ -703,6 +691,22 @@ async function runTrial(){
 
 /* ---------- Game state ---------- */
 const SESSION={ running:false, RELS_PER_PREMISE:1 };
+
+let N=1, MAX=500, PAUSE_SEC=30, PREMISE_INTERVAL_SEC=30, RATE=25;
+let idx=0, paused=false, waitTimer=null, responded=false;
+let correct=0, errors=0;
+const history=[], planned=[];
+
+function planSequence(){
+  planned.length=MAX;
+  for(let i=0;i<MAX;i++) planned[i]=false;
+  const eligible=[]; for(let i=+N;i<MAX;i++) eligible.push(i);
+  const k=Math.round((RATE/100)*eligible.length);
+  shuffle(eligible); for(let i=0;i<k;i++) planned[eligible[i]]=true;
+}
+
+/* ---------- UI helpers ---------- */
+function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
 
 function start(){
   ORDER_MODE = !!($('orderMode')&&$('orderMode').checked);
