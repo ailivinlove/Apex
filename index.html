@@ -67,8 +67,8 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
           <label><input id="orderMode" type="checkbox"> Order matters (non-commutative)</label>
           <label>Sequence length (if order matters)
             <select id="orderLen">
-              <option value="2" selected>2 steps</option>
-              <option value="3">3 steps</option>
+              <option value="2">2 steps</option>
+              <option value="3" selected>3 steps</option>
               <option value="4">4 steps</option>
               <option value="5">5 steps</option>
               <option value="6">6 steps</option>
@@ -112,8 +112,8 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
     <div id="premiseText" aria-live="polite">—</div>
   </div>
 
-  <!-- Diagnostics (hidden from users; logs still collected) -->
-  <div class="box" style="margin-top:12px; display:none;" aria-hidden="true">
+  <!-- Diagnostics -->
+  <div class="box" style="margin-top:12px">
     <div class="title">Diagnostics</div>
     <pre id="log" class="log">—</pre>
   </div>
@@ -188,7 +188,6 @@ function tokenToDelta(tok){
   else if(tok==='three levels down') d.z-=3;
   else if(tok==='rotated right') d.u+=1;
   else if(tok==='rotated left') d.u-=1;
-  // 'origin' contributes zero
   return d;
 }
 function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
@@ -283,15 +282,10 @@ function parsePremise(sentence){
     if(ORDER_MODE){
       const items=part.core.split(/\s+then\s+/i).map(s=>s.trim()).filter(Boolean);
       seq=items.map(tok=>tok.toLowerCase()).filter(t=>t!=='origin');
-      // Reject unknowns; also avoid immediate duplicates by collapsing them here (safety)
-      const cleanSeq=[]; let prevTok=null;
       for(const t of seq){
         if(!ALLOWED.has(t)) return {nodes:[],edges:[]};
-        if(t===prevTok) continue; // avoid consecutive identical tokens
-        cleanSeq.push(t); prevTok=t;
         rel=vecAdd(rel, tokenToDelta(t));
       }
-      seq=cleanSeq;
     }else{
       const items=part.core.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
       for(const t0 of items){
@@ -498,7 +492,11 @@ function permuteSymbols(edges, bij){ return edges.map(e=>({u:bij.get(e.u)||e.u, 
 function reorderClauses(edges){ const arr=edges.slice(); return shuffle(arr); }
 function uniqueSymbols(edges){ const s=new Set(); edges.forEach(e=>{ s.add(e.u); s.add(e.v); }); return [...s]; }
 function randomBijection(symbols){ const B=symbols.slice(); shuffle(B); const bij=new Map(); for(let i=0;i<symbols.length;i++) bij.set(symbols[i], B[i]); return bij; }
-function rotateBijection(symbols){ const B=symbols.slice().sort(); const bij=new Map(); for(let i=0;i<B.length;i++){ bij.set(B[i], B[(i+1)%B.length]); } return bij; }
+function rotateBijection(symbols){
+  const B=symbols.slice().sort(); const bij=new Map();
+  for(let i=0;i<B.length;i++){ bij.set(B[i], B[(i+1)%B.length]); }
+  return bij;
+}
 
 /* ===== Speech ===== */
 async function speakLine(text){
@@ -515,30 +513,21 @@ async function speakLine(text){
   });
 }
 
-/* ===== Builders with de-dup constraints ===== */
+/* ===== Build edges ===== */
 function buildEdgeOrdered(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
   const plane=['north','south','east','west','northeast','northwest','southeast','southwest'];
   const pool=plane.concat(['in','out','ahead','behind','one level up','two levels up','three levels up','one level down','two levels down','three levels down','rotated right','rotated left']);
-  const seq=[];
-  let last=null;
-  while(seq.length<orderLen){
-    const cand=pool[(Math.random()*pool.length)|0];
-    if(cand===last) continue;            // avoid immediate repeats like "then out then out"
-    seq.push(cand); last=cand;
-  }
-  // net vector still computed from sequence
+  const seq=[]; while(seq.length<orderLen) seq.push(pool[(Math.random()*pool.length)|0]);
   let r={x:0,y:0,z:0,w:0,u:0,v:0}; seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq};
 }
-
 function buildEdgeVector(symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
   let r={x:0,y:0,z:0,w:0,u:0,v:0};
   const rolls=1+((Math.random()*2)|0);
-  let usedW=false, usedU=false, usedV=false; // forbid |w|,|u|,|v| > 1 to avoid "out and out"
   for(let i=0;i<rolls;i++){
     const axis=(Math.random()*4)|0; // 0 plane, 1 level, 2 embed, 3 time/rotation
     if(axis===0){
@@ -548,17 +537,10 @@ function buildEdgeVector(symPool){
       const lvl=1+((Math.random()*3)|0); const dir=Math.random()<0.5?'up':'down';
       r=vecAdd(r, tokenToDelta(`${['one','two','three'][lvl-1]} level${lvl>1?'s':''} ${dir}`));
     }else if(axis===2){
-      if(usedW) continue;
-      r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out')); usedW=true;
+      r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out'));
     }else{
-      const coin=Math.random();
-      if(coin<0.5){
-        if(usedV) continue;
-        r=vecAdd(r, tokenToDelta(Math.random()<0.5?'ahead':'behind')); usedV=true;
-      }else{
-        if(usedU) continue;
-        r=vecAdd(r, tokenToDelta(Math.random()<0.5?'rotated right':'rotated left')); usedU=true;
-      }
+      const p=Math.random();
+      r=vecAdd(r, tokenToDelta(p<0.5?(Math.random()<0.5?'ahead':'behind'):(Math.random()<0.5?'rotated right':'rotated left')));
     }
   }
   return {u,v,rel:r,seq:null};
@@ -572,7 +554,7 @@ function renderEdges(edges, style){
   }).join(' and ');
 }
 
-/* ===== Deterministic builders for attempt-cap (with surface uniqueness) ===== */
+/* ===== Deterministic builders for attempt-cap ===== */
 function buildDeterministicMatch(prevStr){
   const P=parsePremise(prevStr); if(!P.edges.length) return prevStr;
   let edges=clone(P.edges);
@@ -581,14 +563,15 @@ function buildDeterministicMatch(prevStr){
     const bij=rotateBijection(uniqueSymbols(edges));
     edges=permuteSymbols(edges, bij);
   }
-  const style={shuffleComponents:false, splitLevels:(Math.random()<0.5)};
+  const style={shuffleComponents:false, splitLevels:!Math.random()<0.5};
   return renderEdges(edges, style);
 }
 function buildDeterministicNonMatch(prevStr){
   const P=parsePremise(prevStr);
   const usedTokens=new Set(); P.edges.forEach(e=>clauseTokens(e).forEach(t=>usedTokens.add(t)));
   const safe = usedTokens.size? [...usedTokens] : ['north'];
-  let rel={x:0,y:0,z:0,w:0,u:0,v:0}; rel=vecAdd(rel, tokenToDelta(safe[0]));
+  const relTokens=[safe[0]];
+  let rel={x:0,y:0,z:0,w:0,u:0,v:0}; relTokens.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
   const avoid=new Set(P.nodes);
   const [X,Y]=pickSymbols(2, avoid);
   const e={u:X, v:Y, rel, seq: ORDER_MODE? [safe[0]] : null};
@@ -672,20 +655,23 @@ async function runTrial(){
     } while(++tries<300);
 
     if(!sentence){
-      // deterministic neutral transform fallback (still enforces surface uniqueness)
-      const candidate=buildDeterministicMatch(prev);
-      if(!seenSurface(candidate)) sentence=candidate;
-      // Validate all gates
-      if(sentence){
-        const nowSig=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
-        const A=parsePremise(prev), B=parsePremise(sentence);
-        const merged=[...A.edges,...B.edges];
-        if(sentence===prev || nowSig==='INVALID' || nowSig!==prevSig || !checkClauseConstraints(B.edges) || !checkUnionConstraints(merged) || (ISO_MODE && !isoMatch(prev, sentence)) ){
-          sentence=null;
+      sentence=buildDeterministicMatch(prev);
+      const nowSig=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
+      const A=parsePremise(prev), B=parsePremise(sentence);
+      const merged=[...A.edges,...B.edges];
+      if(sentence===prev || nowSig==='INVALID' || nowSig!==prevSig || !checkClauseConstraints(B.edges) || !checkUnionConstraints(merged) || (ISO_MODE && !isoMatch(prev, sentence)) ){
+        let safe=null, k=0;
+        while(k++<100 && !safe){
+          const cand=buildMatchFrom(prev);
+          const sig=ORDER_MODE?sigOrdered(cand):sigVector(cand);
+          const P2=parsePremise(cand); const merged2=[...A.edges,...P2.edges];
+          if(tokensAllowed(cand) && sig!=='INVALID' && sig===prevSig && checkClauseConstraints(P2.edges) && checkUnionConstraints(merged2) && (!ISO_MODE || isoMatch(prev,cand))){
+            safe=cand;
+          }
         }
+        sentence=safe||sentence;
       }
-      logLine(`[trial ${idx}] MATCH deterministic fallback ${sentence?'ok':'failed'}`);
-      if(!sentence){ stop(); return; } // hard fail rather than leak a duplicate surface
+      logLine(`[trial ${idx}] MATCH fallback used`);
     }else{
       logLine(`[trial ${idx}] MATCH tries=${tries} reason=${lastReject||'ok'} iso=${ISO_MODE}`);
     }
@@ -714,24 +700,30 @@ async function runTrial(){
     } while(++tries<300);
 
     if(!sentence){
-      // deterministic non-match, still enforcing surface uniqueness
-      const candidate = prev ? buildDeterministicNonMatch(prev) : buildNonMatch('', SESSION.RELS_PER_PREMISE);
-      if(!seenSurface(candidate)) sentence=candidate; else sentence=null;
-      if(sentence){
-        let ok=true;
-        if(!tokensAllowed(sentence)) ok=false;
-        const nowSig=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
-        if(nowSig==='INVALID' || (prev && nowSig===prevSig)) ok=false;
-        if(prev){
-          const A=parsePremise(prev), B=parsePremise(sentence);
-          const merged=[...A.edges,...B.edges];
-          if(!checkClauseConstraints(B.edges) || !checkUnionConstraints(merged)) ok=false;
-          if(ISO_MODE && isoMatch(prev, sentence)) ok=false;
-        }
-        if(!ok) sentence=null;
+      sentence = prev ? buildDeterministicNonMatch(prev) : buildNonMatch('', SESSION.RELS_PER_PREMISE);
+      let ok=true;
+      if(!tokensAllowed(sentence)) ok=false;
+      const nowSig=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
+      if(nowSig==='INVALID' || (prev && nowSig===prevSig)) ok=false;
+      if(prev){
+        const A=parsePremise(prev), B=parsePremise(sentence);
+        const merged=[...A.edges,...B.edges];
+        if(!checkClauseConstraints(B.edges) || !checkUnionConstraints(merged)) ok=false;
+        if(ISO_MODE && isoMatch(prev, sentence)) ok=false;
       }
-      logLine(`[trial ${idx}] NON-MATCH deterministic fallback ${sentence?'ok':'failed'}`);
-      if(!sentence){ stop(); return; } // hard fail rather than leak a duplicate surface
+      if(!ok && prev){
+        let safe=null, k=0;
+        while(k++<100 && !safe){
+          const cand=buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
+          const sig=ORDER_MODE?sigOrdered(cand):sigVector(cand);
+          const A=parsePremise(prev), B=parsePremise(cand); const merged=[...A.edges,...B.edges];
+          if(tokensAllowed(cand) && sig!=='INVALID' && sig!==prevSig && (!ISO_MODE || !isoMatch(prev,cand)) && checkClauseConstraints(B.edges) && checkUnionConstraints(merged)){
+            safe=cand;
+          }
+        }
+        sentence=safe||sentence;
+      }
+      logLine(`[trial ${idx}] NON-MATCH fallback used`);
     }else{
       logLine(`[trial ${idx}] NON-MATCH tries=${tries} reason=${lastReject||'ok'} iso=${ISO_MODE}`);
     }
