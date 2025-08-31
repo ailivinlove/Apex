@@ -114,14 +114,11 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
 
 <script>
 /*
-INTERNAL BUILDER PROMPT (non-visual): Enforces LOGIC-ONLY MATCHES; grammar
-([A-Z]\d+) is (REL) of ([A-Z]\d+) with 'and'; allowed vocab: north/south/east/west,
-one|two|three levels up|down, in/out, turned right/turned left, ahead/behind.
-Match iff signatures equal and merged solver ok; non-match iff unequal and
-merged ok; order-mode toggles sequence vs commutative; surface anti-leak via
-inversions, clause reorder, bijection, diagonal/decomposed, level-sum split;
-constraints: ban opposites per clause/union; ISO rules respected; never relax
-logic; log attempts.
+INTERNAL BUILDER PROMPT (non-visual): Logic-only matches, strict grammar,
+allowed vocab only (north/south/east/west, level up/down phrases, in/out,
+turned right/turned left, ahead/behind), never keying off surface, enforce
+solver consistency, union checks, isomorphism rules, anti-leak, diagonals as
+plane shorthands, ordered vs vector signatures, diagnostics, 300-attempt cap.
 */
 
 /* ===== Utilities ===== */
@@ -129,15 +126,18 @@ const $ = id => document.getElementById(id);
 const clone = o => JSON.parse(JSON.stringify(o));
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a; }
 function logLine(s){ const el=$('log'); if(!el) return; el.textContent=(el.textContent==='—'?'':el.textContent+'\n')+s; }
+function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
+function repeats(word, n){ return Array(Math.abs(n)).fill(word); }
 
-/* ===== Config knobs ===== */
+/* ===== Global knobs ===== */
 let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false, SPEAK=true;
 
-/* Hard gates (no UI) */
-const BAN_OPP_CLAUSE=true, BAN_OPP_UNION=true;
+/* Hard gates (always ON) */
+const BAN_OPP_CLAUSE = true;
+const BAN_OPP_UNION  = true;
 
-/* ===== Vocab & opposites ===== */
-const TOKENS=[
+/* ===== Tokens & Opposites ===== */
+const TOKENS = [
   'north','south','east','west',
   'northeast','northwest','southeast','southwest',
   'in','out','ahead','behind',
@@ -145,10 +145,10 @@ const TOKENS=[
   'one level down','two levels down','three levels down',
   'turned right','turned left'
 ];
-const OPP={
-  north:'south',south:'north',east:'west',west:'east',
-  northeast:'southwest',northwest:'southeast',southeast:'northwest',southwest:'northeast',
-  in:'out',out:'in',ahead:'behind',behind:'ahead',
+const OPP = {
+  north:'south', south:'north', east:'west', west:'east',
+  northeast:'southwest', northwest:'southeast', southeast:'northwest', southwest:'northeast',
+  in:'out', out:'in', ahead:'behind', behind:'ahead',
   'one level up':'one level down','two levels up':'two levels down','three levels up':'three levels down',
   'one level down':'one level up','two levels down':'two levels up','three levels down':'three levels up',
   'turned right':'turned left','turned left':'turned right'
@@ -157,17 +157,26 @@ const OPP={
 /* ===== 6D math ===== */
 function tokenToDelta(tok){
   const d={x:0,y:0,z:0,w:0,u:0,v:0};
-  if(tok==='north') d.y-=1; else if(tok==='south') d.y+=1;
-  else if(tok==='east') d.x+=1; else if(tok==='west') d.x-=1;
+  if(tok==='north') d.y-=1;
+  else if(tok==='south') d.y+=1;
+  else if(tok==='east') d.x+=1;
+  else if(tok==='west') d.x-=1;
   else if(tok==='northeast'){ d.x+=1; d.y-=1; }
   else if(tok==='northwest'){ d.x-=1; d.y-=1; }
   else if(tok==='southeast'){ d.x+=1; d.y+=1; }
   else if(tok==='southwest'){ d.x-=1; d.y+=1; }
-  else if(tok==='in') d.w+=1; else if(tok==='out') d.w-=1;
-  else if(tok==='ahead') d.v+=1; else if(tok==='behind') d.v-=1;
-  else if(tok==='one level up') d.z+=1; else if(tok==='two levels up') d.z+=2; else if(tok==='three levels up') d.z+=3;
-  else if(tok==='one level down') d.z-=1; else if(tok==='two levels down') d.z-=2; else if(tok==='three levels down') d.z-=3;
-  else if(tok==='turned right') d.u+=1; else if(tok==='turned left') d.u-=1;
+  else if(tok==='in') d.w+=1;
+  else if(tok==='out') d.w-=1;
+  else if(tok==='ahead') d.v+=1;
+  else if(tok==='behind') d.v-=1;
+  else if(tok==='one level up') d.z+=1;
+  else if(tok==='two levels up') d.z+=2;
+  else if(tok==='three levels up') d.z+=3;
+  else if(tok==='one level down') d.z-=1;
+  else if(tok==='two levels down') d.z-=2;
+  else if(tok==='three levels down') d.z-=3;
+  else if(tok==='turned right') d.u+=1;
+  else if(tok==='turned left') d.u-=1;
   return d;
 }
 function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
@@ -175,7 +184,6 @@ function vecInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
 function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
 
 /* ===== Rendering helpers ===== */
-function repeats(word,n){ return Array(Math.abs(n)).fill(word); }
 function planeComponentsCompressed(x,y){
   const out=[]; let dx=x, dy=y;
   while(dx!==0 && dy!==0){
@@ -184,13 +192,13 @@ function planeComponentsCompressed(x,y){
     else if(dx>0 && dy>0){ out.push('southeast'); dx-=1; dy-=1; }
     else if(dx<0 && dy>0){ out.push('southwest'); dx+=1; dy-=1; }
   }
-  if(dx>0) out.push(...repeats('east',dx));
-  if(dx<0) out.push(...repeats('west',-dx));
-  if(dy<0) out.push(...repeats('north',-dy));
-  if(dy>0) out.push(...repeats('south',dy));
+  if(dx>0) out.push(...repeats('east', dx));
+  if(dx<0) out.push(...repeats('west', -dx));
+  if(dy<0) out.push(...repeats('north', -dy));
+  if(dy>0) out.push(...repeats('south', dy));
   return out;
 }
-function levelComponents(z,split=false){
+function levelComponents(z, split=false){
   const out=[]; const abs=Math.abs(z); const dir=z>=0?'up':'down';
   if(abs===0) return out;
   if(!split){
@@ -198,19 +206,32 @@ function levelComponents(z,split=false){
     else if(abs===2) out.push(`two levels ${dir}`);
     else if(abs===3) out.push(`three levels ${dir}`);
     else for(let i=0;i<abs;i++) out.push(`one level ${dir}`);
-  }else{ for(let i=0;i<abs;i++) out.push(`one level ${dir}`); }
+  }else{
+    for(let i=0;i<abs;i++) out.push(`one level ${dir}`);
+  }
   return out;
 }
-function rotationComponents(u){ const out=[]; if(u>0) out.push(...repeats('turned right',u)); if(u<0) out.push(...repeats('turned left',-u)); return out; }
-function timeComponents(v){ const out=[]; if(v>0) out.push(...repeats('ahead',v)); if(v<0) out.push(...repeats('behind',-v)); return out; }
-function vectorComponents(r,style){
-  const comps=[]; comps.push(...planeComponentsCompressed(r.x,r.y));
-  comps.push(...levelComponents(r.z,style.splitLevels));
-  if(r.w>0) comps.push(...repeats('in',r.w)); if(r.w<0) comps.push(...repeats('out',-r.w));
-  comps.push(...rotationComponents(r.u)); comps.push(...timeComponents(r.v));
-  if(style.shuffleComponents) shuffle(comps); return comps;
+function rotationComponents(u){
+  const out=[]; if(u>0) out.push(...repeats('turned right', u)); if(u<0) out.push(...repeats('turned left', -u)); return out;
 }
-function relToStringVectorStyled(r,style){ const parts=vectorComponents(r,style); return parts.length? parts.join(' and ') : 'origin'; }
+function timeComponents(v){
+  const out=[]; if(v>0) out.push(...repeats('ahead', v)); if(v<0) out.push(...repeats('behind', -v)); return out;
+}
+function vectorComponents(r, style){
+  const comps=[];
+  comps.push(...planeComponentsCompressed(r.x,r.y));
+  comps.push(...levelComponents(r.z, style.splitLevels));
+  if(r.w>0) comps.push(...repeats('in', r.w));
+  if(r.w<0) comps.push(...repeats('out', -r.w));
+  comps.push(...rotationComponents(r.u));
+  comps.push(...timeComponents(r.v));
+  if(style.shuffleComponents) shuffle(comps);
+  return comps;
+}
+function relToStringVectorStyled(r, style){
+  const parts=vectorComponents(r, style);
+  return parts.length? parts.join(' and ') : 'origin';
+}
 function seqToString(seq){ return (seq&&seq.length)? seq.join(' then ') : 'origin'; }
 
 /* ===== Symbols ===== */
@@ -218,22 +239,22 @@ function sym(){ const L='ABCDEFGHIJKLMNOPQRSTUVWXYZ'; return L[(Math.random()*26
 function pickSymbols(k){ const s=new Set(); while(s.size<k) s.add(sym()); return [...s]; }
 
 /* ===== Build edges ===== */
-function buildEdgeOrdered(orderLen, syms){
-  const u=syms[(Math.random()*syms.length)|0];
-  let v=syms[(Math.random()*syms.length)|0]; if(v===u){ v=syms.find(x=>x!==u)||v; }
+function buildEdgeOrdered(orderLen, symPool){
+  const u=symPool[(Math.random()*symPool.length)|0];
+  let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
   const plane=['north','south','east','west','northeast','northwest','southeast','southwest'];
   const pool=plane.concat(['in','out','ahead','behind','one level up','two levels up','three levels up','one level down','two levels down','three levels down','turned right','turned left']);
   const seq=[]; while(seq.length<orderLen) seq.push(pool[(Math.random()*pool.length)|0]);
   let r={x:0,y:0,z:0,w:0,u:0,v:0}; seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq};
 }
-function buildEdgeVector(syms){
-  const u=syms[(Math.random()*syms.length)|0];
-  let v=syms[(Math.random()*syms.length)|0]; if(v===u){ v=syms.find(x=>x!==u)||v; }
+function buildEdgeVector(symPool){
+  const u=symPool[(Math.random()*symPool.length)|0];
+  let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
   let r={x:0,y:0,z:0,w:0,u:0,v:0};
   const rolls=1+((Math.random()*2)|0);
   for(let i=0;i<rolls;i++){
-    const axis=(Math.random()*4)|0;
+    const axis=(Math.random()*4)|0; // 0 plane, 1 level, 2 embed, 3 time/rotation
     if(axis===0){
       const plane=['north','south','east','west','northeast','northwest','southeast','southwest'][(Math.random()*8)|0];
       r=vecAdd(r, tokenToDelta(plane));
@@ -243,14 +264,15 @@ function buildEdgeVector(syms){
     }else if(axis===2){
       r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out'));
     }else{
-      const p=Math.random(); r=vecAdd(r, tokenToDelta(p<0.5?(Math.random()<0.5?'ahead':'behind'):(Math.random()<0.5?'turned right':'turned left')));
+      const p=Math.random();
+      r=vecAdd(r, tokenToDelta(p<0.5?(Math.random()<0.5?'ahead':'behind'):(Math.random()<0.5?'turned right':'turned left')));
     }
   }
   return {u,v,rel:r,seq:null};
 }
 
-/* ===== Render sentence ===== */
-function renderEdges(edges,style){
+/* ===== Render edges -> sentence ===== */
+function renderEdges(edges, style){
   return edges.map(e=>{
     const core = ORDER_MODE ? seqToString(e.seq) : relToStringVectorStyled(e.rel, style||{shuffleComponents:false, splitLevels:false});
     return `${e.u} is ${core} of ${e.v}`;
@@ -258,19 +280,20 @@ function renderEdges(edges,style){
 }
 
 /* ===== Extract & Parse ===== */
-function extractEdges(s){
-  const re=/([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)/gi, out=[]; let m;
-  while((m=re.exec(String(s||'')))) out.push({raw:m[0],A:m[1],core:m[2],B:m[3]});
-  return out;
+function extractEdges(sentence){
+  const re=/([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)/gi;
+  const out=[]; let m; while((m=re.exec(String(sentence||'')))) out.push({raw:m[0],A:m[1],core:m[2],B:m[3]}); return out;
 }
 function parsePremise(sentence){
-  const edges=[], nodes=new Set(); const parts=extractEdges(sentence);
+  const edges=[], nodes=new Set();
+  const parts=extractEdges(sentence);
   parts.forEach(part=>{
     const A=part.A, B=part.B; nodes.add(A); nodes.add(B);
     let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
     if(ORDER_MODE){
       const items=part.core.split(/\s+then\s+/i).map(s=>s.trim()).filter(Boolean);
-      seq=items.map(t=>t.toLowerCase()); seq.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
+      seq=items.map(tok=>tok.toLowerCase());
+      seq.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
     }else{
       const items=part.core.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
       items.forEach(t=>{ if(t==='origin') return; rel=vecAdd(rel, tokenToDelta(t.toLowerCase())); });
@@ -281,12 +304,16 @@ function parsePremise(sentence){
 }
 
 /* ===== Constraints ===== */
-function containsOpposites(tokens){ const set=new Set(tokens); for(const t of set){ const opp=OPP[t]; if(opp&&set.has(opp)) return true; } return false; }
+function containsOpposites(tokens){
+  const set=new Set(tokens); for(const t of set){ const opp=OPP[t]; if(opp && set.has(opp)) return true; } return false;
+}
 function clauseTokens(e){
   const parts=[]; parts.push(...planeComponentsCompressed(e.rel.x,e.rel.y));
   parts.push(...levelComponents(e.rel.z,false));
-  if(e.rel.w>0) parts.push(...repeats('in',e.rel.w)); if(e.rel.w<0) parts.push(...repeats('out',-e.rel.w));
-  parts.push(...rotationComponents(e.rel.u)); parts.push(...timeComponents(e.rel.v));
+  if(e.rel.w>0) parts.push(...repeats('in', e.rel.w));
+  if(e.rel.w<0) parts.push(...repeats('out', -e.rel.w));
+  parts.push(...rotationComponents(e.rel.u));
+  parts.push(...timeComponents(e.rel.v));
   return parts;
 }
 function checkClauseConstraints(edges){
@@ -310,7 +337,8 @@ function solveCoordsFromEdges(edges){
   nodes.forEach(root=>{
     if(seen.has(root)) return;
     coords.set(root,{x:0,y:0,z:0,w:0,u:0,v:0}); seen.add(root);
-    const comp=[root]; comps.push(comp); const st=[root];
+    const comp=[root]; comps.push(comp);
+    const st=[root];
     while(st.length){
       const u=st.pop(), pu=coords.get(u);
       (adj.get(u)||[]).forEach(({v,rel})=>{
@@ -328,44 +356,86 @@ function pairwiseDeltas(coords, comps){
     const a=comp.slice().sort();
     for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++){
       const u=a[i], v=a[j], cu=coords.get(u), cv=coords.get(v);
-      sig.set(`${u}|${v}`, {x:cv.x-cu.x,y:cv.y-cu.y,z:cv.z-cu.z,w:cv.w-cu.w,u:cv.u-cu.u,v:cv.v-cu.v});
+      sig.set(`${u}|${v}`, {x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w, u:cv.u-cu.u, v:cv.v-cu.v});
     }
   });
   return sig;
 }
-function canonicalSeq(u,v,seq){ const needFlip=(u>v), s=(seq||[]); if(!needFlip) return s.join('>'); const inv=s.slice().reverse().map(t=>OPP[t]||t); return inv.join('>'); }
-function sigVector(s){
-  const P=parsePremise(s); if(!checkClauseConstraints(P.edges)) return 'INVALID';
+function canonicalSeq(u,v,seq){
+  const needFlip=(u>v), s=(seq||[]); if(!needFlip) return s.join('>');
+  const inv=s.slice().reverse().map(t=>OPP[t]||t); return inv.join('>');
+}
+function sigVector(sentence){
+  const P=parsePremise(sentence); if(!checkClauseConstraints(P.edges)) return 'INVALID';
   const sol=solveCoordsFromEdges(P.edges); if(!sol.ok) return 'INVALID';
   const sig=pairwiseDeltas(sol.coords, sol.comps);
   return [...sig.keys()].sort().map(k=>{ const d=sig.get(k); return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v}`; }).join('|');
 }
-function sigOrdered(s){
-  const P=parsePremise(s); if(!checkClauseConstraints(P.edges)) return 'INVALID';
+function sigOrdered(sentence){
+  const P=parsePremise(sentence); if(!checkClauseConstraints(P.edges)) return 'INVALID';
   const bag=new Map();
-  P.edges.forEach(e=>{ const k=[e.u,e.v].sort().join('|'); const seq=canonicalSeq(e.u,e.v,e.seq||[]); const arr=bag.get(k)||[]; arr.push(seq); bag.set(k,arr); });
+  P.edges.forEach(e=>{
+    const k=[e.u,e.v].sort().join('|'); const s=canonicalSeq(e.u,e.v,e.seq||[]);
+    const arr=bag.get(k)||[]; arr.push(s); bag.set(k,arr);
+  });
   return [...bag.keys()].sort().map(k=>`${k}:[${bag.get(k).slice().sort().join(',')}]`).join('|');
 }
 
 /* ===== Isomorphism ===== */
-function permutations(a){ const out=[], used=Array(a.length).fill(false), cur=[]; (function rec(){ if(cur.length===a.length){ out.push(cur.slice()); return; } for(let i=0;i<a.length;i++){ if(used[i]) continue; used[i]=true; cur.push(a[i]); rec(); cur.pop(); used[i]=false; } })(); return out; }
-function* combos(a,k,i=0,buf=[]){ if(buf.length===k){ yield buf.slice(); return; } for(let j=i;j<a.length;j++){ buf.push(a[j]); yield* combos(a,k,j+1,buf); buf.pop(); } }
+function permutations(arr){
+  const out=[], used=Array(arr.length).fill(false), cur=[];
+  (function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; }
+    for(let i=0;i<arr.length;i++){ if(used[i]) continue; used[i]=true; cur.push(arr[i]); rec(); cur.pop(); used[i]=false; } })();
+  return out;
+}
+function* combos(arr,k,i=0,buf=[]){ if(buf.length===k){ yield buf.slice(); return; } for(let j=i;j<arr.length;j++){ buf.push(arr[j]); yield* combos(arr,k,j+1,buf); buf.pop(); } }
 function isoMatch(aStr,bStr){
-  const PA=parsePremise(aStr), PB=parsePremise(bStr); if(!checkClauseConstraints(PA.edges)||!checkClauseConstraints(PB.edges)) return false;
-  const A=PA.nodes.slice().sort(), B=PB.nodes.slice().sort(); if(A.length===0||B.length<A.length) return false;
+  const PA=parsePremise(aStr), PB=parsePremise(bStr);
+  if(!checkClauseConstraints(PA.edges)||!checkClauseConstraints(PB.edges)) return false;
+  const A=PA.nodes.slice().sort(), B=PB.nodes.slice().sort();
+  if(A.length===0 || B.length<A.length) return false;
+
   if(!ORDER_MODE){
-    const sa=solveCoordsFromEdges(PA.edges); if(!sa.ok) return false; const sigA=pairwiseDeltas(sa.coords,sa.comps);
-    const sb=solveCoordsFromEdges(PB.edges); if(!sb.ok) return false; const sigB=pairwiseDeltas(sb.coords,sb.comps);
-    for(const subset of combos(B,A.length)){ for(const perm of permutations(subset)){ const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i],perm[i]); let ok=true;
-      for(let i=0;i<A.length;i++){ for(let j=i+1;j<A.length;j++){ const a=A[i],b=A[j]; const dA=sigA.get(`${a}|${b}`); if(!dA){ ok=false; break; } const aa=map.get(a), bb=map.get(b); const dB=sigB.get([aa,bb].sort().join('|')); if(!dB||!vecEq(dA,dB)){ ok=false; break; } } if(!ok) break; }
-      if(ok) return true; } }
+    const sa=solveCoordsFromEdges(PA.edges); if(!sa.ok) return false;
+    const sigA=pairwiseDeltas(sa.coords, sa.comps);
+    const sb=solveCoordsFromEdges(PB.edges); if(!sb.ok) return false;
+    const sigB=pairwiseDeltas(sb.coords, sb.comps);
+    for(const subset of combos(B, A.length)){
+      for(const perm of permutations(subset)){
+        const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i], perm[i]);
+        let ok=true;
+        for(let i=0;i<A.length;i++){
+          for(let j=i+1;j<A.length;j++){
+            const a=A[i], b=A[j]; const dA=sigA.get(`${a}|${b}`); if(!dA){ ok=false; break; }
+            const aa=map.get(a), bb=map.get(b);
+            const dB=sigB.get([aa,bb].sort().join('|')); if(!dB||!vecEq(dA,dB)){ ok=false; break; }
+          }
+          if(!ok) break;
+        }
+        if(ok) return true;
+      }
+    }
     return false;
   }else{
-    function pairSeqMap(P){ const m=new Map(); P.edges.forEach(e=>{ const k=[e.u,e.v].sort().join('|'); const s=canonicalSeq(e.u,e.v,e.seq||[]); const arr=m.get(k)||[]; arr.push(s); m.set(k,arr); }); return m; }
+    function pairSeqMap(P){ const m=new Map(); P.edges.forEach(e=>{ const k=[e.u,e.v].sort().join('|'); const s=canonicalSeq(e.u,e.v,e.seq||[]); const a=m.get(k)||[]; a.push(s); m.set(k,a); }); return m; }
     const mapA=pairSeqMap(PA), mapB=pairSeqMap(PB);
-    for(const subset of combos(B,A.length)){ for(const perm of permutations(subset)){ const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i],perm[i]); let ok=true;
-      for(let i=0;i<A.length;i++){ for(let j=i+1;j<A.length;j++){ const a=A[i],b=A[j]; const arrA=mapA.get(`${a}|${b}`); if(!arrA||arrA.length===0){ ok=false; break; } const aa=map.get(a),bb=map.get(b); const arrB=mapB.get([aa,bb].sort().join('|')); if(!arrB){ ok=false; break; } const setB=new Set(arrB); for(const s of arrA){ if(!setB.has(s)){ ok=false; break; } } if(!ok) break; } if(!ok) break; }
-      if(ok) return true; } }
+    for(const subset of combos(B, A.length)){
+      for(const perm of permutations(subset)){
+        const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i], perm[i]);
+        let ok=true;
+        for(let i=0;i<A.length;i++){
+          for(let j=i+1;j<A.length;j++){
+            const a=A[i], b=A[j]; const arrA=mapA.get(`${a}|${b}`); if(!arrA||arrA.length===0){ ok=false; break; }
+            const aa=map.get(a), bb=map.get(b);
+            const arrB=mapB.get([aa,bb].sort().join('|')); if(!arrB){ ok=false; break; }
+            const setB=new Set(arrB); for(const s of arrA){ if(!setB.has(s)){ ok=false; break; } }
+            if(!ok) break;
+          }
+          if(!ok) break;
+        }
+        if(ok) return true;
+      }
+    }
     return false;
   }
 }
@@ -374,20 +444,25 @@ function isoMatch(aStr,bStr){
 function logicMatch(aStr,bStr){
   if(ISO_MODE){
     if(!isoMatch(aStr,bStr)) return false;
-    const A=parsePremise(aStr), B=parsePremise(bStr); const merged=[...A.edges,...B.edges];
-    const sol=solveCoordsFromEdges(merged); if(!checkUnionConstraints(merged)) return false; return sol.ok;
+    const A=parsePremise(aStr), B=parsePremise(bStr);
+    const merged=[...A.edges,...B.edges]; const sol=solveCoordsFromEdges(merged);
+    if(!checkUnionConstraints(merged)) return false;
+    return sol.ok;
   }else{
     const A=parsePremise(aStr), B=parsePremise(bStr);
     const sA=new Set(A.nodes), sB=new Set(B.nodes); for(const s of sA){ if(!sB.has(s)) return false; }
     if(!checkClauseConstraints(A.edges)||!checkClauseConstraints(B.edges)) return false;
-    const sigA=ORDER_MODE?sigOrdered(aStr):sigVector(aStr), sigB=ORDER_MODE?sigOrdered(bStr):sigVector(bStr);
+    const sigA=ORDER_MODE?sigOrdered(aStr):sigVector(aStr);
+    const sigB=ORDER_MODE?sigOrdered(bStr):sigVector(bStr);
     if(sigA==='INVALID'||sigB==='INVALID'||sigA!==sigB) return false;
-    const merged=[...A.edges,...B.edges]; const sol=solveCoordsFromEdges(merged); if(!checkUnionConstraints(merged)) return false; return sol.ok;
+    const merged=[...A.edges,...B.edges]; const sol=solveCoordsFromEdges(merged);
+    if(!checkUnionConstraints(merged)) return false;
+    return sol.ok;
   }
 }
 
 /* ===== Anti-leak memory ===== */
-const RECENT_SURF=[], RECENT_SURF_MAX=120, RECENT_LOGIC=new Set();
+const RECENT_SURF=[]; const RECENT_SURF_MAX=120; const RECENT_LOGIC=new Set();
 function rememberSurface(s){ RECENT_SURF.push(s); if(RECENT_SURF.length>RECENT_SURF_MAX) RECENT_SURF.shift(); }
 function seenSurface(s){ return RECENT_SURF.includes(s); }
 function rememberLogic(sig){ if(!sig) return; if(RECENT_LOGIC.size>800){ RECENT_LOGIC.clear(); } RECENT_LOGIC.add(sig); }
@@ -395,10 +470,10 @@ function seenLogic(sig){ return RECENT_LOGIC.has(sig); }
 
 /* ===== Neutral transforms ===== */
 function invertSeq(seq){ return (seq||[]).slice().reverse().map(t=>OPP[t]||t); }
-function invertEdge(e){ return {u:e.v, v:e.u, rel:vecInv(e.rel), seq:ORDER_MODE?invertSeq(e.seq):null}; }
-function permuteSymbols(edges,bij){ return edges.map(e=>({u:bij.get(e.u)||e.u, v:bij.get(e.v)||e.v, rel:clone(e.rel), seq:e.seq?e.seq.slice():null})); }
+function invertEdge(e){ return { u:e.v, v:e.u, rel:vecInv(e.rel), seq:ORDER_MODE?invertSeq(e.seq):null }; }
+function permuteSymbols(edges, bij){ return edges.map(e=>({u:bij.get(e.u)||e.u, v:bij.get(e.v)||e.v, rel:clone(e.rel), seq:e.seq?e.seq.slice():null})); }
 function reorderClauses(edges){ const arr=edges.slice(); return shuffle(arr); }
-function randomBijection(symbols){ const B=symbols.slice(); shuffle(B); const bij=new Map(); for(let i=0;i<symbols.length;i++) bij.set(symbols[i],B[i]); return bij; }
+function randomBijection(symbols){ const B=symbols.slice(); shuffle(B); const bij=new Map(); for(let i=0;i<symbols.length;i++) bij.set(symbols[i], B[i]); return bij; }
 function uniqueSymbols(edges){ const s=new Set(); edges.forEach(e=>{ s.add(e.u); s.add(e.v); }); return [...s]; }
 
 /* ===== Speech ===== */
@@ -415,9 +490,9 @@ async function speakLine(text){
   });
 }
 
-/* ===== Generator core & state ===== */
+/* ===== Generator core / state ===== */
 let N=1, MAX=500, PAUSE_SEC=30, PREMISE_INTERVAL_SEC=30, RATE=25;
-let idx=0, paused=false, waitTimer=null, responded=false;
+let idx=0, paused=false, responded=false, waitTimer=null;
 const history=[], planned=[]; let correct=0, errors=0;
 
 function planSequence(){
@@ -426,35 +501,36 @@ function planSequence(){
   const k=Math.round((RATE/100)*eligible.length); shuffle(eligible);
   for(let i=0;i<k;i++) planned[eligible[i]]=true;
 }
+
+/* Builders */
 function buildMatchFrom(prevStr){
   const P=parsePremise(prevStr); let edges=clone(P.edges);
-  const countToInvert=Math.round(edges.length*(0.3+Math.random()*0.3));
-  const idxs=shuffle([...Array(edges.length).keys()]).slice(0, Math.max(0,Math.min(edges.length,countToInvert)));
+  const count=Math.round(edges.length*(0.3+Math.random()*0.3));
+  const idxs=shuffle([...Array(edges.length).keys()]).slice(0, Math.max(0, Math.min(edges.length, count)));
   edges=edges.map((e,i)=> idxs.includes(i)? invertEdge(e) : clone(e));
-  if(ISO_MODE){ const syms=uniqueSymbols(edges); const bij=randomBijection(syms); edges=permuteSymbols(edges,bij); }
+  if(ISO_MODE){ const syms=uniqueSymbols(edges); const bij=randomBijection(syms); edges=permuteSymbols(edges, bij); }
   edges=reorderClauses(edges);
   const style={shuffleComponents:Math.random()<0.7, splitLevels:Math.random()<0.5};
-  return renderEdges(edges,style);
+  return renderEdges(edges, style);
 }
-function buildNonMatch(prevStr,rels){
+function buildNonMatch(prevStr, relsPerPremise){
   const syms=pickSymbols(3); const edges=[];
-  for(let i=0;i<rels;i++){ edges.push( ORDER_MODE? buildEdgeOrdered(ORDER_LEN,syms) : buildEdgeVector(syms) ); }
+  for(let i=0;i<relsPerPremise;i++) edges.push( ORDER_MODE? buildEdgeOrdered(ORDER_LEN, syms) : buildEdgeVector(syms) );
   const style={shuffleComponents:Math.random()<0.7, splitLevels:Math.random()<0.5};
-  return renderEdges(edges,style);
+  return renderEdges(edges, style);
 }
 
-/* ===== UI helpers ===== */
-function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
+/* UI helpers */
 function showPremise(sentence){
   const el=$('premiseText'); if(!el) return; el.innerHTML='';
-  const parts=extractEdges(sentence);
-  parts.forEach((E,i)=>{
+  const edges=extractEdges(sentence);
+  edges.forEach((E,i)=>{
     const span=document.createElement('span'); span.className='rel'; span.textContent=E.raw; el.appendChild(span);
-    if(i<parts.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
+    if(i<edges.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
   });
 }
 
-/* ===== Trial engine ===== */
+/* Trial engine */
 async function runTrial(){
   if(!SESSION.running||paused) return;
   if(idx>=MAX){ stop(); return; }
@@ -483,10 +559,10 @@ async function runTrial(){
         if(!ok){ sentence=null; lastReject='symbol set'; continue; }
       }
       break;
-    }while(++tries<300);
+    } while(++tries<300);
     logLine(`[trial ${idx}] MATCH tries=${tries} reason=${lastReject||'ok'} prevSig=${prevSig} nowSig=${ORDER_MODE?sigOrdered(sentence):sigVector(sentence)} iso=${ISO_MODE}`);
   }else{
-    const prevSig = prev ? (ORDER_MODE?sigOrdered(prev):sigVector(prev)) : null;
+    const prevSig=prev? (ORDER_MODE?sigOrdered(prev):sigVector(prev)) : null;
     do{
       sentence=buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
       if(prev && sentence===prev){ sentence=null; lastReject='identical surface'; continue; }
@@ -495,7 +571,7 @@ async function runTrial(){
       if(nowSig==='INVALID'){ sentence=null; lastReject='invalid sig'; continue; }
       if(prev){
         if(nowSig===prevSig){ sentence=null; lastReject='sig equals'; continue; }
-        if(ISO_MODE && isoMatch(prev,sentence)){ sentence=null; lastReject='iso-equal'; continue; }
+        if(ISO_MODE && isoMatch(prev, sentence)){ sentence=null; lastReject='iso-equal'; continue; }
         const A=parsePremise(prev), B=parsePremise(sentence);
         if(!checkClauseConstraints(A.edges)||!checkClauseConstraints(B.edges)){ sentence=null; lastReject='clause ban'; continue; }
         const merged=[...A.edges,...B.edges];
@@ -508,7 +584,7 @@ async function runTrial(){
       }
       if(seenLogic(nowSig)){ sentence=null; lastReject='logic seen'; continue; }
       break;
-    }while(++tries<300);
+    } while(++tries<300);
     logLine(`[trial ${idx}] NON-MATCH tries=${tries} reason=${lastReject||'ok'} prevSig=${prevSig||'—'} nowSig=${ORDER_MODE?sigOrdered(sentence):sigVector(sentence)} iso=${ISO_MODE}`);
   }
 
@@ -523,12 +599,12 @@ async function runTrial(){
 
   history[idx]=sentence; showPremise(sentence); responded=false;
 
-  const parts=extractEdges(sentence);
-  for(let i=0;i<parts.length;i++){
+  const edges=extractEdges(sentence);
+  for(let i=0;i<edges.length;i++){
     const nodes=[...document.querySelectorAll('#premiseText .rel')];
     nodes.forEach((n,k)=>n.classList.toggle('active', k===i));
-    await speakLine(parts[i].raw+'.'); if(!SESSION.running||paused) return;
-    await new Promise(r=>{ if(waitTimer){ clearTimeout(waitTimer); } waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<parts.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
+    await speakLine(edges[i].raw+'.'); if(!SESSION.running||paused) return;
+    await new Promise(r=>{ if(waitTimer) clearTimeout(waitTimer); waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<edges.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
     if(!SESSION.running||paused) return;
   }
   document.querySelectorAll('#premiseText .rel').forEach(n=>n.classList.remove('active'));
@@ -536,14 +612,14 @@ async function runTrial(){
   idx++; updateUI(); runTrial();
 }
 
-/* ===== Session & controls ===== */
+/* ===== Game state & controls ===== */
 const SESSION={ running:false, RELS_PER_PREMISE:1 };
 
 function start(){
   ORDER_MODE=!!($('orderMode')&&$('orderMode').checked);
-  ORDER_LEN = $('orderLen')? parseInt($('orderLen').value,10):2;
-  ISO_MODE  = !!($('isoMode')&&$('isoMode').checked);
-  SPEAK     = !!($('speakEnabled')&&$('speakEnabled').checked);
+  ORDER_LEN=$('orderLen')? parseInt($('orderLen').value,10):2;
+  ISO_MODE=!!($('isoMode')&&$('isoMode').checked);
+  SPEAK=!!($('speakEnabled')&&$('speakEnabled').checked);
 
   SESSION.RELS_PER_PREMISE=Math.max(1, parseInt(($('relCount')&&$('relCount').value)||'1',10));
   if($('relCount')) $('relCount').disabled=true;
@@ -554,9 +630,9 @@ function start(){
   PREMISE_INTERVAL_SEC=+($('premiseInterval')&&$('premiseInterval').value)||30;
   RATE=+($('rate')&&$('rate').value)||25;
 
-  idx=0; responded=false; correct=0; errors=0;
-  history.length=0; planned.length=0; RECENT_SURF.length=0; RECENT_LOGIC.clear();
-  $('log').textContent='—'; planSequence(); updateUI();
+  idx=0; responded=false; correct=0; errors=0; history.length=0; planned.length=0;
+  RECENT_SURF.length=0; RECENT_LOGIC.clear(); $('log').textContent='—';
+  planSequence(); updateUI();
 
   SESSION.running=true; paused=false;
   $('pause').disabled=false; $('reset').disabled=false; $('hit').disabled=false; $('skip').disabled=false;
@@ -570,12 +646,13 @@ function stop(){
 }
 function togglePause(){
   if(!SESSION.running) return;
-  paused=!paused;
-  $('pause').textContent=paused?'▶ Resume':'⏸ Pause';
+  paused=!paused; setText('pause', paused?'▶ Resume':'⏸ Pause'); $('pause').textContent=paused?'▶ Resume':'⏸ Pause';
   if(paused){
     if(waitTimer){ clearTimeout(waitTimer); waitTimer=null; }
     try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(_){}
-  } else { runTrial(); }
+  }else{
+    runTrial();
+  }
 }
 function reset(){
   stop();
@@ -598,4 +675,27 @@ function skip(){
 function updateUI(){
   setText('idx', idx); setText('max', MAX);
   setText('ptype', (idx<MAX && idx>=N && planned[idx])?'planned MATCH':'planned NON-match');
-  const actual
+  const actual=(idx>=N)? String(logicMatch(history[idx-N]||'', history[idx]||'')).toUpperCase() : '—';
+  setText('isMatch', actual);
+  setText('corr', correct); setText('err', errors);
+  setText('nVal', N); setText('tVal', MAX);
+  setText('pVal', PAUSE_SEC.toFixed(1)+' s'); setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s');
+  setText('rVal', RATE+'%'); setText('relCountVal', SESSION.RELS_PER_PREMISE);
+}
+window.addEventListener('keydown', e=>{
+  if(!SESSION.running) return;
+  if(e.code==='Space'){ registerHit(); e.preventDefault(); }
+});
+document.addEventListener('DOMContentLoaded', ()=>{
+  $('n').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; N=v; setText('nVal', v); } };
+  $('trials').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; MAX=v; setText('tVal', v); setText('max', v); } };
+  $('pauseTime').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; PAUSE_SEC=v; setText('pVal', v.toFixed(1)+' s'); } };
+  $('premiseInterval').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; PREMISE_INTERVAL_SEC=v; setText('premiseIntervalVal', v.toFixed(1)+' s'); } };
+  $('rate').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; RATE=v; setText('rVal', v+'%'); } };
+  $('relCount').oninput=e=>{ if(!SESSION.running){ const v=Math.max(1,parseInt(e.target.value,10)||1); SESSION.RELS_PER_PREMISE=v; setText('relCountVal', v); } };
+  $('start').onclick=start; $('pause').onclick=togglePause; $('reset').onclick=reset; $('hit').onclick=registerHit; $('skip').onclick=skip;
+  updateUI();
+});
+</script>
+</body>
+</html>
