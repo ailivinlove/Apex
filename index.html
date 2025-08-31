@@ -54,7 +54,7 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
         <input id="relCount" type="number" min="1" step="1" value="1">
         <div class="mut small" style="margin-top:6px">
           Axes: plane (north/south/east/west + diagonals), level (up/down),
-          embedding (in/out), time (ahead/behind), rotation (turned right/turned left).
+          embedding (in/out), time (ahead/behind), rotation (rotated right/rotated left).
         </div>
       </div>
     </div>
@@ -116,7 +116,7 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
 /*
 INTERNAL BUILDER PROMPT (non-visual): Logic-only matches, strict grammar,
 allowed vocab only (north/south/east/west, level up/down phrases, in/out,
-turned right/turned left, ahead/behind), never keying off surface, enforce
+rotated right/rotated left, ahead/behind), never keying off surface, enforce
 solver consistency, union checks, isomorphism rules, anti-leak, diagonals as
 plane shorthands, ordered vs vector signatures, diagnostics, 300-attempt cap.
 */
@@ -143,7 +143,7 @@ const TOKENS = [
   'in','out','ahead','behind',
   'one level up','two levels up','three levels up',
   'one level down','two levels down','three levels down',
-  'turned right','turned left'
+  'rotated right','rotated left'
 ];
 const OPP = {
   north:'south', south:'north', east:'west', west:'east',
@@ -151,7 +151,7 @@ const OPP = {
   in:'out', out:'in', ahead:'behind', behind:'ahead',
   'one level up':'one level down','two levels up':'two levels down','three levels up':'three levels down',
   'one level down':'one level up','two levels down':'two levels up','three levels down':'three levels up',
-  'turned right':'turned left','turned left':'turned right'
+  'rotated right':'rotated left','rotated left':'rotated right'
 };
 
 /* ===== 6D math ===== */
@@ -175,8 +175,8 @@ function tokenToDelta(tok){
   else if(tok==='one level down') d.z-=1;
   else if(tok==='two levels down') d.z-=2;
   else if(tok==='three levels down') d.z-=3;
-  else if(tok==='turned right') d.u+=1;
-  else if(tok==='turned left') d.u-=1;
+  else if(tok==='rotated right') d.u+=1;
+  else if(tok==='rotated left') d.u-=1;
   return d;
 }
 function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
@@ -212,7 +212,7 @@ function levelComponents(z, split=false){
   return out;
 }
 function rotationComponents(u){
-  const out=[]; if(u>0) out.push(...repeats('turned right', u)); if(u<0) out.push(...repeats('turned left', -u)); return out;
+  const out=[]; if(u>0) out.push(...repeats('rotated right', u)); if(u<0) out.push(...repeats('rotated left', -u)); return out;
 }
 function timeComponents(v){
   const out=[]; if(v>0) out.push(...repeats('ahead', v)); if(v<0) out.push(...repeats('behind', -v)); return out;
@@ -243,7 +243,7 @@ function buildEdgeOrdered(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
   const plane=['north','south','east','west','northeast','northwest','southeast','southwest'];
-  const pool=plane.concat(['in','out','ahead','behind','one level up','two levels up','three levels up','one level down','two levels down','three levels down','turned right','turned left']);
+  const pool=plane.concat(['in','out','ahead','behind','one level up','two levels up','three levels up','one level down','two levels down','three levels down','rotated right','rotated left']);
   const seq=[]; while(seq.length<orderLen) seq.push(pool[(Math.random()*pool.length)|0]);
   let r={x:0,y:0,z:0,w:0,u:0,v:0}; seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq};
@@ -265,7 +265,7 @@ function buildEdgeVector(symPool){
       r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out'));
     }else{
       const p=Math.random();
-      r=vecAdd(r, tokenToDelta(p<0.5?(Math.random()<0.5?'ahead':'behind'):(Math.random()<0.5?'turned right':'turned left')));
+      r=vecAdd(r, tokenToDelta(p<0.5?(Math.random()<0.5?'ahead':'behind'):(Math.random()<0.5?'rotated right':'rotated left')));
     }
   }
   return {u,v,rel:r,seq:null};
@@ -699,3 +699,4 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+
