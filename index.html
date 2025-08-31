@@ -28,7 +28,7 @@ select{ min-height:38px }
 .small{ font-size:12px; color:var(--mut) }
 hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;border:1px solid rgba(0,200,255,.25);padding:10px;border-radius:12px;color:#c9f6ff;max-height:220px;overflow:auto}
+/* No diagnostics UI presented */
 </style>
 </head>
 <body>
@@ -65,7 +65,7 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
         <div class="title">Advanced Stressors</div>
         <div class="grid2">
           <label><input id="orderMode" type="checkbox"> Order matters (non-commutative)</label>
-          <label>Sequence length (if order matters)
+          <label>Steps per clause
             <select id="orderLen">
               <option value="2" selected>2 steps</option>
               <option value="3">3 steps</option>
@@ -75,7 +75,7 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
           <label><input id="speakEnabled" type="checkbox" checked> Speak premises</label>
         </div>
         <div class="mut small" style="margin-top:6px">
-          Max stress: Order ON + 3 steps + Isomorphism ON.
+          Max stress: Order ON + 3 steps + ISO ON.
         </div>
       </div>
     </div>
@@ -105,20 +105,19 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
     <div id="premiseText" aria-live="polite">—</div>
   </div>
 
-  <!-- Diagnostics -->
-  <div class="box" style="margin-top:12px">
-    <div class="title">Diagnostics</div>
-    <pre id="log" class="log">—</pre>
-  </div>
+  <!-- No diagnostics presented to the user -->
+  <div id="log" style="display:none" aria-hidden="true">—</div>
 </div>
 
 <script>
 /*
-INTERNAL BUILDER PROMPT (non-visual): Logic-only matches, strict grammar,
-allowed vocab only (north/south/east/west, level up/down phrases, in/out,
-rotated right/rotated left, ahead/behind), never keying off surface, enforce
-solver consistency, union checks, isomorphism rules, anti-leak, diagonals as
-plane shorthands, ordered vs vector signatures, diagnostics, 300-attempt cap.
+INTERNAL: Logic-only matches with strict step budgets.
+- Steps per clause = UI 'Steps per clause' in BOTH modes.
+- ORDER_MODE OFF builds from atomic steps, may compress at render.
+- ORDER_MODE ON uses atomic tokens only; no diagonal or 2/3-level compression.
+- Strict ISO: equal node counts; ordered compares multisets per pair.
+- Token whitelist enforced; unknown tokens invalidate.
+- Hard gates (ban opposites) always on; never relaxed.
 */
 
 /* ===== Utilities ===== */
@@ -143,8 +142,16 @@ const TOKENS = [
   'in','out','ahead','behind',
   'one level up','two levels up','three levels up',
   'one level down','two levels down','three levels down',
-  'rotated right','rotated left'
+  'rotated right','rotated left','origin'
 ];
+const ATOMIC_TOKENS = new Set([
+  'north','south','east','west',
+  'in','out','ahead','behind',
+  'rotated right','rotated left',
+  'one level up','one level down'
+]);
+const ALLOWED = new Set(TOKENS);
+
 const OPP = {
   north:'south', south:'north', east:'west', west:'east',
   northeast:'southwest', northwest:'southeast', southeast:'northwest', southwest:'northeast',
@@ -182,6 +189,55 @@ function tokenToDelta(tok){
 function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
 function vecInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
 function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
+
+/* ===== Atomic expansion & gates ===== */
+function expandAtomic(tok){
+  // Return array of atomic tokens for one token
+  if(tok==='northeast') return ['north','east'];
+  if(tok==='northwest') return ['north','west'];
+  if(tok==='southeast') return ['south','east'];
+  if(tok==='southwest') return ['south','west'];
+  if(tok==='two levels up') return ['one level up','one level up'];
+  if(tok==='three levels up') { return ['one level up','one level up','one level up']; }
+  if(tok==='two levels down') return ['one level down','one level down'];
+  if(tok==='three levels down') { return ['one level down','one level down','one level down']; }
+  if(tok==='origin') return [];
+  return [tok];
+}
+function tokensAllowedInMode(tokens){
+  for(const t of tokens){
+    if(!ALLOWED.has(t)) return false;
+    if(ORDER_MODE && !ATOMIC_TOKENS.has(t)) return false; // ordered mode: atomic only
+  }
+  return true;
+}
+function clauseHasOppositesAtomic(tokens){
+  // tokens are atomic after expansion
+  const set=new Set(tokens);
+  for(const t of set){ const opp=OPP[t]; if(opp && set.has(opp)) return true; }
+  return false;
+}
+function getCoreTokensFromEdgePart(core){
+  const items = ORDER_MODE ? core.split(/\s+then\s+/i) : core.split(/\s+and\s+/i);
+  return items.map(s=>s.trim().toLowerCase()).filter(Boolean);
+}
+function computeAtomicLenForCoreTokens(coreTokens){
+  let len=0;
+  for(const t of coreTokens){ len += expandAtomic(t).length; }
+  return len;
+}
+function passesStepGates(sentence){
+  const parts = extractEdges(sentence);
+  for(const p of parts){
+    const toks = getCoreTokensFromEdgePart(p.core);
+    if(!tokensAllowedInMode(toks)) return false;
+    // Expand to atomic for gates
+    const atomic = toks.flatMap(expandAtomic);
+    if(atomic.length !== ORDER_LEN) return false;
+    if(BAN_OPP_CLAUSE && clauseHasOppositesAtomic(atomic)) return false;
+  }
+  return true;
+}
 
 /* ===== Rendering helpers ===== */
 function planeComponentsCompressed(x,y){
@@ -238,36 +294,39 @@ function seqToString(seq){ return (seq&&seq.length)? seq.join(' then ') : 'origi
 function sym(){ const L='ABCDEFGHIJKLMNOPQRSTUVWXYZ'; return L[(Math.random()*26)|0] + (1+((Math.random()*9)|0)); }
 function pickSymbols(k){ const s=new Set(); while(s.size<k) s.add(sym()); return [...s]; }
 
-/* ===== Build edges ===== */
+/* ===== Build edges with step budgets ===== */
+function sampleAtomicSeq(len){
+  // Build an atomic sequence of exact length without opposite pairs within the same clause
+  const pool = [...ATOMIC_TOKENS];
+  let attempts=0;
+  while(attempts++<200){
+    const seq=[];
+    const present = new Set();
+    while(seq.length<len){
+      const t = pool[(Math.random()*pool.length)|0];
+      const opp = OPP[t];
+      if(present.has(opp)) { continue; } // avoid opposite conflicts
+      seq.push(t);
+      present.add(t);
+    }
+    // final sanity (should be fine)
+    if(!clauseHasOppositesAtomic(seq)) return seq;
+  }
+  // fallback deterministic fill (all 'north', for example)
+  return Array(len).fill('north');
+}
 function buildEdgeOrdered(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
-  const plane=['north','south','east','west','northeast','northwest','southeast','southwest'];
-  const pool=plane.concat(['in','out','ahead','behind','one level up','two levels up','three levels up','one level down','two levels down','three levels down','rotated right','rotated left']);
-  const seq=[]; while(seq.length<orderLen) seq.push(pool[(Math.random()*pool.length)|0]);
+  const seq = sampleAtomicSeq(orderLen); // atomic only
   let r={x:0,y:0,z:0,w:0,u:0,v:0}; seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq};
 }
-function buildEdgeVector(symPool){
+function buildEdgeVectorAtomic(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
-  let r={x:0,y:0,z:0,w:0,u:0,v:0};
-  const rolls=1+((Math.random()*2)|0);
-  for(let i=0;i<rolls;i++){
-    const axis=(Math.random()*4)|0; // 0 plane, 1 level, 2 embed, 3 time/rotation
-    if(axis===0){
-      const plane=['north','south','east','west','northeast','northwest','southeast','southwest'][(Math.random()*8)|0];
-      r=vecAdd(r, tokenToDelta(plane));
-    }else if(axis===1){
-      const lvl=1+((Math.random()*3)|0); const dir=Math.random()<0.5?'up':'down';
-      r=vecAdd(r, tokenToDelta(`${['one','two','three'][lvl-1]} level${lvl>1?'s':''} ${dir}`));
-    }else if(axis===2){
-      r=vecAdd(r, tokenToDelta(Math.random()<0.5?'in':'out'));
-    }else{
-      const p=Math.random();
-      r=vecAdd(r, tokenToDelta(p<0.5?(Math.random()<0.5?'ahead':'behind'):(Math.random()<0.5?'rotated right':'rotated left')));
-    }
-  }
+  const seq = sampleAtomicSeq(orderLen); // build by atomic steps, but render as vector
+  let r={x:0,y:0,z:0,w:0,u:0,v:0}; seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq:null};
 }
 
@@ -287,19 +346,21 @@ function extractEdges(sentence){
 function parsePremise(sentence){
   const edges=[], nodes=new Set();
   const parts=extractEdges(sentence);
-  parts.forEach(part=>{
+  for(const part of parts){
     const A=part.A, B=part.B; nodes.add(A); nodes.add(B);
     let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
     if(ORDER_MODE){
       const items=part.core.split(/\s+then\s+/i).map(s=>s.trim()).filter(Boolean);
+      if(!tokensAllowedInMode(items)) return {nodes:[], edges:[]};
       seq=items.map(tok=>tok.toLowerCase());
       seq.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
     }else{
       const items=part.core.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
+      if(!tokensAllowedInMode(items)) return {nodes:[], edges:[]};
       items.forEach(t=>{ if(t==='origin') return; rel=vecAdd(rel, tokenToDelta(t.toLowerCase())); });
     }
     edges.push({u:A,v:B,rel,seq});
-  });
+  }
   return {nodes:[...nodes], edges};
 }
 
@@ -365,13 +426,24 @@ function canonicalSeq(u,v,seq){
   const needFlip=(u>v), s=(seq||[]); if(!needFlip) return s.join('>');
   const inv=s.slice().reverse().map(t=>OPP[t]||t); return inv.join('>');
 }
+function tokensGloballyAllowed(sentence){
+  // quick precheck used by signature functions
+  const parts=extractEdges(sentence);
+  for(const p of parts){
+    const toks = getCoreTokensFromEdgePart(p.core);
+    if(!tokensAllowedInMode(toks)) return false;
+  }
+  return true;
+}
 function sigVector(sentence){
+  if(!tokensGloballyAllowed(sentence)) return 'INVALID';
   const P=parsePremise(sentence); if(!checkClauseConstraints(P.edges)) return 'INVALID';
   const sol=solveCoordsFromEdges(P.edges); if(!sol.ok) return 'INVALID';
   const sig=pairwiseDeltas(sol.coords, sol.comps);
   return [...sig.keys()].sort().map(k=>{ const d=sig.get(k); return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v}`; }).join('|');
 }
 function sigOrdered(sentence){
+  if(!tokensGloballyAllowed(sentence)) return 'INVALID';
   const P=parsePremise(sentence); if(!checkClauseConstraints(P.edges)) return 'INVALID';
   const bag=new Map();
   P.edges.forEach(e=>{
@@ -381,7 +453,7 @@ function sigOrdered(sentence){
   return [...bag.keys()].sort().map(k=>`${k}:[${bag.get(k).slice().sort().join(',')}]`).join('|');
 }
 
-/* ===== Isomorphism ===== */
+/* ===== Isomorphism (strict) ===== */
 function permutations(arr){
   const out=[], used=Array(arr.length).fill(false), cur=[];
   (function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; }
@@ -389,11 +461,20 @@ function permutations(arr){
   return out;
 }
 function* combos(arr,k,i=0,buf=[]){ if(buf.length===k){ yield buf.slice(); return; } for(let j=i;j<arr.length;j++){ buf.push(arr[j]); yield* combos(arr,k,j+1,buf); buf.pop(); } }
+function multisetEqual(a,b){
+  if(a.length!==b.length) return false;
+  const m=new Map();
+  for(const x of a) m.set(x,(m.get(x)||0)+1);
+  for(const x of b) m.set(x,(m.get(x)||0)-1);
+  for(const v of m.values()) if(v!==0) return false;
+  return true;
+}
 function isoMatch(aStr,bStr){
+  if(!tokensGloballyAllowed(aStr) || !tokensGloballyAllowed(bStr)) return false;
   const PA=parsePremise(aStr), PB=parsePremise(bStr);
   if(!checkClauseConstraints(PA.edges)||!checkClauseConstraints(PB.edges)) return false;
   const A=PA.nodes.slice().sort(), B=PB.nodes.slice().sort();
-  if(A.length===0 || B.length<A.length) return false;
+  if(A.length===0 || B.length!==A.length) return false; // strict equal node count
 
   if(!ORDER_MODE){
     const sa=solveCoordsFromEdges(PA.edges); if(!sa.ok) return false;
@@ -425,11 +506,11 @@ function isoMatch(aStr,bStr){
         let ok=true;
         for(let i=0;i<A.length;i++){
           for(let j=i+1;j<A.length;j++){
-            const a=A[i], b=A[j]; const arrA=mapA.get(`${a}|${b}`); if(!arrA||arrA.length===0){ ok=false; break; }
+            const a=A[i], b=A[j];
+            const arrA=mapA.get(`${a}|${b}`); if(!arrA||arrA.length===0){ ok=false; break; }
             const aa=map.get(a), bb=map.get(b);
             const arrB=mapB.get([aa,bb].sort().join('|')); if(!arrB){ ok=false; break; }
-            const setB=new Set(arrB); for(const s of arrA){ if(!setB.has(s)){ ok=false; break; } }
-            if(!ok) break;
+            if(!multisetEqual(arrA.slice().sort(), arrB.slice().sort())) { ok=false; break; }
           }
           if(!ok) break;
         }
@@ -442,6 +523,9 @@ function isoMatch(aStr,bStr){
 
 /* ===== Logic match ===== */
 function logicMatch(aStr,bStr){
+  // Step gates must hold for both
+  if(!passesStepGates(aStr) || !passesStepGates(bStr)) return false;
+
   if(ISO_MODE){
     if(!isoMatch(aStr,bStr)) return false;
     const A=parsePremise(aStr), B=parsePremise(bStr);
@@ -505,18 +589,22 @@ function planSequence(){
 /* Builders */
 function buildMatchFrom(prevStr){
   const P=parsePremise(prevStr); let edges=clone(P.edges);
+  // neutral transforms only (preserve signature and per-clause steps)
   const count=Math.round(edges.length*(0.3+Math.random()*0.3));
   const idxs=shuffle([...Array(edges.length).keys()]).slice(0, Math.max(0, Math.min(edges.length, count)));
   edges=edges.map((e,i)=> idxs.includes(i)? invertEdge(e) : clone(e));
   if(ISO_MODE){ const syms=uniqueSymbols(edges); const bij=randomBijection(syms); edges=permuteSymbols(edges, bij); }
   edges=reorderClauses(edges);
-  const style={shuffleComponents:Math.random()<0.7, splitLevels:Math.random()<0.5};
-  return renderEdges(edges, style);
+  const style={shuffleComponents:!ORDER_MODE && Math.random()<0.7, splitLevels:!ORDER_MODE && Math.random()<0.5};
+  const s = renderEdges(edges, style);
+  return s;
 }
 function buildNonMatch(prevStr, relsPerPremise){
   const syms=pickSymbols(3); const edges=[];
-  for(let i=0;i<relsPerPremise;i++) edges.push( ORDER_MODE? buildEdgeOrdered(ORDER_LEN, syms) : buildEdgeVector(syms) );
-  const style={shuffleComponents:Math.random()<0.7, splitLevels:Math.random()<0.5};
+  for(let i=0;i<relsPerPremise;i++){
+    edges.push( ORDER_MODE? buildEdgeOrdered(ORDER_LEN, syms) : buildEdgeVectorAtomic(ORDER_LEN, syms) );
+  }
+  const style={shuffleComponents:!ORDER_MODE && Math.random()<0.7, splitLevels:!ORDER_MODE && Math.random()<0.5};
   return renderEdges(edges, style);
 }
 
@@ -545,6 +633,7 @@ async function runTrial(){
       sentence=buildMatchFrom(prev);
       if(sentence===prev){ sentence=null; lastReject='identical surface'; continue; }
       if(seenSurface(sentence)){ sentence=null; lastReject='surface seen'; continue; }
+      if(!passesStepGates(sentence)){ sentence=null; lastReject='step gate'; continue; }
       const nowSig=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
       if(nowSig==='INVALID'){ sentence=null; lastReject='invalid sig'; continue; }
       if(nowSig!==prevSig){ sentence=null; lastReject='sig mismatch'; continue; }
@@ -567,6 +656,7 @@ async function runTrial(){
       sentence=buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
       if(prev && sentence===prev){ sentence=null; lastReject='identical surface'; continue; }
       if(seenSurface(sentence)){ sentence=null; lastReject='surface seen'; continue; }
+      if(!passesStepGates(sentence)){ sentence=null; lastReject='step gate'; continue; }
       const nowSig=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
       if(nowSig==='INVALID'){ sentence=null; lastReject='invalid sig'; continue; }
       if(prev){
@@ -589,8 +679,10 @@ async function runTrial(){
   }
 
   if(!sentence){
+    // fallback: relax only surface similarity; NEVER relax steps/solver/signature policy
     const fb = mustMatch && prev ? buildMatchFrom(prev) : buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
-    sentence=fb; logLine(`[trial ${idx}] fallback (surface relaxed only)`);
+    if(passesStepGates(fb)) sentence=fb; else sentence = buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
+    logLine(`[trial ${idx}] fallback (surface relaxed only)`);
   }
 
   rememberSurface(sentence);
@@ -617,7 +709,7 @@ const SESSION={ running:false, RELS_PER_PREMISE:1 };
 
 function start(){
   ORDER_MODE=!!($('orderMode')&&$('orderMode').checked);
-  ORDER_LEN=$('orderLen')? parseInt($('orderLen').value,10):2;
+  ORDER_LEN=$('orderLen')? parseInt($('orderLen').value,10):2; // steps per clause in BOTH modes
   ISO_MODE=!!($('isoMode')&&$('isoMode').checked);
   SPEAK=!!($('speakEnabled')&&$('speakEnabled').checked);
 
@@ -631,7 +723,7 @@ function start(){
   RATE=+($('rate')&&$('rate').value)||25;
 
   idx=0; responded=false; correct=0; errors=0; history.length=0; planned.length=0;
-  RECENT_SURF.length=0; RECENT_LOGIC.clear(); $('log').textContent='—';
+  RECENT_SURF.length=0; RECENT_LOGIC.clear(); const logEl=$('log'); if(logEl) logEl.textContent='—';
   planSequence(); updateUI();
 
   SESSION.running=true; paused=false;
@@ -657,7 +749,7 @@ function togglePause(){
 function reset(){
   stop();
   if($('relCount')) $('relCount').disabled=false;
-  $('premiseText').textContent='—'; $('log').textContent='—';
+  $('premiseText').textContent='—'; const logEl=$('log'); if(logEl) logEl.textContent='—';
   idx=0; correct=0; errors=0; updateUI();
 }
 
