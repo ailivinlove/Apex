@@ -67,22 +67,15 @@ pre.log{white-space:pre-wrap;font-size:11px;line-height:1.4;background:#0e1113;b
           <label><input id="orderMode" type="checkbox"> Order matters (non-commutative)</label>
           <label>Sequence length (if order matters)
             <select id="orderLen">
-              <option value="2">2 steps</option>
-              <option value="3" selected>3 steps</option>
-              <option value="4">4 steps</option>
-              <option value="5">5 steps</option>
-              <option value="6">6 steps</option>
-              <option value="7">7 steps</option>
-              <option value="8">8 steps</option>
-              <option value="9">9 steps</option>
-              <option value="10">10 steps</option>
+              <option value="2" selected>2 steps</option>
+              <option value="3">3 steps</option>
             </select>
           </label>
           <label><input id="isoMode" type="checkbox"> Isomorphism (allow relabeling)</label>
           <label><input id="speakEnabled" type="checkbox" checked> Speak premises</label>
         </div>
         <div class="mut small" style="margin-top:6px">
-          Max stress: Order ON + 10 steps + Isomorphism ON.
+          Max stress: Order ON + 3 steps + Isomorphism ON.
         </div>
       </div>
     </div>
@@ -188,6 +181,7 @@ function tokenToDelta(tok){
   else if(tok==='three levels down') d.z-=3;
   else if(tok==='rotated right') d.u+=1;
   else if(tok==='rotated left') d.u-=1;
+  // 'origin' contributes zero
   return d;
 }
 function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
@@ -264,7 +258,7 @@ function extractEdges(sentence){
 function tokensAllowed(sentence){
   const parts=extractEdges(sentence);
   for(const part of parts){
-    const joiner = ORDER_MODE ? /\s+then\s+/i : /\s+and\s+/i;
+    const joiner = ORDER_MODE ? /\\s+then\\s+/i : /\\s+and\\s+/i;
     const items = part.core.split(joiner).map(s=>s.trim()).filter(Boolean);
     for(const t of items){
       if(t==='origin') continue;
@@ -280,14 +274,14 @@ function parsePremise(sentence){
     const A=part.A, B=part.B; nodes.add(A); nodes.add(B);
     let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
     if(ORDER_MODE){
-      const items=part.core.split(/\s+then\s+/i).map(s=>s.trim()).filter(Boolean);
+      const items=part.core.split(/\\s+then\\s+/i).map(s=>s.trim()).filter(Boolean);
       seq=items.map(tok=>tok.toLowerCase()).filter(t=>t!=='origin');
       for(const t of seq){
-        if(!ALLOWED.has(t)) return {nodes:[],edges:[]};
+        if(!ALLOWED.has(t)) return {nodes:[],edges:[]}; // hard reject unknowns
         rel=vecAdd(rel, tokenToDelta(t));
       }
     }else{
-      const items=part.core.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
+      const items=part.core.split(/\\s+and\\s+/i).map(s=>s.trim()).filter(Boolean);
       for(const t0 of items){
         const t=t0.toLowerCase();
         if(t==='origin') continue;
@@ -408,6 +402,7 @@ function isoMatch(aStr,bStr){
   if(!checkClauseConstraints(PA.edges)||!checkClauseConstraints(PB.edges)) return false;
   const A=PA.nodes.slice().sort(), B=PB.nodes.slice().sort();
   if(A.length===0 || B.length===0) return false;
+  // STRICT: equal node counts only (no supersets)
   if(A.length!==B.length) return false;
 
   if(!ORDER_MODE){
@@ -430,6 +425,7 @@ function isoMatch(aStr,bStr){
     }
     return false;
   }else{
+    // ORDER_MODE: per-pair MULTISET equality (not subset)
     const pairSeqMap = P=>{
       const m=new Map();
       P.edges.forEach(e=>{
@@ -492,7 +488,7 @@ function permuteSymbols(edges, bij){ return edges.map(e=>({u:bij.get(e.u)||e.u, 
 function reorderClauses(edges){ const arr=edges.slice(); return shuffle(arr); }
 function uniqueSymbols(edges){ const s=new Set(); edges.forEach(e=>{ s.add(e.u); s.add(e.v); }); return [...s]; }
 function randomBijection(symbols){ const B=symbols.slice(); shuffle(B); const bij=new Map(); for(let i=0;i<symbols.length;i++) bij.set(symbols[i], B[i]); return bij; }
-function rotateBijection(symbols){
+function rotateBijection(symbols){ // deterministic cycle
   const B=symbols.slice().sort(); const bij=new Map();
   for(let i=0;i<B.length;i++){ bij.set(B[i], B[(i+1)%B.length]); }
   return bij;
@@ -558,20 +554,25 @@ function renderEdges(edges, style){
 function buildDeterministicMatch(prevStr){
   const P=parsePremise(prevStr); if(!P.edges.length) return prevStr;
   let edges=clone(P.edges);
+  // Avoid inversion here to keep union tokens safe; rely on clause reorder + style + optional relabel (ISO)
   edges=reorderClauses(edges);
   if(ISO_MODE){
     const bij=rotateBijection(uniqueSymbols(edges));
     edges=permuteSymbols(edges, bij);
   }
-  const style={shuffleComponents:false, splitLevels:!Math.random()<0.5};
+  const style={shuffleComponents:false, splitLevels:!Math.random()<0.5}; // deterministic enough; splitLevels toggled
   return renderEdges(edges, style);
 }
 function buildDeterministicNonMatch(prevStr){
+  // Create a consistent new graph that merges cleanly: add an isolated edge on fresh symbols,
+  // using ONLY tokens already present in prev (to avoid union opposites).
   const P=parsePremise(prevStr);
   const usedTokens=new Set(); P.edges.forEach(e=>clauseTokens(e).forEach(t=>usedTokens.add(t)));
+  // Fallback if empty: choose a safe token
   const safe = usedTokens.size? [...usedTokens] : ['north'];
-  const relTokens=[safe[0]];
+  const relTokens=[safe[0]]; // single-token relation
   let rel={x:0,y:0,z:0,w:0,u:0,v:0}; relTokens.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
+  // Fresh symbols disjoint from prev
   const avoid=new Set(P.nodes);
   const [X,Y]=pickSymbols(2, avoid);
   const e={u:X, v:Y, rel, seq: ORDER_MODE? [safe[0]] : null};
@@ -604,6 +605,8 @@ function planSequence(){
 /* ===== Builders ===== */
 function buildMatchFrom(prevStr){
   const P=parsePremise(prevStr); let edges=clone(P.edges);
+  // invert 30–60% of edges neutrally, then reorder; careful: inversion may cause union opposites,
+  // gates will filter such cases
   const count=Math.round(edges.length*(0.3+Math.random()*0.3));
   const idxs=shuffle([...Array(edges.length).keys()]).slice(0, Math.max(0, Math.min(edges.length, count)));
   edges=edges.map((e,i)=> idxs.includes(i)? invertEdge(e) : clone(e));
@@ -655,11 +658,14 @@ async function runTrial(){
     } while(++tries<300);
 
     if(!sentence){
+      // deterministic neutral transform fallback (does not relax logic)
       sentence=buildDeterministicMatch(prev);
+      // Validate all gates
       const nowSig=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
       const A=parsePremise(prev), B=parsePremise(sentence);
       const merged=[...A.edges,...B.edges];
       if(sentence===prev || nowSig==='INVALID' || nowSig!==prevSig || !checkClauseConstraints(B.edges) || !checkUnionConstraints(merged) || (ISO_MODE && !isoMatch(prev, sentence)) ){
+        // If deterministic attempt fails (extremely rare), run a short pass ignoring surface-only
         let safe=null, k=0;
         while(k++<100 && !safe){
           const cand=buildMatchFrom(prev);
@@ -700,6 +706,7 @@ async function runTrial(){
     } while(++tries<300);
 
     if(!sentence){
+      // Deterministic non-match that preserves union consistency and logic constraints
       sentence = prev ? buildDeterministicNonMatch(prev) : buildNonMatch('', SESSION.RELS_PER_PREMISE);
       let ok=true;
       if(!tokensAllowed(sentence)) ok=false;
@@ -712,13 +719,15 @@ async function runTrial(){
         if(ISO_MODE && isoMatch(prev, sentence)) ok=false;
       }
       if(!ok && prev){
+        // Short bounded search ignoring surface-only constraint
         let safe=null, k=0;
         while(k++<100 && !safe){
           const cand=buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
           const sig=ORDER_MODE?sigOrdered(cand):sigVector(cand);
           const A=parsePremise(prev), B=parsePremise(cand); const merged=[...A.edges,...B.edges];
-          if(tokensAllowed(cand) && sig!=='INVALID' && sig!==prevSig && (!ISO_MODE || !isoMatch(prev,cand)) && checkClauseConstraints(B.edges) && checkUnionConstraints(merged)){
-            safe=cand;
+          if(tokensAllowed(cand) && sig!=='INVALID' && sig!==
+            prevSig && (!ISO_MODE || !isoMatch(prev,cand)) && checkClauseConstraints(B.edges) && checkUnionConstraints(merged)){
+              safe=cand;
           }
         }
         sentence=safe||sentence;
