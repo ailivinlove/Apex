@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -32,12 +33,12 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
     <div class="col">
       <div class="box">
         <div class="title">Difficulty & N-Back</div>
-        <label>Difficulty (1–10): <span id="diffVal">5</span></label>
-        <input id="difficulty" type="range" min="1" max="10" step="1" value="5">
-        <div class="mut" id="diffExplain">Axes: plane+level+embed • Steps: 3 • Ordered: OFF • Dyads: 1 • Cats: 1</div>
+        <label>Difficulty (1–10): <span id="diffVal">1</span></label>
+        <input id="difficulty" type="range" min="1" max="10" step="1" value="1">
+        <div class="mut" id="diffExplain">Axes: plane • Steps: 1 • Ordered: OFF • Dyads: 1 • Cats: 0</div>
         <hr class="hr">
-        <label>N-Back level (independent): <span id="nVal">2</span></label>
-        <input id="nback" type="range" min="1" max="5" step="1" value="2">
+        <label>N-Back level (independent): <span id="nVal">1</span></label>
+        <input id="nback" type="range" min="1" max="5" step="1" value="1">
         <div class="mut small">N controls comparison depth only; difficulty controls premise complexity.</div>
       </div>
     </div>
@@ -71,7 +72,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
           <span class="badge">Countdown: <span id="countdown">—</span></span>
         </div>
         <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
-        <div class="mut small" id="modeLine">Axes: plane+level+embed • Steps: 3 • Ordered: OFF • Dyads: 1 • Cats: 1 • N=2</div>
+        <div class="mut small" id="modeLine">Axes: plane • Steps: 1 • Ordered: OFF • Dyads: 1 • Cats: 0 • N=1</div>
       </div>
     </div>
   </div>
@@ -134,8 +135,8 @@ function vInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
 function vEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
 
 /* ===== Global knobs (mutable by Difficulty / UI) ===== */
-let DIFF=5, ORDER_MODE=false, STEP_LEN=3, DYADS=1, CATS_MODE=1, ORDERED_AXES=['plane','level','embed'], TOKEN_POOL=[];
-let MAX=200, RATE=25, N=2, SPEAK=true;
+let DIFF=1, ORDER_MODE=false, STEP_LEN=1, DYADS=1, CATS_MODE=0, ORDERED_AXES=['plane'], TOKEN_POOL=[];
+let MAX=200, RATE=25, N=1, SPEAK=true;
 const SOLVE_WINDOW_SEC=5.0;
 
 /* ===== Difficulty mapping (directly changes premises) ===== */
@@ -264,7 +265,7 @@ function buildSentenceByDifficulty(){
   if(clauses.length) s += `, where ${clauses.join(' and ')}`;
   s += '.';
 
-  return { text:s, meta:{p1,p2,p3,p4,x1,x2,x3,x4,c1,c2,c3,c4,seq1,seq2} };
+  return { text:s, meta:{p1,p2,p3,p4,x1,x2,x3,x4,seq1,seq2} };
 }
 
 /* ===== Parsing ===== */
@@ -607,7 +608,7 @@ function start(){
   applyDifficulty(+$('difficulty').value);
   MAX=+$('trials').value||200;
   RATE=+$('rate').value||25;
-  N=+$('nback').value||2;
+  N=+$('nback').value||1;
   SPEAK=!!$('speakEnabled').checked;
 
   idx=0; correct=0; errors=0; planned=[]; history=[]; SEEN_SURF.clear(); SEEN_LOGIC.clear();
@@ -680,3 +681,4 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
+```
