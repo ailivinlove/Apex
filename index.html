@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Relational N-Back — Logic-Only N-Match (6D + Diagonals + Hard Gates)</title>
+<title>Relational N-Back — Integrated Match (max g-load)</title>
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
@@ -71,11 +71,12 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
               <option value="3">3 steps</option>
             </select>
           </label>
-          <label><input id="isoMode" type="checkbox"> Isomorphism (allow relabeling)</label>
+          <!-- SINGLE CRITERION: Integrated Match is always ON (structure + attributes).
+               No criterion menu, no overlays. -->
           <label><input id="speakEnabled" type="checkbox" checked> Speak premises</label>
         </div>
         <div class="mut small" style="margin-top:6px">
-          Max stress: Order ON + 3 steps + ISO ON.
+          Max stress: Order ON + 3 steps + Integrated Match (structure & attributes).
         </div>
       </div>
     </div>
@@ -92,7 +93,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
           <button id="skip" class="btn" disabled>⏭ Skip</button>
         </div>
         <div class="mut" style="margin-top:8px">
-          Trial <span id="idx">0</span>/<span id="max">500</span> • Planned: <span id="ptype">—</span> • Actual (logic): <span id="isMatch">—</span>
+          Trial <span id="idx">0</span>/<span id="max">500</span> • Planned: <span id="ptype">—</span> • Actual (integrated): <span id="isMatch">—</span>
         </div>
         <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
       </div>
@@ -101,7 +102,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 
   <!-- Premise -->
   <div class="box" style="margin-top:12px">
-    <div class="title">Premise (spoken + visual)</div>
+    <div class="title">Premise (integrated)</div>
     <div id="premiseText" aria-live="polite">—</div>
   </div>
 
@@ -111,13 +112,16 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 
 <script>
 /*
-INTERNAL: Logic-only matches with strict step budgets.
-- Steps per clause = UI 'Steps per clause' in BOTH modes.
-- ORDER_MODE OFF builds from atomic steps, may compress at render.
-- ORDER_MODE ON uses atomic tokens only; no diagonal or 2/3-level compression.
-- Strict ISO: equal node counts; ordered compares multisets per pair.
-- Token whitelist enforced; unknown tokens invalidate.
-- Hard gates (ban opposites) always on; never relaxed.
+INTERNAL: Max g-load via a single criterion — INTEGRATED MATCH.
+A trial matches iff:
+  1) Structure matches (all existing hard gates hold; equal signature),
+  2) Attributes match for every node (player, role, cell, deck).
+
+Design constraints honored:
+- No separate overlay panel. Attributes are fused directly into the displayed/speech clause,
+  while the logic parser still consumes canonical "R1 is ... of H2" strings.
+- Only one criterion; no criterion menu.
+- Hard gates (ban opposites) always on; exact step budgets always enforced.
 */
 
 /* ===== Utilities ===== */
@@ -129,7 +133,7 @@ function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
 function repeats(word, n){ return Array(Math.abs(n)).fill(word); }
 
 /* ===== Global knobs ===== */
-let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false, SPEAK=true;
+let ORDER_MODE=false, ORDER_LEN=2, SPEAK=true;
 
 /* Hard gates (always ON) */
 const BAN_OPP_CLAUSE = true;
@@ -192,15 +196,14 @@ function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.
 
 /* ===== Atomic expansion & gates ===== */
 function expandAtomic(tok){
-  // Return array of atomic tokens for one token
   if(tok==='northeast') return ['north','east'];
   if(tok==='northwest') return ['north','west'];
   if(tok==='southeast') return ['south','east'];
   if(tok==='southwest') return ['south','west'];
   if(tok==='two levels up') return ['one level up','one level up'];
-  if(tok==='three levels up') { return ['one level up','one level up','one level up']; }
+  if(tok==='three levels up') return ['one level up','one level up','one level up'];
   if(tok==='two levels down') return ['one level down','one level down'];
-  if(tok==='three levels down') { return ['one level down','one level down','one level down']; }
+  if(tok==='three levels down') return ['one level down','one level down','one level down'];
   if(tok==='origin') return [];
   return [tok];
 }
@@ -212,7 +215,6 @@ function tokensAllowedInMode(tokens){
   return true;
 }
 function clauseHasOppositesAtomic(tokens){
-  // tokens are atomic after expansion
   const set=new Set(tokens);
   for(const t of set){ const opp=OPP[t]; if(opp && set.has(opp)) return true; }
   return false;
@@ -231,7 +233,6 @@ function passesStepGates(sentence){
   for(const p of parts){
     const toks = getCoreTokensFromEdgePart(p.core);
     if(!tokensAllowedInMode(toks)) return false;
-    // Expand to atomic for gates
     const atomic = toks.flatMap(expandAtomic);
     if(atomic.length !== ORDER_LEN) return false;
     if(BAN_OPP_CLAUSE && clauseHasOppositesAtomic(atomic)) return false;
@@ -296,7 +297,6 @@ function pickSymbols(k){ const s=new Set(); while(s.size<k) s.add(sym()); return
 
 /* ===== Build edges with step budgets ===== */
 function sampleAtomicSeq(len){
-  // Build an atomic sequence of exact length without opposite pairs within the same clause
   const pool = [...ATOMIC_TOKENS];
   let attempts=0;
   while(attempts++<200){
@@ -305,32 +305,30 @@ function sampleAtomicSeq(len){
     while(seq.length<len){
       const t = pool[(Math.random()*pool.length)|0];
       const opp = OPP[t];
-      if(present.has(opp)) { continue; } // avoid opposite conflicts
+      if(present.has(opp)) { continue; }
       seq.push(t);
       present.add(t);
     }
-    // final sanity (should be fine)
     if(!clauseHasOppositesAtomic(seq)) return seq;
   }
-  // fallback deterministic fill (all 'north', for example)
   return Array(len).fill('north');
 }
 function buildEdgeOrdered(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
-  const seq = sampleAtomicSeq(orderLen); // atomic only
+  const seq = sampleAtomicSeq(orderLen);
   let r={x:0,y:0,z:0,w:0,u:0,v:0}; seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq};
 }
 function buildEdgeVectorAtomic(orderLen, symPool){
   const u=symPool[(Math.random()*symPool.length)|0];
   let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
-  const seq = sampleAtomicSeq(orderLen); // build by atomic steps, but render as vector
+  const seq = sampleAtomicSeq(orderLen);
   let r={x:0,y:0,z:0,w:0,u:0,v:0}; seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
   return {u,v,rel:r,seq:null};
 }
 
-/* ===== Render edges -> sentence ===== */
+/* ===== Render edges -> canonical sentence ===== */
 function renderEdges(edges, style){
   return edges.map(e=>{
     const core = ORDER_MODE ? seqToString(e.seq) : relToStringVectorStyled(e.rel, style||{shuffleComponents:false, splitLevels:false});
@@ -427,7 +425,6 @@ function canonicalSeq(u,v,seq){
   const inv=s.slice().reverse().map(t=>OPP[t]||t); return inv.join('>');
 }
 function tokensGloballyAllowed(sentence){
-  // quick precheck used by signature functions
   const parts=extractEdges(sentence);
   for(const p of parts){
     const toks = getCoreTokensFromEdgePart(p.core);
@@ -453,105 +450,6 @@ function sigOrdered(sentence){
   return [...bag.keys()].sort().map(k=>`${k}:[${bag.get(k).slice().sort().join(',')}]`).join('|');
 }
 
-/* ===== Isomorphism (strict) ===== */
-function permutations(arr){
-  const out=[], used=Array(arr.length).fill(false), cur=[];
-  (function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; }
-    for(let i=0;i<arr.length;i++){ if(used[i]) continue; used[i]=true; cur.push(arr[i]); rec(); cur.pop(); used[i]=false; } })();
-  return out;
-}
-function* combos(arr,k,i=0,buf=[]){ if(buf.length===k){ yield buf.slice(); return; } for(let j=i;j<arr.length;j++){ buf.push(arr[j]); yield* combos(arr,k,j+1,buf); buf.pop(); } }
-function multisetEqual(a,b){
-  if(a.length!==b.length) return false;
-  const m=new Map();
-  for(const x of a) m.set(x,(m.get(x)||0)+1);
-  for(const x of b) m.set(x,(m.get(x)||0)-1);
-  for(const v of m.values()) if(v!==0) return false;
-  return true;
-}
-function isoMatch(aStr,bStr){
-  if(!tokensGloballyAllowed(aStr) || !tokensGloballyAllowed(bStr)) return false;
-  const PA=parsePremise(aStr), PB=parsePremise(bStr);
-  if(!checkClauseConstraints(PA.edges)||!checkClauseConstraints(PB.edges)) return false;
-  const A=PA.nodes.slice().sort(), B=PB.nodes.slice().sort();
-  if(A.length===0 || B.length!==A.length) return false; // strict equal node count
-
-  if(!ORDER_MODE){
-    const sa=solveCoordsFromEdges(PA.edges); if(!sa.ok) return false;
-    const sigA=pairwiseDeltas(sa.coords, sa.comps);
-    const sb=solveCoordsFromEdges(PB.edges); if(!sb.ok) return false;
-    const sigB=pairwiseDeltas(sb.coords, sb.comps);
-    for(const subset of combos(B, A.length)){
-      for(const perm of permutations(subset)){
-        const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i], perm[i]);
-        let ok=true;
-        for(let i=0;i<A.length;i++){
-          for(let j=i+1;j<A.length;j++){
-            const a=A[i], b=A[j]; const dA=sigA.get(`${a}|${b}`); if(!dA){ ok=false; break; }
-            const aa=map.get(a), bb=map.get(b);
-            const dB=sigB.get([aa,bb].sort().join('|')); if(!dB||!vecEq(dA,dB)){ ok=false; break; }
-          }
-          if(!ok) break;
-        }
-        if(ok) return true;
-      }
-    }
-    return false;
-  }else{
-    function pairSeqMap(P){ const m=new Map(); P.edges.forEach(e=>{ const k=[e.u,e.v].sort().join('|'); const s=canonicalSeq(e.u,e.v,e.seq||[]); const a=m.get(k)||[]; a.push(s); m.set(k,a); }); return m; }
-    const mapA=pairSeqMap(PA), mapB=pairSeqMap(PB);
-    for(const subset of combos(B, A.length)){
-      for(const perm of permutations(subset)){
-        const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i], perm[i]);
-        let ok=true;
-        for(let i=0;i<A.length;i++){
-          for(let j=i+1;j<A.length;j++){
-            const a=A[i], b=A[j];
-            const arrA=mapA.get(`${a}|${b}`); if(!arrA||arrA.length===0){ ok=false; break; }
-            const aa=map.get(a), bb=map.get(b);
-            const arrB=mapB.get([aa,bb].sort().join('|')); if(!arrB){ ok=false; break; }
-            if(!multisetEqual(arrA.slice().sort(), arrB.slice().sort())) { ok=false; break; }
-          }
-          if(!ok) break;
-        }
-        if(ok) return true;
-      }
-    }
-    return false;
-  }
-}
-
-/* ===== Logic match ===== */
-function logicMatch(aStr,bStr){
-  // Step gates must hold for both
-  if(!passesStepGates(aStr) || !passesStepGates(bStr)) return false;
-
-  if(ISO_MODE){
-    if(!isoMatch(aStr,bStr)) return false;
-    const A=parsePremise(aStr), B=parsePremise(bStr);
-    const merged=[...A.edges,...B.edges]; const sol=solveCoordsFromEdges(merged);
-    if(!checkUnionConstraints(merged)) return false;
-    return sol.ok;
-  }else{
-    const A=parsePremise(aStr), B=parsePremise(bStr);
-    const sA=new Set(A.nodes), sB=new Set(B.nodes); for(const s of sA){ if(!sB.has(s)) return false; }
-    if(!checkClauseConstraints(A.edges)||!checkClauseConstraints(B.edges)) return false;
-    const sigA=ORDER_MODE?sigOrdered(aStr):sigVector(aStr);
-    const sigB=ORDER_MODE?sigOrdered(bStr):sigVector(bStr);
-    if(sigA==='INVALID'||sigB==='INVALID'||sigA!==sigB) return false;
-    const merged=[...A.edges,...B.edges]; const sol=solveCoordsFromEdges(merged);
-    if(!checkUnionConstraints(merged)) return false;
-    return sol.ok;
-  }
-}
-
-/* ===== Anti-leak memory ===== */
-const RECENT_SURF=[]; const RECENT_SURF_MAX=120; const RECENT_LOGIC=new Set();
-function rememberSurface(s){ RECENT_SURF.push(s); if(RECENT_SURF.length>RECENT_SURF_MAX) RECENT_SURF.shift(); }
-function seenSurface(s){ return RECENT_SURF.includes(s); }
-function rememberLogic(sig){ if(!sig) return; if(RECENT_LOGIC.size>800){ RECENT_LOGIC.clear(); } RECENT_LOGIC.add(sig); }
-function seenLogic(sig){ return RECENT_LOGIC.has(sig); }
-
 /* ===== Neutral transforms ===== */
 function invertSeq(seq){ return (seq||[]).slice().reverse().map(t=>OPP[t]||t); }
 function invertEdge(e){ return { u:e.v, v:e.u, rel:vecInv(e.rel), seq:ORDER_MODE?invertSeq(e.seq):null }; }
@@ -574,6 +472,120 @@ async function speakLine(text){
   });
 }
 
+/* ===== Integrated attributes (players / roles / positions) ===== */
+/* No overlays. We fuse attributes into the displayed/speech clause only.
+   Logic still consumes canonical "A1 is ... of B2". */
+
+const NAMES = [
+  'Matt','Sally','Noah','Tara','Maya','Eli','Zara','Kai','Liam','Ava','Leo','Nina',
+  'Aria','Milo','Iris','Owen','Luca','June','Reid','Skye','Ezra','Quinn','Nova','Rene'
+];
+const ROLES = ['Anchor','Scout','Vector','Relay','Gate','Binder','Sentinel','Mapper'];
+const NATO = ['Alpha','Bravo','Charlie','Delta','Echo','Foxtrot','Golf','Hotel','India','Juliett','Kilo','Lima','Mike','November','Oscar','Papa','Quebec','Romeo','Sierra','Tango','Uniform','Victor','Whiskey','X-ray','Yankee','Zulu'];
+
+function roman(n){ if(n===0) return '0'; const map=[[1000,'M'],[900,'CM'],[500,'D'],[400,'CD'],[100,'C'],[90,'XC'],[50,'L'],[40,'XL'],[10,'X'],[9,'IX'],[5,'V'],[4,'IV'],[1,'I']]; let s=''; let x=Math.abs(n); for(const [v,c] of map){ while(x>=v){ s+=c; x-=v; } } return n<0?('-'+s):s; }
+
+function coordsToCell(c){
+  // Distinct from node IDs: "cell <NATO> <number>", deck as Roman (omit deck if 0).
+  const L = ((c.x % 26)+26)%26;                 // wrap to 0..25
+  const nato = NATO[L];
+  const num = 10 + c.y;                         // centered around ~10
+  const deck = c.z!==0 ? roman(Math.abs(c.z)) : null;
+  return { cell: `${nato} ${num}`, deck: deck };
+}
+
+/* ATTR_HISTORY[i] = { nodeId: {player, role, cell, deck} } */
+const ATTR_HISTORY = [];
+
+function assignAttributesForSentence(sentence){
+  const P = parsePremise(sentence);
+  const sol = solveCoordsFromEdges(P.edges);
+  // If unsolved (shouldn't happen after gates), fallback to neutral coords.
+  const coords = sol.ok ? sol.coords : new Map(P.nodes.map(n=>[n,{x:0,y:0,z:0,w:0,u:0,v:0}]));
+  const names = shuffle(NAMES.slice());
+  const roles = shuffle(ROLES.slice());
+
+  const attr = {};
+  P.nodes.forEach((n,i)=>{
+    const c = coords.get(n) || {x:0,y:0,z:0,w:0,u:0,v:0};
+    const {cell, deck} = coordsToCell(c);
+    attr[n] = {
+      player: names[i % names.length],
+      role: roles[i % roles.length],
+      cell, deck
+    };
+  });
+  return attr;
+}
+
+function attributesEqual(a, b){
+  if(!a || !b) return false;
+  const keysA = Object.keys(a);
+  for(const k of keysA){
+    if(!(k in b)) return false;
+    const A=a[k], B=b[k];
+    if(!A || !B) return false;
+    if(A.player!==B.player || A.role!==B.role || A.cell!==B.cell || A.deck!==B.deck) return false;
+  }
+  return true;
+}
+
+/* Display fusion: turn canonical edge into enriched clause without breaking parsing elsewhere */
+function decorateEdge(coreEdge, attrMap){
+  const A = coreEdge.A, B = coreEdge.B;
+  const a = attrMap[A], b = attrMap[B];
+  // Core relation string is preserved verbatim:
+  const core = `${A} is ${coreEdge.core} of ${B}`;
+  // Enriched display (no overlays; fused). Clear prefixes to distinguish:
+  const left  = a ? `${a.player} [${A}] (${a.role} @ cell ${a.cell}${a.deck?`, deck ${a.deck}`:''})` : `[${A}]`;
+  const right = b ? `${b.player} [${B}] (${b.role} @ cell ${b.cell}${b.deck?`, deck ${b.deck}`:''})` : `[${B}]`;
+  // Replace A and B occurrences at the edges of the core safely:
+  // We only replace the leading A and trailing B tokens around 'is'/'of'.
+  // Build a safe decorated string:
+  return `${left} is ${coreEdge.core} of ${right}`;
+}
+
+function decorateEdgesForSentence(sentence, attrMap){
+  const parts = extractEdges(sentence);
+  return parts.map(e=>decorateEdge(e, attrMap));
+}
+
+/* ===== Logic match (STRUCTURE ONLY) ===== */
+function logicMatchStructureOnly(aStr,bStr){
+  // Step gates must hold for both
+  if(!passesStepGates(aStr) || !passesStepGates(bStr)) return false;
+
+  const A=parsePremise(aStr), B=parsePremise(bStr);
+  // Equal symbol sets (we fix single criterion; no ISO relabeling)
+  const sA=new Set(A.nodes), sB=new Set(B.nodes); for(const s of sA){ if(!sB.has(s)) return false; }
+  if(!checkClauseConstraints(A.edges)||!checkClauseConstraints(B.edges)) return false;
+
+  const sigA=ORDER_MODE?sigOrdered(aStr):sigVector(aStr);
+  const sigB=ORDER_MODE?sigOrdered(bStr):sigVector(bStr);
+  if(sigA==='INVALID'||sigB==='INVALID'||sigA!==sigB) return false;
+
+  const merged=[...A.edges,...B.edges]; const sol=solveCoordsFromEdges(merged);
+  if(!checkUnionConstraints(merged)) return false;
+  return sol.ok;
+}
+
+/* ===== Integrated criterion (STRUCTURE + ATTRIBUTES) ===== */
+function integratedMatch(prevIdx, nowIdx){
+  if(prevIdx<0) return false;
+  const aStr = history[prevIdx], bStr = history[nowIdx];
+  if(!aStr || !bStr) return false;
+  const structure = logicMatchStructureOnly(aStr,bStr);
+  const attrs = attributesEqual(ATTR_HISTORY[prevIdx], ATTR_HISTORY[nowIdx]);
+  return structure && attrs;
+}
+
+/* ===== Anti-leak memory ===== */
+const RECENT_SURF=[]; const RECENT_SURF_MAX=120; const RECENT_LOGIC=new Set();
+function rememberSurface(s){ RECENT_SURF.push(s); if(RECENT_SURF.length>RECENT_SURF_MAX) RECENT_SURF.shift(); }
+function seenSurface(s){ return RECENT_SURF.includes(s); }
+function rememberLogic(sig){ if(!sig) return; if(RECENT_LOGIC.size>800){ RECENT_LOGIC.clear(); } RECENT_LOGIC.add(sig); }
+function seenLogic(sig){ return RECENT_LOGIC.has(sig); }
+
 /* ===== Generator core / state ===== */
 let N=1, MAX=500, PAUSE_SEC=30, PREMISE_INTERVAL_SEC=30, RATE=25;
 let idx=0, paused=false, responded=false, waitTimer=null;
@@ -586,14 +598,12 @@ function planSequence(){
   for(let i=0;i<k;i++) planned[eligible[i]]=true;
 }
 
-/* Builders */
+/* Builders (structure) */
 function buildMatchFrom(prevStr){
   const P=parsePremise(prevStr); let edges=clone(P.edges);
-  // neutral transforms only (preserve signature and per-clause steps)
   const count=Math.round(edges.length*(0.3+Math.random()*0.3));
   const idxs=shuffle([...Array(edges.length).keys()]).slice(0, Math.max(0, Math.min(edges.length, count)));
   edges=edges.map((e,i)=> idxs.includes(i)? invertEdge(e) : clone(e));
-  if(ISO_MODE){ const syms=uniqueSymbols(edges); const bij=randomBijection(syms); edges=permuteSymbols(edges, bij); }
   edges=reorderClauses(edges);
   const style={shuffleComponents:!ORDER_MODE && Math.random()<0.7, splitLevels:!ORDER_MODE && Math.random()<0.5};
   const s = renderEdges(edges, style);
@@ -609,12 +619,14 @@ function buildNonMatch(prevStr, relsPerPremise){
 }
 
 /* UI helpers */
-function showPremise(sentence){
+function showPremise(sentence, attrMap){
   const el=$('premiseText'); if(!el) return; el.innerHTML='';
-  const edges=extractEdges(sentence);
-  edges.forEach((E,i)=>{
-    const span=document.createElement('span'); span.className='rel'; span.textContent=E.raw; el.appendChild(span);
-    if(i<edges.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
+  const parts=extractEdges(sentence);
+  parts.forEach((E,i)=>{
+    const span=document.createElement('span'); span.className='rel';
+    span.textContent = decorateEdge(E, attrMap);
+    el.appendChild(span);
+    if(i<parts.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
   });
 }
 
@@ -643,13 +655,10 @@ async function runTrial(){
       const s1=solveCoordsFromEdges(A.edges).ok, s2=solveCoordsFromEdges(B.edges).ok, s3=solveCoordsFromEdges(merged).ok;
       if(!(s1&&s2&&s3)){ sentence=null; lastReject='solver'; continue; }
       if(!checkUnionConstraints(merged)){ sentence=null; lastReject='union ban'; continue; }
-      if(!ISO_MODE){
-        const sA=new Set(A.nodes), sB=new Set(B.nodes); let ok=true; for(const s of sA){ if(!sB.has(s)){ ok=false; break; } }
-        if(!ok){ sentence=null; lastReject='symbol set'; continue; }
-      }
+      // Structure OK. Integrated criterion requires attributes equality; we'll copy attributes from prev.
       break;
     } while(++tries<300);
-    logLine(`[trial ${idx}] MATCH tries=${tries} reason=${lastReject||'ok'} prevSig=${prevSig} nowSig=${ORDER_MODE?sigOrdered(sentence):sigVector(sentence)} iso=${ISO_MODE}`);
+    logLine(`[trial ${idx}] MATCH tries=${tries} reason=${lastReject||'ok'} prevSig=${prevSig} nowSig=${ORDER_MODE?sigOrdered(sentence):sigVector(sentence)}`);
   }else{
     const prevSig=prev? (ORDER_MODE?sigOrdered(prev):sigVector(prev)) : null;
     do{
@@ -661,7 +670,6 @@ async function runTrial(){
       if(nowSig==='INVALID'){ sentence=null; lastReject='invalid sig'; continue; }
       if(prev){
         if(nowSig===prevSig){ sentence=null; lastReject='sig equals'; continue; }
-        if(ISO_MODE && isoMatch(prev, sentence)){ sentence=null; lastReject='iso-equal'; continue; }
         const A=parsePremise(prev), B=parsePremise(sentence);
         if(!checkClauseConstraints(A.edges)||!checkClauseConstraints(B.edges)){ sentence=null; lastReject='clause ban'; continue; }
         const merged=[...A.edges,...B.edges];
@@ -675,7 +683,7 @@ async function runTrial(){
       if(seenLogic(nowSig)){ sentence=null; lastReject='logic seen'; continue; }
       break;
     } while(++tries<300);
-    logLine(`[trial ${idx}] NON-MATCH tries=${tries} reason=${lastReject||'ok'} prevSig=${prevSig||'—'} nowSig=${ORDER_MODE?sigOrdered(sentence):sigVector(sentence)} iso=${ISO_MODE}`);
+    logLine(`[trial ${idx}] NON-MATCH tries=${tries} reason=${lastReject||'ok'} prevSig=${prevSig||'—'} nowSig=${ORDER_MODE?sigOrdered(sentence):sigVector(sentence)}`);
   }
 
   if(!sentence){
@@ -689,14 +697,25 @@ async function runTrial(){
   const nowSigF=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
   rememberLogic(nowSigF);
 
-  history[idx]=sentence; showPremise(sentence); responded=false;
+  // Attribute assignment (integrated criterion)
+  if(mustMatch && prev){
+    // Copy previous attributes verbatim to force integrated match possible.
+    ATTR_HISTORY[idx] = clone(ATTR_HISTORY[idx-N] || assignAttributesForSentence(sentence));
+  }else{
+    ATTR_HISTORY[idx] = assignAttributesForSentence(sentence);
+  }
 
-  const edges=extractEdges(sentence);
-  for(let i=0;i<edges.length;i++){
+  history[idx]=sentence;
+  showPremise(sentence, ATTR_HISTORY[idx]);
+  responded=false;
+
+  // Speak enriched clauses
+  const edgesDeco = decorateEdgesForSentence(sentence, ATTR_HISTORY[idx]);
+  for(let i=0;i<edgesDeco.length;i++){
     const nodes=[...document.querySelectorAll('#premiseText .rel')];
     nodes.forEach((n,k)=>n.classList.toggle('active', k===i));
-    await speakLine(edges[i].raw+'.'); if(!SESSION.running||paused) return;
-    await new Promise(r=>{ if(waitTimer) clearTimeout(waitTimer); waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<edges.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
+    await speakLine(edgesDeco[i]+'.'); if(!SESSION.running||paused) return;
+    await new Promise(r=>{ if(waitTimer) clearTimeout(waitTimer); waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<edgesDeco.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
     if(!SESSION.running||paused) return;
   }
   document.querySelectorAll('#premiseText .rel').forEach(n=>n.classList.remove('active'));
@@ -710,7 +729,6 @@ const SESSION={ running:false, RELS_PER_PREMISE:1 };
 function start(){
   ORDER_MODE=!!($('orderMode')&&$('orderMode').checked);
   ORDER_LEN=$('orderLen')? parseInt($('orderLen').value,10):2; // steps per clause in BOTH modes
-  ISO_MODE=!!($('isoMode')&&$('isoMode').checked);
   SPEAK=!!($('speakEnabled')&&$('speakEnabled').checked);
 
   SESSION.RELS_PER_PREMISE=Math.max(1, parseInt(($('relCount')&&$('relCount').value)||'1',10));
@@ -722,7 +740,7 @@ function start(){
   PREMISE_INTERVAL_SEC=+($('premiseInterval')&&$('premiseInterval').value)||30;
   RATE=+($('rate')&&$('rate').value)||25;
 
-  idx=0; responded=false; correct=0; errors=0; history.length=0; planned.length=0;
+  idx=0; responded=false; correct=0; errors=0; history.length=0; planned.length=0; ATTR_HISTORY.length=0;
   RECENT_SURF.length=0; RECENT_LOGIC.clear(); const logEl=$('log'); if(logEl) logEl.textContent='—';
   planSequence(); updateUI();
 
@@ -756,7 +774,8 @@ function reset(){
 /* ===== Input binding ===== */
 function registerHit(){
   if(!SESSION.running||responded) return;
-  responded=true; const truth=(idx>=N)? logicMatch(history[idx-N], history[idx-0]) : false;
+  responded=true;
+  const truth=(idx>=N)? integratedMatch(idx-N, idx-0) : false;
   if(truth) correct++; else errors++; updateUI();
 }
 function skip(){
@@ -767,7 +786,7 @@ function skip(){
 function updateUI(){
   setText('idx', idx); setText('max', MAX);
   setText('ptype', (idx<MAX && idx>=N && planned[idx])?'planned MATCH':'planned NON-match');
-  const actual=(idx>=N)? String(logicMatch(history[idx-N]||'', history[idx]||'')).toUpperCase() : '—';
+  const actual=(idx>=N)? String(integratedMatch(idx-N, idx)).toUpperCase() : '—';
   setText('isMatch', actual);
   setText('corr', correct); setText('err', errors);
   setText('nVal', N); setText('tVal', MAX);
@@ -791,4 +810,3 @@ document.addEventListener('DOMContentLoaded', ()=>{
 </script>
 </body>
 </html>
-
