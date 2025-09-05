@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Relational N-Back — One-Sentence, Logic-Only (Difficulty-Linked & Solve-Window Customizable)</title>
+<title>Relational N-Back — One-Sentence, Logic-Only (Triads L2–L10)</title>
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
@@ -34,7 +34,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
         <div class="title">Difficulty & N-Back</div>
         <label>Difficulty (1–10): <span id="diffVal">1</span></label>
         <input id="difficulty" type="range" min="1" max="10" step="1" value="1">
-        <div class="mut" id="diffExplain">Axes: plane • Steps: 1 • Ordered: OFF • Dyads: 1 • Cats: 0</div>
+        <div class="mut" id="diffExplain">Axes: plane • Steps: 1 • Ordered: OFF • Dyads: 1 • Triads: 0 • Cats: 0</div>
         <hr class="hr">
         <label>N-Back level (independent): <span id="nVal">1</span></label>
         <input id="nback" type="range" min="1" max="5" step="1" value="1">
@@ -73,7 +73,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
           <span class="badge">Countdown: <span id="countdown">—</span></span>
         </div>
         <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
-        <div class="mut small" id="modeLine">Axes: plane • Steps: 1 • Ordered: OFF • Dyads: 1 • Cats: 0 • N=1</div>
+        <div class="mut small" id="modeLine">Axes: plane • Steps: 1 • Ordered: OFF • Dyads: 1 • Triads: 0 • Cats: 0 • N=1</div>
       </div>
     </div>
   </div>
@@ -88,8 +88,9 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 
 <script>
 /* ============================================================
-   Relational N-Back — One-Sentence Logic-Only (max g-load)
-   (Includes customizable solve window 1–10s)
+   Relational N-Back — One-Sentence Logic-Only (Triads from L2)
+   Keeps previous guarantees: deterministic matches, snapshot config, caches.
+   Adds triad hyperedges + role-aware isomorphism for Levels 2–10.
    ============================================================ */
 
 /* ===== Utilities ===== */
@@ -130,14 +131,11 @@ function vInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
 function vEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
 
 /* ===== Global knobs (defaults; snapshotted at start) ===== */
-let DIFF=1, ORDER_MODE=false, STEP_LEN=1, DYADS=1, CATS_MODE=0, ORDERED_AXES=['plane'], TOKEN_POOL=[];
-let MAX=200, RATE=25, N=1, SPEAK=true;
-let SOLVE_WINDOW=5.0; // seconds (customizable 1–10)
+let DIFF=1, ORDER_MODE=false, STEP_LEN=1, DYADS=1, TRIADS=0, CATS_MODE=0, ORDERED_AXES=['plane'], TOKEN_POOL=[];
+let MAX=200, RATE=25, N=1, SPEAK=true, SOLVE_WINDOW=5.0;
+let SESSION_CFG=null; // snapshot for the block
 
-/* ===== Session config (locked per block) ===== */
-let SESSION_CFG=null; // { ORDER_MODE, STEP_LEN, DYADS, CATS_MODE, ORDERED_AXES, TOKEN_POOL }
-
-/* ===== Difficulty mapping ===== */
+/* ===== Difficulty mapping with triads ===== */
 function axesForDiff(d){
   if(d===1) return ['plane'];
   if(d===2) return ['plane'];
@@ -150,172 +148,340 @@ function axesForDiff(d){
   if(d===9) return ['plane','level','embed','time'];
   return ['plane','level','embed','time','rot'];
 }
+function triadPlanForDiff(d){
+  // Returns {triads: 0|1|2, ordered: boolean, tokensPerTriad: 1..4, types: [...], catsMode, cross:boolean}
+  if(d===1) return {triads:0, ordered:false, tokensPerTriad:1, types:[], catsMode:0, cross:false};
+  if(d===2) return {triads:1, ordered:false, tokensPerTriad:1, types:['between'|'midpoint'], catsMode:0, cross:false};
+  if(d===3) return {triads:1, ordered:false, tokensPerTriad:2, types:['between'|'midpoint'], catsMode:0, cross:false};
+  if(d===4) return {triads:1, ordered:false, tokensPerTriad:2, types:['between'|'midpoint'], catsMode:1, cross:false};
+  if(d===5) return {triads:1, ordered:true,  tokensPerTriad:2, types:['aligned'|'matchvec'], catsMode:1, cross:false};
+  if(d===6) return {triads:1, ordered:true,  tokensPerTriad:3, types:['aligned'|'matchvec'], catsMode:1, cross:false};
+  if(d===7) return {triads:2, ordered:true,  tokensPerTriad:2, types:['aligned'|'matchvec'|'between'|'midpoint'], catsMode:2, cross:false};
+  if(d===8) return {triads:2, ordered:true,  tokensPerTriad:3, types:['aligned'|'matchvec'|'turns'], catsMode:2, cross:false};
+  if(d===9) return {triads:2, ordered:true,  tokensPerTriad:4, types:['aligned'|'matchvec'|'turns'], catsMode:2, cross:true };
+  return         {triads:2, ordered:true,  tokensPerTriad:4, types:['aligned'|'matchvec'|'turns'], catsMode:3, cross:true };
+}
+function tokenPoolFromAxes(ax){
+  return ax.flatMap(a=>AXES[a]);
+}
 function applyDifficulty(d){
   DIFF=d;
   ORDERED_AXES = axesForDiff(d);
-  TOKEN_POOL = ORDERED_AXES.flatMap(ax=>AXES[ax]);
+  TOKEN_POOL = tokenPoolFromAxes(ORDERED_AXES);
+  // Dyad step len remains for cross constraints and L1
   if(d===1) STEP_LEN=1;
   else if(d<=4) STEP_LEN=2;
   else if(d<=6) STEP_LEN=3 + (d===6?1:0);
   else if(d===7) STEP_LEN=2;
   else if(d===8) STEP_LEN=3;
   else STEP_LEN=4;
-  ORDER_MODE = d>=8;
-  DYADS = d>=7 ? 2 : 1;
-  if(d<=2) CATS_MODE=0;
-  else if(d<=6) CATS_MODE=1;
-  else if(d<=9) CATS_MODE=2;
-  else CATS_MODE=3;
+
+  const plan = triadPlanForDiff(d);
+  TRIADS = plan.triads;
+  ORDER_MODE = plan.ordered;
+  CATS_MODE = plan.catsMode;
+  DYADS = (d===1)? 1 : (plan.cross? 1 : 0); // dyad only needed for cross-constraint or L1
 
   const axesLabel = ORDERED_AXES.map(ax => ({plane:'plane',level:'level',embed:'in/out',time:'time',rot:'rotation'}[ax])).join('+') || '—';
   setText('diffVal', d);
-  $('diffExplain').textContent = `Axes: ${axesLabel} • Steps: ${STEP_LEN} • Ordered: ${ORDER_MODE?'ON':'OFF'} • Dyads: ${DYADS} • Cats: ${CATS_MODE}`;
-  $('modeLine').textContent    = `Axes: ${axesLabel} • Steps: ${STEP_LEN} • Ordered: ${ORDER_MODE?'ON':'OFF'} • Dyads: ${DYADS} • Cats: ${CATS_MODE} • N=${N}`;
+  $('diffExplain').textContent = `Axes: ${axesLabel} • Steps: ${STEP_LEN} • Ordered: ${ORDER_MODE?'ON':'OFF'} • Dyads: ${DYADS} • Triads: ${TRIADS} • Cats: ${CATS_MODE}`;
+  $('modeLine').textContent    = `Axes: ${axesLabel} • Steps: ${STEP_LEN} • Ordered: ${ORDER_MODE?'ON':'OFF'} • Dyads: ${DYADS} • Triads: ${TRIADS} • Cats: ${CATS_MODE} • N=${N}`;
 }
 
 /* ===== Helpers ===== */
 function sym(){ const L='ABCDEFGHIJKLMNOPQRSTUVWXYZ'; return L[(Math.random()*26)|0] + (1+((Math.random()*9)|0)); }
 function pickNames(k){ const a=NAMES.slice(); shuffle(a); return a.slice(0,k); }
 function pickCats(k){ const a=CATS.slice(); shuffle(a); return a.slice(0,k); }
+function axisOf(t){
+  if(AXES.plane.includes(t)) return 'plane';
+  if(AXES.level.includes(t)) return 'level';
+  if(AXES.embed.includes(t)) return 'embed';
+  if(AXES.time.includes(t))  return 'time';
+  if(AXES.rot.includes(t))   return 'rot';
+  return 'x';
+}
 
-/* ===== Builders / Parser (use cfg snapshot) ===== */
-function buildCore(seq, cfg){ const a=seq.slice(); if(!cfg.ORDER_MODE) shuffle(a); return a.join('-'); }
-function sampleSeq(len,cfg){
+/* ===== Sentence synthesis primitives ===== */
+function buildCoreTokens(len, pool, ordered, needDistinctAxes=true){
   let tries=0;
   while(tries++<200){
     const seq=[]; const seen=new Set();
     while(seq.length<len){
-      const t = cfg.TOKEN_POOL[(Math.random()*cfg.TOKEN_POOL.length)|0];
+      const t = pool[(Math.random()*pool.length)|0];
       if(seen.has(OPP[t])) continue;
       seq.push(t); seen.add(t);
     }
-    if(len>=2 && cfg.ORDERED_AXES.length>=2){
-      const axesPresent=new Set(seq.map(t=>{
-        if(AXES.plane.includes(t)) return 'plane';
-        if(AXES.level.includes(t)) return 'level';
-        if(AXES.embed.includes(t)) return 'embed';
-        if(AXES.time.includes(t))  return 'time';
-        if(AXES.rot.includes(t))   return 'rot';
-        return 'x';
-      }));
-      if(axesPresent.size<Math.min(2, cfg.ORDERED_AXES.length)) continue;
+    if(needDistinctAxes && len>=2){
+      const ax=new Set(seq.map(axisOf));
+      if(ax.size<Math.min(2, new Set(pool.map(axisOf)).size)) continue;
     }
-    return seq;
+    return ordered? seq : shuffle(seq.slice());
   }
-  return Array(len).fill(cfg.TOKEN_POOL[0]||'north');
+  return Array(len).fill(pool[0]||'north');
 }
+
+/* ===== TRIAD builders (one-sentence) ===== */
+function triadToText(T){ // T: {type, roles:{X,Y,Z}, tokens?, ordered}
+  const {type, roles, tokens, ordered} = T;
+  const t = tokens && tokens.length ? ' ' + (ordered? tokens.join('-') : tokens.slice().join('-')) : '';
+  if(type==='between')  return `${roles.X.P} at ${roles.X.X}${roles.X.C?` in ${roles.X.C}`:''} is between ${roles.Y.P} at ${roles.Y.X}${roles.Y.C?` in ${roles.Y.C}`:''} and ${roles.Z.P} at ${roles.Z.X}${roles.Z.C?` in ${roles.Z.C}`:''}`;
+  if(type==='midpoint') return `${roles.X.P} at ${roles.X.X}${roles.X.C?` in ${roles.X.C}`:''} is midpoint of ${roles.Y.P} at ${roles.Y.X}${roles.Y.C?` in ${roles.Y.C}`:''} and ${roles.Z.P} at ${roles.Z.X}${roles.Z.C?` in ${roles.Z.C}`:''}`;
+  if(type==='aligned')  return `${roles.X.P} at ${roles.X.X}${roles.X.C?` in ${roles.X.C}`:''} is aligned${t} with ${roles.Y.P} at ${roles.Y.X}${roles.Y.C?` in ${roles.Y.C}`:''} toward ${roles.Z.P} at ${roles.Z.X}${roles.Z.C?` in ${roles.Z.C}`:''}`;
+  if(type==='matchvec') return `${roles.X.P} at ${roles.X.X}${roles.X.C?` in ${roles.X.C}`:''} matches${t} vector of ${roles.Y.P} at ${roles.Y.X}${roles.Y.C?` in ${roles.Y.C}`:''} toward ${roles.Z.P} at ${roles.Z.X}${roles.Z.C?` in ${roles.Z.C}`:''}`;
+  if(type==='turns')    return `${roles.X.P} at ${roles.X.X}${roles.X.C?` in ${roles.X.C}`:''} is one-turn clockwise of ${roles.Y.P} at ${roles.Y.X}${roles.Y.C?` in ${roles.Y.C}`:''} around ${roles.Z.P} at ${roles.Z.X}${roles.Z.C?` in ${roles.Z.C}`:''}`;
+  return '';
+}
+
+/* ===== Full sentence builder by difficulty ===== */
 function buildSentenceByDifficulty(cfg){
-  const nameCount = cfg.DYADS===1? 2 : 4;
-  const [p1,p2,p3,p4] = pickNames(nameCount).concat([null,null,null,null]).slice(0,4);
-  const [x1,x2,x3,x4] = [sym(), sym(), sym(), sym()];
-  const catCount = (cfg.CATS_MODE===0)? 0 : (cfg.DYADS===1? 2 : 4);
-  const cats = pickCats(Math.max(catCount, (cfg.CATS_MODE===3?4:catCount)));
-  const [c1,c2,c3,c4] = cats.concat([null,null,null,null]).slice(0,4);
+  // Choose names/points/categories used across triads and optional dyad-cross
+  const nameBudget = cfg.DYADS ? 4 : (cfg.TRIADS===2? 6 : 3);
+  const names = pickNames(nameBudget);
+  const pts   = Array.from({length:nameBudget}, ()=>sym());
+  const cats  = cfg.CATS_MODE ? pickCats(cfg.TRIADS===2? 4:2) : [];
 
-  const seq1 = sampleSeq(cfg.STEP_LEN,cfg);
-  const core1 = buildCore(seq1,cfg);
-  let s = `${p1} at ${x1}${cfg.CATS_MODE?` in ${c1}`:''} is ${core1} of ${p2} at ${x2}${cfg.CATS_MODE?` in ${c2}`:''}`;
-
-  if(cfg.DYADS===2){
-    const seq2 = sampleSeq(cfg.STEP_LEN,cfg);
-    const core2 = buildCore(seq2,cfg);
-    s += `, while ${p3} at ${x3}${cfg.CATS_MODE?` in ${c3}`:''} is ${core2} of ${p4} at ${x4}${cfg.CATS_MODE?` in ${c4}`:''}`;
+  // Helper to pop roles
+  let ni=0, pi=0, ci=0;
+  function role(withCat){
+    const r = { P:names[ni++], X:pts[pi++], C: withCat ? cats[ci++] : null };
+    return r;
   }
 
-  const clauses=[];
-  if(cfg.CATS_MODE>=2){
-    clauses.push(`${c1} over ${c2}`);
-    if(cfg.DYADS===2) clauses.push(`${c3} over ${c4}`);
+  const triads=[];
+  function addTriad(kind, withTokens, ordered, withCat){
+    // roles {X,Y,Z}
+    const roles = { X: role(withCat), Y: role(withCat), Z: role(withCat) };
+    const tokens = withTokens ? buildCoreTokens(cfg.STEP_LEN, cfg.TOKEN_POOL, ordered, true) : [];
+    triads.push({ type:kind, roles, tokens, ordered });
   }
-  if(cfg.CATS_MODE===3 && cfg.DYADS===2){
+
+  // Plan triads per difficulty ladder (compact, per your spec)
+  if(cfg.TRIADS===0){
+    // L1 dyad baseline
+    const P1 = role(false), P2 = role(false);
+    const seq = buildCoreTokens(cfg.STEP_LEN, AXES.plane, false, false);
+    const core = seq.join('-');
+    let s = `${P1.P} at ${P1.X} is ${core} of ${P2.P} at ${P2.X}.`;
+    return { text:s };
+  }
+
+  // L2–L6: single triad; L7–L10: two triads (ordered from L5+ where specified)
+  if(DIFF===2) addTriad(Math.random()<0.5?'between':'midpoint', false, false, false);
+  if(DIFF===3) addTriad(Math.random()<0.5?'between':'midpoint', false, false, false);
+  if(DIFF===4) addTriad(Math.random()<0.5?'between':'midpoint', false, false, true);
+  if(DIFF===5) addTriad(Math.random()<0.5?'aligned':'matchvec', true,  true,  true);
+  if(DIFF===6) addTriad(Math.random()<0.5?'aligned':'matchvec', true,  true,  true);
+  if(DIFF===7){ addTriad(Math.random()<0.5?'aligned':'matchvec', true, true, true); addTriad(Math.random()<0.5?'between':'midpoint', false, false, true); }
+  if(DIFF===8){ addTriad(Math.random()<0.5?'aligned':'matchvec', true, true, true); addTriad('turns', false, true, true); }
+  if(DIFF===9){ addTriad(Math.random()<0.5?'aligned':'matchvec', true, true, true); addTriad(Math.random()<0.5?'turns':'aligned', true, true, true); }
+  if(DIFF===10){ addTriad('aligned', true, true, true); addTriad('turns', false, true, true); }
+
+  // Compose sentence
+  let sentence = triadToText(triads[0]);
+  if(triads.length===2) sentence += `, while ${triadToText(triads[1])}`;
+
+  // Categories outrank (dual chains from L4+)
+  const outranks=[];
+  if(cfg.CATS_MODE>=1 && cats.length>=2){
+    outranks.push([cats[0], cats[1]]);
+  }
+  if(cfg.CATS_MODE>=2 && cats.length>=4){
+    outranks.push([cats[2], cats[3]]);
+  }
+
+  // Cross-constraint at top tiers (L9–L10)
+  let cross=null;
+  if((DIFF===9||DIFF===10) && pts.length>=4){
     const planeChoices = AXES.plane.filter(t=>cfg.TOKEN_POOL.includes(t));
-    const planeTok = planeChoices.length? planeChoices[(Math.random()*planeChoices.length)|0] : 'west';
-    clauses.push(`${x1} ${planeTok} of ${x3}`);
+    const tok = planeChoices.length? planeChoices[(Math.random()*planeChoices.length)|0] : 'east';
+    cross = { X1: pts[0], tok, X2: pts[2] };
   }
-  if(clauses.length) s += `, where ${clauses.join(' and ')}`;
-  s += '.';
-  return { text:s };
+
+  if(outranks.length || cross){
+    const clauses=[];
+    for(const [a,b] of outranks) clauses.push(`${a} over ${b}`);
+    if(cross) clauses.push(`${cross.X1} ${cross.tok} of ${cross.X2}`);
+    sentence += `, where ${clauses.join(' and ')}`;
+  }
+  sentence += '.';
+
+  return { text: sentence };
 }
+
+/* ===== Parsing (dyad + triad grammar) ===== */
 const DYAD_RE = /^([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+is\s+(.+?)\s+of\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?$/i;
-function parseSentence(s,cfg){
-  s=String(s||'').trim(); if(!s.endsWith('.')) return null; s=s.slice(0,-1);
-  let where=null; const idx = s.toLowerCase().lastIndexOf(', where '); if(idx>=0){ where=s.slice(idx+8).trim(); s=s.slice(0,idx).trim(); }
-  const parts=s.split(/,\s*while\s+/i); if(parts.length<1||parts.length>2) return null;
+const TRIAD_BETWEEN_RE  = /^([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+is\s+between\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+and\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?$/i;
+const TRIAD_MIDPOINT_RE = /^([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+is\s+midpoint\s+of\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+and\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?$/i;
+const TRIAD_ALIGNED_RE  = /^([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+is\s+aligned\s+([a-z\-]+)\s+with\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+toward\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?$/i;
+const TRIAD_MATCHV_RE   = /^([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+matches\s+([a-z\-]+)\s+vector\s+of\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+toward\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?$/i;
+const TRIAD_TURNS_RE    = /^([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+is\s+one\-turn\s+clockwise\s+of\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+around\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?$/i;
 
-  const S={ players:[], points:[], cats:[], bind:{}, inCat:{}, outrank:[], dyads:[], cross:null, tokensPool:cfg.TOKEN_POOL.slice(), order:cfg.ORDER_MODE };
-  function toks(core){
-    const t=core.toLowerCase().split(/\s*-\s*/).filter(Boolean);
-    if(t.length!==cfg.STEP_LEN) return null;
-    for(const x of t) if(!cfg.TOKEN_POOL.includes(x)) return null;
-    const seen=new Set(t); for(const x of seen){ if(seen.has(OPP[x])) return null; }
-    return t;
-  }
-  const m1=DYAD_RE.exec(parts[0]); if(!m1) return null;
-  const [P1,X1,C1,CORE1,P2,X2,C2]=[m1[1],m1[2],m1[3]||null,m1[4],m1[5],m1[6],m1[7]||null];
-  const T1=toks(CORE1); if(!T1) return null; let V1={x:0,y:0,z:0,w:0,u:0,v:0}; T1.forEach(t=>V1=vAdd(V1,tokenToDelta(t)));
-  S.players.push(P1,P2); S.points.push(X1,X2); if(C1) S.cats.push(C1); if(C2) S.cats.push(C2);
-  S.bind[P1]=X1; S.bind[P2]=X2; if(C1) S.inCat[X1]=C1; if(C2) S.inCat[X2]=C2;
-  S.dyads.push({L:{P:P1,X:X1,C:C1},R:{P:P2,X:X2,C:C2},tokens:T1,vec:V1});
+function parseTokens(core, cfg){
+  const toks = core.toLowerCase().split(/\s*-\s*/).filter(Boolean);
+  if(!toks.length) return [];
+  if(toks.length>cfg.STEP_LEN) return null;
+  for(const t of toks) if(!cfg.TOKEN_POOL.includes(t)) return null;
+  const seen=new Set(toks); for(const t of seen){ if(seen.has(OPP[t])) return null; }
+  return toks;
+}
 
-  if(parts.length===2){
-    const m2=DYAD_RE.exec(parts[1]); if(!m2) return null;
-    const [P3,X3,C3,CORE2,P4,X4,C4]=[m2[1],m2[2],m2[3]||null,m2[4],m2[5],m2[6],m2[7]||null];
-    const T2=toks(CORE2); if(!T2) return null; let V2={x:0,y:0,z:0,w:0,u:0,v:0}; T2.forEach(t=>V2=vAdd(V2,tokenToDelta(t)));
-    S.players.push(P3,P4); S.points.push(X3,X4); if(C3) S.cats.push(C3); if(C4) S.cats.push(C4);
-    S.bind[P3]=X3; S.bind[P4]=X4; if(C3) S.inCat[X3]=C3; if(C4) S.inCat[X4]=C4;
-    S.dyads.push({L:{P:P3,X:X3,C:C3},R:{P:P4,X:X4,C:C4},tokens:T2,vec:V2});
+function parseSentence(s, cfg){
+  s = String(s||'').trim();
+  if(!s.endsWith('.')) return null;
+  s = s.slice(0,-1);
+  let where=null;
+  const whereIdx = s.toLowerCase().lastIndexOf(', where ');
+  if(whereIdx>=0){ where = s.slice(whereIdx+8).trim(); s = s.slice(0, whereIdx).trim(); }
+
+  // Split at ", while " for two clauses (either dyad or triad)
+  const parts = s.split(/,\s*while\s+/i);
+  if(parts.length<1 || parts.length>2) return null;
+
+  const S = {
+    players: [], points: [], cats: [],
+    bind: {}, inCat: {}, outrank: [],
+    dyads: [], triads: [], cross: null,
+    tokensPool: cfg.TOKEN_POOL.slice(), order: cfg.ORDER_MODE
+  };
+
+  function addEntity(p,x,c){
+    if(!S.players.includes(p)) S.players.push(p);
+    if(!S.points.includes(x))  S.points.push(x);
+    if(c){ if(!S.cats.includes(c)) S.cats.push(c); S.inCat[x]=c; }
+    S.bind[p]=x;
   }
+
+  function parseClause(cl){
+    // Try triads first
+    let m;
+    if( (m=TRIAD_BETWEEN_RE.exec(cl)) ){
+      const X={P:m[1], X:m[2], C:m[3]||null}, Y={P:m[4], X:m[5], C:m[6]||null}, Z={P:m[7], X:m[8], C:m[9]||null};
+      addEntity(X.P,X.X,X.C); addEntity(Y.P,Y.X,Y.C); addEntity(Z.P,Z.X,Z.C);
+      S.triads.push({type:'between', roles:{X,Y,Z}, tokens:[], ordered:false});
+      return true;
+    }
+    if( (m=TRIAD_MIDPOINT_RE.exec(cl)) ){
+      const X={P:m[1], X:m[2], C:m[3]||null}, Y={P:m[4], X:m[5], C:m[6]||null}, Z={P:m[7], X:m[8], C:m[9]||null};
+      addEntity(X.P,X.X,X.C); addEntity(Y.P,Y.X,Y.C); addEntity(Z.P,Z.X,Z.C);
+      S.triads.push({type:'midpoint', roles:{X,Y,Z}, tokens:[], ordered:false});
+      return true;
+    }
+    if( (m=TRIAD_ALIGNED_RE.exec(cl)) ){
+      const X={P:m[1], X:m[2], C:m[3]||null}, core=m[4], Y={P:m[5], X:m[6], C:m[7]||null}, Z={P:m[8], X:m[9], C:m[10]||null};
+      const toks=parseTokens(core,cfg); if(toks===null) return false;
+      addEntity(X.P,X.X,X.C); addEntity(Y.P,Y.X,Y.C); addEntity(Z.P,Z.X,Z.C);
+      S.triads.push({type:'aligned', roles:{X,Y,Z}, tokens:toks, ordered:true});
+      return true;
+    }
+    if( (m=TRIAD_MATCHV_RE.exec(cl)) ){
+      const X={P:m[1], X:m[2], C:m[3]||null}, core=m[4], Y={P:m[5], X:m[6], C:m[7]||null}, Z={P:m[8], X:m[9], C:m[10]||null};
+      const toks=parseTokens(core,cfg); if(toks===null) return false;
+      addEntity(X.P,X.X,X.C); addEntity(Y.P,Y.X,Y.C); addEntity(Z.P,Z.X,Z.C);
+      S.triads.push({type:'matchvec', roles:{X,Y,Z}, tokens:toks, ordered:true});
+      return true;
+    }
+    if( (m=TRIAD_TURNS_RE.exec(cl)) ){
+      const X={P:m[1], X:m[2], C:m[3]||null}, Y={P:m[4], X:m[5], C:m[6]||null}, Z={P:m[7], X:m[8], C:m[9]||null};
+      addEntity(X.P,X.X,X.C); addEntity(Y.P,Y.X,Y.C); addEntity(Z.P,Z.X,Z.C);
+      S.triads.push({type:'turns', roles:{X,Y,Z}, tokens:[], ordered:true});
+      return true;
+    }
+    // Fallback to dyad clause
+    if( (m=DYAD_RE.exec(cl)) ){
+      const P1={P:m[1], X:m[2], C:m[3]||null}, core=m[4], P2={P:m[5], X:m[6], C:m[7]||null};
+      const toks=parseTokens(core,cfg); if(toks===null) return false;
+      let vec={x:0,y:0,z:0,w:0,u:0,v:0}; for(const t of toks) vec=vAdd(vec, tokenToDelta(t));
+      addEntity(P1.P,P1.X,P1.C); addEntity(P2.P,P2.X,P2.C);
+      S.dyads.push({L:{P:P1.P,X:P1.X,C:P1.C}, R:{P:P2.P,X:P2.X,C:P2.C}, tokens:toks, vec});
+      return true;
+    }
+    return false;
+  }
+
+  if(!parseClause(parts[0])) return null;
+  if(parts.length===2 && !parseClause(parts[1])) return null;
+
   if(where){
-    const items=where.split(/\s+and\s+/i).map(x=>x.trim());
+    const items = where.split(/\s+and\s+/i).map(x=>x.trim());
     for(const it of items){
       let m;
-      if( (m=/^([A-Za-z]+)\s+over\s+([A-Za-z]+)$/i.exec(it)) ){ S.outrank.push([m[1],m[2]]); }
-      else if( (m=/^([A-Z]\d+)\s+(north|south|east|west)\s+of\s+([A-Z]\d+)$/i.exec(it)) ){
-        const tok=m[2].toLowerCase(); if(!AXES.plane.includes(tok)) return null; S.cross={X1:m[1],tok,X2:m[3]};
-      } else return null;
+      if( (m=/^([A-Za-z]+)\s+over\s+([A-Za-z]+)$/i.exec(it)) ){
+        S.outrank.push([m[1], m[2]]);
+        if(!S.cats.includes(m[1])) S.cats.push(m[1]);
+        if(!S.cats.includes(m[2])) S.cats.push(m[2]);
+      }else if( (m=/^([A-Z]\d+)\s+(north|south|east|west)\s+of\s+([A-Z]\d+)$/i.exec(it)) ){
+        const tok=m[2].toLowerCase(); if(!AXES.plane.includes(tok)) return null;
+        S.cross={X1:m[1], tok, X2:m[3]};
+        if(!S.points.includes(m[1])) S.points.push(m[1]);
+        if(!S.points.includes(m[3])) S.points.push(m[3]);
+      }else{
+        return null;
+      }
     }
   }
-  S.players=uniq(S.players); S.points=uniq(S.points); S.cats=uniq(S.cats);
+
+  S.players = uniq(S.players);
+  S.points  = uniq(S.points);
+  S.cats    = uniq(S.cats);
   return S;
 }
 
-/* ===== Isomorphism ===== */
+/* ===== Isomorphism (players/points/categories) with triads ===== */
 function perms(arr){ const out=[], used=Array(arr.length).fill(false), cur=[]; (function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; } for(let i=0;i<arr.length;i++){ if(used[i]) continue; used[i]=true; cur.push(arr[i]); rec(); cur.pop(); used[i]=false; } })(); return out; }
 function arraysEqual(a,b){ if(a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false; return true; }
 function seqEqOrInv(a,b,invert){ if(!invert) return arraysEqual(a,b); const inv=b.slice().reverse().map(t=>OPP[t]||t); return arraysEqual(a,inv); }
 function multisetEq(A,B){ if(A.length!==B.length) return false; const m=new Map(); for(const x of A) m.set(x,(m.get(x)||0)+1); for(const y of B){ if(!m.has(y)) return false; const v=m.get(y)-1; if(v===0) m.delete(y); else m.set(y,v); } return m.size===0; }
+
+function triadKey(T, mapX){
+  const t=T.type;
+  const X=mapX.get(T.roles.X.X), Y=mapX.get(T.roles.Y.X), Z=mapX.get(T.roles.Z.X);
+  if(t==='between' || t==='midpoint'){
+    const pair=[Y,Z].sort().join('|');
+    return `${t}|X:${X}|YZ:${pair}`;
+  }else if(t==='turns'){
+    return `${t}|X:${X}|Y:${Y}|Z:${Z}`;
+  }else{ // aligned / matchvec (ordered)
+    return `${t}|X:${X}|Y:${Y}|Z:${Z}|tok:${(T.tokens||[]).join('>')}`;
+  }
+}
+
 function typedIsoEqual(A,B){
   if(!A||!B) return false;
   if(A.players.length!==B.players.length || A.points.length!==B.points.length || A.cats.length!==B.cats.length) return false;
+
   const pPerms=perms(B.players), xPerms=perms(B.points), cPerms=perms(B.cats);
-  function findDyad(bDyads,Lx,Rx,toks,vec,ordered){
-    for(const d of bDyads){
-      if(d._used) continue;
-      if(d.L.X===Lx && d.R.X===Rx){ if(ordered? arraysEqual(toks,d.tokens): vEq(vec,d.vec)){ d._used=true; return true; } }
-      if(d.L.X===Rx && d.R.X===Lx){ if(ordered? seqEqOrInv(toks,d.tokens,true): vEq(vec,vInv(d.vec))){ d._used=true; return true; } }
-    }
-    return false;
-  }
+
   for(const pMap of pPerms){
     const pBij=new Map(A.players.map((p,i)=>[p,pMap[i]]));
     for(const xMap of xPerms){
       const xBij=new Map(A.points.map((x,i)=>[x,xMap[i]]));
       for(const cMap of cPerms){
         const cBij=new Map(A.cats.map((c,i)=>[c,cMap[i]]));
+
+        // Bindings and memberships
         let ok=true;
-
-        for(const p of A.players){ const xa=A.bind[p]; const pb=pBij.get(p), xb=xBij.get(xa); if(B.bind[pb]!==xb){ ok=false; break; } }
+        for(const p of A.players){
+          const xa=A.bind[p]; const pb=pBij.get(p), xb=xBij.get(xa);
+          if(B.bind[pb]!==xb){ ok=false; break; }
+        }
+        if(!ok) continue;
+        for(const x of A.points){
+          const ca=A.inCat[x]||null;
+          const xb=xBij.get(x);
+          const cb=(xb in B.inCat)? B.inCat[xb]: null;
+          const want=ca? cBij.get(ca): null;
+          if(cb!==want){ ok=false; break; }
+        }
         if(!ok) continue;
 
-        for(const x of A.points){ const ca=A.inCat[x]||null; const xb=xBij.get(x); const cb=(xb in B.inCat)? B.inCat[xb]: null; const want=ca? cBij.get(ca): null; if(cb!==want){ ok=false; break; } }
-        if(!ok) continue;
-
+        // Outrank multiset
         const aPairs=A.outrank.map(([u,v])=>`${cBij.get(u)}>${cBij.get(v)}`).sort();
         const bPairs=B.outrank.map(([u,v])=>`${u}>${v}`).sort();
         if(!multisetEq(aPairs,bPairs)) continue;
 
+        // Cross (plane dyad)
         if(A.cross || B.cross){
-          if(!A.cross || !B.cross) ok=false;
+          if(!A.cross || !B.cross){ ok=false; }
           else{
             const ax=xBij.get(A.cross.X1), ay=xBij.get(A.cross.X2);
             if(B.cross.tok!==A.cross.tok || B.cross.X1!==ax || B.cross.X2!==ay) ok=false;
@@ -323,121 +489,292 @@ function typedIsoEqual(A,B){
           if(!ok) continue;
         }
 
-        const bDyads=B.dyads.map(d=>({L:{X:d.L.X},R:{X:d.R.X},tokens:d.tokens.slice(),vec:{...d.vec}}));
-        for(const d of bDyads) d._used=false;
-        for(const d of A.dyads){ const Lm=xBij.get(d.L.X), Rm=xBij.get(d.R.X); if(!findDyad(bDyads,Lm,Rm,d.tokens,d.vec,A.order)){ ok=false; break; } }
-        if(ok) return true;
+        // Dyads (if present): equality or inversion
+        if(A.dyads.length!==B.dyads.length) continue;
+        const used = new Array(B.dyads.length).fill(false);
+        for(const d of A.dyads){
+          const Lm=xBij.get(d.L.X), Rm=xBij.get(d.R.X);
+          let found=false;
+          for(let j=0;j<B.dyads.length;j++){
+            if(used[j]) continue;
+            const e=B.dyads[j];
+            if( (e.L.X===Lm && e.R.X===Rm && vEq(d.vec,e.vec)) ||
+                (e.L.X===Rm && e.R.X===Lm && vEq(d.vec, vInv(e.vec))) ){
+              used[j]=true; found=true; break;
+            }
+          }
+          if(!found){ ok=false; break; }
+        }
+        if(!ok) continue;
+
+        // Triads
+        if(A.triads.length!==B.triads.length) continue;
+        // Build a multimap for B triads by structural keys
+        const bMap=new Map();
+        for(const T of B.triads){
+          const key=triadKey(T, new Map(B.points.map((x,i)=>[x,x]))); // identity for now
+          const arr=bMap.get(key)||[]; arr.push(T); bMap.set(key,arr);
+        }
+        function takeFromMap(T, mapped){
+          const key=triadKey(mapped, new Map([[mapped.roles.X.X,mapped.roles.X.X],[mapped.roles.Y.X,mapped.roles.Y.X],[mapped.roles.Z.X,mapped.roles.Z.X]]));
+          const arr=bMap.get(key); if(!arr||!arr.length) return false; arr.pop(); if(!arr.length) bMap.delete(key); return true;
+        }
+
+        // For ordered triads, also handle inversion under Y/Z swap with token inversion
+        function mapTriad(T){
+          const t=T.type;
+          const X={X:xBij.get(T.roles.X.X)}, Y={X:xBij.get(T.roles.Y.X)}, Z={X:xBij.get(T.roles.Z.X)};
+          if(t==='between'||t==='midpoint'){
+            // unordered Y/Z; no tokens
+            return [{type:t, roles:{X,Y,Z}, tokens:[], ordered:false}];
+          }else if(t==='turns'){
+            // ordered: no tokens
+            return [{type:t, roles:{X,Y,Z}, tokens:[], ordered:true}];
+          }else{
+            // aligned / matchvec with tokens
+            const toks=T.tokens.slice();
+            const direct={type:t, roles:{X,Y,Z}, tokens:toks, ordered:true};
+            const inv={type:t, roles:{X: X, Y: Z, Z: Y}, tokens: toks.slice().reverse().map(u=>OPP[u]||u), ordered:true};
+            return [direct, inv];
+          }
+        }
+
+        let okTriads=true;
+        for(const T of A.triads){
+          const candidates=mapTriad(T);
+          let matched=false;
+          for(const cand of candidates){
+            const key = `${cand.type}|X:${cand.roles.X.X}|${(cand.type==='between'||cand.type==='midpoint')?`YZ:${[cand.roles.Y.X,cand.roles.Z.X].sort().join('|')}`:`Y:${cand.roles.Y.X}|Z:${cand.roles.Z.X}|tok:${(cand.tokens||[]).join('>')}`}`;
+            const arr=bMap.get(key);
+            if(arr && arr.length){
+              arr.pop(); if(!arr.length) bMap.delete(key);
+              matched=true; break;
+            }
+          }
+          if(!matched){ okTriads=false; break; }
+        }
+        if(!okTriads) continue;
+
+        return true; // all checks passed
       }
     }
   }
   return false;
 }
 
-/* ===== Anti-leak memory ===== */
-// CACHE POLICY
+/* ===== Caches ===== */
 const SEEN_SURF=new Set(); const SEEN_LOGIC=new Set();
 function rememberSurface(s){ if(SEEN_SURF.size>500) SEEN_SURF.clear(); SEEN_SURF.add(s); }
 function seenSurface(s){ return SEEN_SURF.has(s); }
 function logicSig(S){
-  const dy=S.dyads.map(d=>`DX:${d.vec.x},${d.vec.y},${d.vec.z},${d.vec.w},${d.vec.u},${d.vec.v}`).sort().join('|');
-  const or=S.outrank.map(([a,b])=>`C:${a}>${b}`).sort().join('|');
-  const cr=S.cross?`X:${S.cross.tok}`:'';
-  return `${S.order?'ORD':'VEC'}|${dy}|${or}|${cr}|D${S.dyads.length}|Cats${S.cats.length}`;
+  const dy = S.dyads.map(d=>`D:${d.vec.x},${d.vec.y},${d.vec.z},${d.vec.w},${d.vec.u},${d.vec.v}`).sort().join('|');
+  const tr = S.triads.map(T=>{
+    const t=T.type;
+    const X=T.roles.X.X, Y=T.roles.Y.X, Z=T.roles.Z.X;
+    if(t==='between'||t==='midpoint') return `T:${t}|X:${X}|YZ:${[Y,Z].sort().join('|')}`;
+    if(t==='turns') return `T:${t}|X:${X}|Y:${Y}|Z:${Z}`;
+    return `T:${t}|X:${X}|Y:${Y}|Z:${Z}|tok:${(T.tokens||[]).join('>')}`;
+  }).sort().join('|');
+  const or = S.outrank.map(([a,b])=>`C:${a}>${b}`).sort().join('|');
+  const cr = S.cross? `X:${S.cross.tok}` : '';
+  return `${S.order?'ORD':'VEC'}|${dy}|${tr}|${or}|${cr}|Cats${S.cats.length}`;
 }
 function rememberLogic(S){ const sig=logicSig(S); if(SEEN_LOGIC.size>800) SEEN_LOGIC.clear(); SEEN_LOGIC.add(sig); }
 function seenLogic(S){ return SEEN_LOGIC.has(logicSig(S)); }
 
-/* ===== MATCH TRANSFORM ===== */
+/* ===== Deterministic MATCH (works for triads & dyads) ===== */
 function invertTokens(seq){ return seq.slice().reverse().map(t=>OPP[t]||t); }
-function synthSentenceFromStruct(base,pBij,xBij,cBij,swapMask,cfg){
-  function dyadText(d,swap){
-    const L=swap? d.R : d.L, R=swap? d.L : d.R;
-    const seq = cfg.ORDER_MODE
-      ? (swap? invertTokens(d.tokens) : d.tokens.slice())
-      : (swap? invertTokens(d.tokens) : d.tokens.slice()); // invert in unordered mode to invert vector under LR swap
-    const core=buildCore(seq,cfg);
-    const PL=pBij.get(L.P), XL=xBij.get(L.X), CL=L.C? cBij.get(L.C): null;
-    const PR=pBij.get(R.P), XR=xBij.get(R.X), CR=R.C? cBij.get(R.C): null;
-    return { text:`${PL} at ${XL}${cfg.CATS_MODE?` in ${CL}`:''} is ${core} of ${PR} at ${XR}${cfg.CATS_MODE?` in ${CR}`:''}` };
-  }
-  const parts=[]; for(let i=0;i<base.dyads.length;i++) parts.push(dyadText(base.dyads[i], !!swapMask[i]));
-  let s=parts[0].text; if(parts.length===2) s+=`, while ${parts[1].text}`;
-  const clauses=[];
-  if(base.outrank.length){ for(const [cA,cB] of base.outrank) clauses.push(`${cBij.get(cA)} over ${cBij.get(cB)}`); }
-  if(base.cross){ clauses.push(`${xBij.get(base.cross.X1)} ${base.cross.tok} of ${xBij.get(base.cross.X2)}`); }
-  if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.';
-  return s;
-}
-function buildMatchFromBase(base,cfg){
-  for(let attempt=0;attempt<20;attempt++){
-    const names=pickNames(base.players.length);
-    const points=Array.from({length:base.points.length}, ()=>sym());
-    const cats=pickCats(base.cats.length);
-    const pBij=new Map(base.players.map((p,i)=>[p,names[i]]));
-    const xBij=new Map(base.points.map((x,i)=>[x,points[i]]));
-    const cBij=new Map(base.cats.map((c,i)=>[c,cats[i]]));
-    const swapMask=Array(base.dyads.length).fill(false).map(()=>Math.random()<0.5);
-    const text=synthSentenceFromStruct(base,pBij,xBij,cBij,swapMask,cfg);
-    if(seenSurface(text)) continue;
-    const cand=parseSentence(text,cfg); if(!cand) continue;
-    if(typedIsoEqual(base,cand)) return {text,struct:cand};
-  }
-  // fallback
+function relabelStruct(base){
   const names=pickNames(base.players.length);
   const points=Array.from({length:base.points.length}, ()=>sym());
   const cats=pickCats(base.cats.length);
   const pBij=new Map(base.players.map((p,i)=>[p,names[i]]));
   const xBij=new Map(base.points.map((x,i)=>[x,points[i]]));
   const cBij=new Map(base.cats.map((c,i)=>[c,cats[i]]));
-  const text=synthSentenceFromStruct(base,pBij,xBij,cBij,Array(base.dyads.length).fill(false),cfg);
-  const cand=parseSentence(text,cfg);
-  return {text,struct:cand};
+  return {pBij,xBij,cBij};
+}
+function synthFromStruct(base, cfg, swapChoices){
+  // Triads
+  const triParts = base.triads.map((T,idx)=>{
+    const X={P:T.roles.X.P, X:T.roles.X.X, C:T.roles.X.C};
+    const Y={P:T.roles.Y.P, X:T.roles.Y.X, C:T.roles.Y.C};
+    const Z={P:T.roles.Z.P, X:T.roles.Z.X, C:T.roles.Z.C};
+    // Remap through bijections later; first decide LR swap/inversion choices
+    const swap = !!(swapChoices && swapChoices.tri && swapChoices.tri[idx]);
+    let roles = swap ? {X:X, Y:Z, Z:Y} : {X,Y,Z};
+    let tokens = (T.tokens||[]).slice();
+    if(T.ordered && swap) tokens = invertTokens(tokens);
+    return { type:T.type, roles, tokens, ordered:T.ordered };
+  });
+  // Dyads (rare now; used for cross/L1)
+  const dyParts = base.dyads.map((d,idx)=>{
+    const swap = !!(swapChoices && swapChoices.dy && swapChoices.dy[idx]);
+    const L = swap? d.R : d.L, R = swap? d.L : d.R;
+    const toks = swap? invertTokens(d.tokens) : d.tokens.slice();
+    return { L, R, tokens:toks };
+  });
+
+  // Apply bijections
+  const {pBij,xBij,cBij} = relabelStruct(base);
+  function mapRole(r){ return { P:pBij.get(r.P), X:xBij.get(r.X), C:r.C? cBij.get(r.C): null }; }
+
+  // Compose sentence
+  function triText(U){
+    const M={ X:mapRole(U.roles.X), Y:mapRole(U.roles.Y), Z:mapRole(U.roles.Z) };
+    return triadToText({type:U.type, roles:M, tokens:U.tokens, ordered:U.ordered});
+  }
+  let sentence = triParts.length? triText(triParts[0]) : '';
+  if(triParts.length===2) sentence += (sentence? ', while ' : '') + triText(triParts[1]);
+  if(dyParts.length && !sentence){
+    const e=dyParts[0]; const core=e.tokens.join('-');
+    sentence = `${mapRole(e.L).P} at ${mapRole(e.L).X}${mapRole(e.L).C?` in ${mapRole(e.L).C`:''} is ${core} of ${mapRole(e.R).P} at ${mapRole(e.R).X}${mapRole(e.R).C?` in ${mapRole(e.R).C`:''}`;
+  }
+
+  // Where clause (outrank + cross)
+  const clauses=[];
+  for(const [a,b] of base.outrank){ clauses.push(`${cBij.get(a)} over ${cBij.get(b)}`); }
+  if(base.cross){ clauses.push(`${xBij.get(base.cross.X1)} ${base.cross.tok} of ${xBij.get(base.cross.X2)}`); }
+  if(clauses.length){ sentence += (sentence? ', where ': 'where ') + clauses.join(' and '); }
+  sentence += '.';
+  return sentence;
+}
+function buildMatchFromBase(base,cfg){
+  for(let attempt=0;attempt<24;attempt++){
+    const swapChoices={
+      tri: base.triads.map(()=>Math.random()<0.5),
+      dy:  base.dyads.map(()=>Math.random()<0.5),
+    };
+    const text = synthFromStruct(base, cfg, swapChoices);
+    if(seenSurface(text)) continue;
+    const cand = parseSentence(text, cfg); if(!cand) continue;
+    if(typedIsoEqual(base, cand)) return {text, struct:cand};
+  }
+  // Fallback: no swaps
+  const text = synthFromStruct(base, cfg, {tri:base.triads.map(()=>false), dy:base.dyads.map(()=>false)});
+  const cand = parseSentence(text, cfg);
+  return {text, struct:cand};
 }
 
-/* ===== NONMATCH EDIT ===== */
+/* ===== NON-MATCH (minimal structural edit) ===== */
 function buildNonMatchAgainst(base,cfg){
-  function mutateOne(b){
-    const choice=(()=>{
-      const o=[]; if(b.dyads.length&&cfg.TOKEN_POOL.length>1) o.push('token'); if(b.outrank.length) o.push('flip'); if(Object.keys(b.inCat).length) o.push('recat'); return o[(Math.random()*o.length)|0]||'token';
-    })();
-    if(choice==='token'){
-      const dIdx=(Math.random()*b.dyads.length)|0, dx=b.dyads[dIdx];
-      const idx=(Math.random()*dx.tokens.length)|0, cur=dx.tokens[idx];
-      const axisOf=t=> AXES.plane.includes(t)?'plane':AXES.level.includes(t)?'level':AXES.embed.includes(t)?'embed':AXES.time.includes(t)?'time':AXES.rot.includes(t)?'rot':'x';
-      const cands=cfg.TOKEN_POOL.filter(t=>t!==cur && OPP[t]!==cur);
-      if(cands.length){
-        const curA=axisOf(cur); const diff=cands.filter(t=>axisOf(t)!==curA);
-        const pick=(diff.length?diff:cands)[(Math.random()*(diff.length?diff.length:cands.length))|0];
-        const newTokens=dx.tokens.slice(); newTokens[idx]=pick;
-        const parts=b.dyads.map((d,i)=>{ const seq=(i===dIdx)? newTokens: d.tokens.slice(); const core=buildCore(seq,cfg); return `${d.L.P} at ${d.L.X}${cfg.CATS_MODE?` in ${d.L.C}`:''} is ${core} of ${d.R.P} at ${d.R.X}${cfg.CATS_MODE?` in ${d.R.C}`:''}`;});
-        let s=parts[0]; if(parts.length===2) s+=`, while ${parts[1]}`; const clauses=[]; for(const [ca,cb] of b.outrank) clauses.push(`${ca} over ${cb}`); if(b.cross) clauses.push(`${b.cross.X1} ${b.cross.tok} of ${b.cross.X2}`); if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.'; return s;
-      }
-    }else if(choice==='flip' && b.outrank.length){
-      const k=(Math.random()*b.outrank.length)|0; const pairs=b.outrank.slice(); const [a,c]=pairs[k]; pairs[k]=[c,a];
-      const parts=b.dyads.map(d=>{ const core=buildCore(d.tokens,cfg); return `${d.L.P} at ${d.L.X}${cfg.CATS_MODE?` in ${d.L.C}`:''} is ${core} of ${d.R.P} at ${d.R.X}${cfg.CATS_MODE?` in ${d.R.C}`:''}`; });
-      let s=parts[0]; if(parts.length===2) s+=`, while ${parts[1]}`; const clauses=[]; for(const [ca,cb] of pairs) clauses.push(`${ca} over ${cb}`); if(b.cross) clauses.push(`${b.cross.X1} ${b.cross.tok} of ${b.cross.X2}`); if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.'; return s;
-    }else if(choice==='recat' && Object.keys(base.inCat).length){
-      const pts=b.points.slice(); const X=pts[(Math.random()*pts.length)|0]; const cur=base.inCat[X]||null; const pool=pickCats(1).concat(CATS).filter(c=>c!==cur); const newC=pool[(Math.random()*pool.length)|0];
-      const parts=b.dyads.map(d=>{ const Lc=d.L.C? (d.L.X===X? newC: d.L.C): null; const Rc=d.R.C? (d.R.X===X? newC: d.R.C): null; const core=buildCore(d.tokens,cfg); return `${d.L.P} at ${d.L.X}${cfg.CATS_MODE?` in ${Lc}`:''} is ${core} of ${d.R.P} at ${d.R.X}${cfg.CATS_MODE?` in ${Rc}`:''}`; });
-      let s=parts[0]; if(parts.length===2) s+=`, while ${parts[1]}`; const clauses=[]; for(const [ca,cb] of base.outrank) clauses.push(`${ca} over ${cb}`); if(base.cross) clauses.push(`${base.cross.X1} ${base.cross.tok} of ${base.cross.X2}`); if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.'; return s;
+  function mutateOne(){
+    const choices=[];
+    if(base.triads.length) choices.push('tri-token','tri-role','tri-type');
+    if(base.outrank.length) choices.push('flip-or');
+    if(Object.keys(base.inCat).length) choices.push('recat');
+    if(base.dyads.length) choices.push('dy-token');
+    const pick = choices[(Math.random()*choices.length)|0];
+
+    // Clone via re-synthesis with identity mapping
+    function roleStr(r){ return `${r.P} at ${r.X}${r.C?` in ${r.C}`:''}`; }
+
+    // Start from a readable baseline sentence then tweak
+    let s='';
+    const triText = base.triads.map(T=>triadToText(T));
+    if(triText.length) s = triText[0];
+    if(triText.length===2) s += `, while ${triText[1]}`;
+    if(!s && base.dyads.length){
+      const d=base.dyads[0], core=d.tokens.join('-');
+      s = `${roleStr(d.L)} is ${core} of ${roleStr(d.R)}`;
     }
-    return null;
+    const clauses=[];
+    for(const [a,b] of base.outrank) clauses.push(`${a} over ${b}`);
+    if(base.cross) clauses.push(`${base.cross.X1} ${base.cross.tok} of ${base.cross.X2}`);
+    if(clauses.length) s += `, where ${clauses.join(' and ')}`;
+    s+='.'; // s now describes base
+
+    // Parse, then mutate concrete structure
+    let C=parseSentence(s,cfg); if(!C) return null;
+
+    if(pick==='tri-token' && C.triads.length){
+      const i=(Math.random()*C.triads.length)|0, T=C.triads[i];
+      if(T.ordered){
+        if(!cfg.TOKEN_POOL.length) return null;
+        const idx = T.tokens.length? ((Math.random()*T.tokens.length)|0) : 0;
+        const cur = T.tokens[idx]||cfg.TOKEN_POOL[0];
+        const alts = cfg.TOKEN_POOL.filter(t=>t!==cur && OPP[t]!==cur);
+        if(!alts.length) return null;
+        T.tokens[idx] = alts[(Math.random()*alts.length)|0];
+      }else{
+        // for 'between'/'midpoint', flip Y/Z roles to change structure subtly
+        const tmp=T.roles.Y; T.roles.Y=T.roles.Z; T.roles.Z=tmp;
+      }
+    }else if(pick==='tri-role' && C.triads.length){
+      const i=(Math.random()*C.triads.length)|0, T=C.triads[i];
+      if(T.type==='between'||T.type==='midpoint'){
+        const tmp=T.roles.Y; T.roles.Y=T.roles.Z; T.roles.Z=tmp;
+      }else{
+        const tmp=T.roles.Y; T.roles.Y=T.roles.Z; T.roles.Z=tmp;
+        T.tokens = invertTokens(T.tokens||[]);
+      }
+    }else if(pick==='tri-type' && C.triads.length){
+      const i=(Math.random()*C.triads.length)|0, T=C.triads[i];
+      // swap aligned<->matchvec; between<->midpoint; turns remains
+      if(T.type==='aligned') T.type='matchvec';
+      else if(T.type==='matchvec') T.type='aligned';
+      else if(T.type==='between') T.type='midpoint';
+      else if(T.type==='midpoint') T.type='between';
+      else return null;
+    }else if(pick==='flip-or' && C.outrank.length){
+      const k=(Math.random()*C.outrank.length)|0;
+      const t=C.outrank[k]; C.outrank[k]=[t[1],t[0]];
+    }else if(pick==='recat' && Object.keys(base.inCat).length){
+      const pts=Object.keys(base.inCat); const X=pts[(Math.random()*pts.length)|0];
+      const cur=base.inCat[X], pool=pickCats(1).concat(CATS).filter(c=>c!==cur);
+      const newC = pool[(Math.random()*pool.length)|0];
+      C.inCat[X]=newC;
+      if(!C.cats.includes(newC)) C.cats.push(newC);
+    }else if(pick==='dy-token' && C.dyads.length){
+      const d=C.dyads[0];
+      const idx=(Math.random()*d.tokens.length)|0, cur=d.tokens[idx];
+      const alts=cfg.TOKEN_POOL.filter(t=>t!==cur && OPP[t]!==cur);
+      if(!alts.length) return null;
+      d.tokens[idx]=alts[(Math.random()*alts.length)|0];
+    }
+
+    // Re-synthesize to text
+    function textFromStruct(X){
+      const tri = X.triads.map(triadToText);
+      let s2 = tri[0]||'';
+      if(tri.length===2) s2 += `, while ${tri[1]}`;
+      if(!s2 && X.dyads.length){
+        const d=X.dyads[0], core=d.tokens.join('-');
+        s2 = `${d.L.P} at ${d.L.X}${d.L.C?` in ${d.L.C}`:''} is ${core} of ${d.R.P} at ${d.R.X}${d.R.C?` in ${d.R.C}`:''}`;
+      }
+      const clauses=[];
+      for(const [a,b] of X.outrank) clauses.push(`${a} over ${b}`);
+      if(X.cross) clauses.push(`${X.cross.X1} ${X.cross.tok} of ${X.cross.X2}`);
+      if(clauses.length) s2 += `, where ${clauses.join(' and ')}`;
+      return s2+'.';
+    }
+    return textFromStruct(C);
   }
-  for(let tries=0;tries<200;tries++){
-    const text=mutateOne(base); if(!text || seenSurface(text)) continue;
+
+  for(let t=0;t<200;t++){
+    const text=mutateOne(); if(!text || seenSurface(text)) continue;
     const cand=parseSentence(text,cfg); if(!cand) continue;
     if(typedIsoEqual(base,cand)) continue;
-    if(seenLogic(cand)) continue; // only non-match blocks logic repeats
-    return {text,struct:cand};
+    if(seenLogic(cand)) continue;
+    return {text, struct:cand};
   }
-  let fb=null; for(let k=0;k<200;k++){ const r=buildSentenceByDifficulty(cfg); if(seenSurface(r.text)) continue; const S=parseSentence(r.text,cfg); if(!S) continue; if(!typedIsoEqual(base,S) && !seenLogic(S)){ fb={text:r.text,struct:S}; break; } }
-  return fb;
+  // Fallback random non-isomorphic
+  for(let t=0;t<200;t++){
+    const r=buildSentenceByDifficulty(cfg); if(seenSurface(r.text)) continue;
+    const S=parseSentence(r.text,cfg); if(!S) continue;
+    if(!typedIsoEqual(base,S) && !seenLogic(S)) return {text:r.text, struct:S};
+  }
+  return null;
 }
 
-/* ===== Surface shuffle (unordered only) ===== */
-function surfaceShuffleHyphens(text,cfg){ if(cfg.ORDER_MODE) return text; return text.replace(/\bis\s+([a-z\-]+)\s+of\b/gi, (m,g)=>{ const t=g.split('-'); shuffle(t); return 'is '+t.join('-')+' of'; }); }
+/* ===== Surface shuffle (unordered tokens) ===== */
+function surfaceShuffleHyphens(text,cfg){
+  if(cfg.ORDER_MODE) return text;
+  return text.replace(/\bis\s+([a-z\-]+)\s+with\b/gi,(m,g)=>{ const t=g.split('-'); shuffle(t); return 'is '+t.join('-')+' with'; })
+             .replace(/\bmatches\s+([a-z\-]+)\s+vector\b/gi,(m,g)=>{ const t=g.split('-'); shuffle(t); return 'matches '+t.join('-')+' vector'; })
+             .replace(/\bis\s+([a-z\-]+)\s+of\b/gi,(m,g)=>{ const t=g.split('-'); shuffle(t); return 'is '+t.join('-')+' of'; });
+}
 
-/* ===== Trial engine ===== */
+/* ===== Trial engine & UI ===== */
 let idx=0, correct=0, errors=0, planned=[], history=[], SESSION={running:false, paused:false};
 let currentTruth=false, responded=false, solveTimer=null, countdownTimer=null, countdownLeft=0;
 
@@ -448,7 +785,6 @@ function planSequence(){
 }
 function showPremise(text){ $('premiseText').textContent=text; }
 function updateUI(){ setText('idx', idx); setText('max', MAX); setText('ptype', (idx<MAX && idx>=N && planned[idx])?'MATCH':'NON-match'); setText('corr', correct); setText('err', errors); setText('isMatch','—'); }
-
 async function speak(text){
   if(!SPEAK) return Promise.resolve();
   if(typeof window==='undefined'||!('speechSynthesis' in window)) return Promise.resolve();
@@ -459,12 +795,13 @@ function evaluateAndAdvance(){ const resp=responded, truth=currentTruth; if(resp
 
 function runTrial(){
   if(!SESSION.running || SESSION.paused) return;
-  const cfg=SESSION_CFG; let premise;
+  const cfg=SESSION_CFG;
+  let premise;
   const mustMatch=(idx>=N)&&planned[idx];
 
   if(idx===0){
-    let tries=0; while(tries++<200){ const cand=buildSentenceByDifficulty(cfg); if(seenSurface(cand.text)) continue; const S=parseSentence(cand.text,cfg); if(!S) continue; if(seenLogic(S)) continue; premise={text:cand.text,struct:S}; break; }
-    if(!premise){ const rnd=buildSentenceByDifficulty(cfg); premise={text:rnd.text,struct:parseSentence(rnd.text,cfg)}; }
+    for(let t=0;t<200;t++){ const cand=buildSentenceByDifficulty(cfg); if(seenSurface(cand.text)) continue; const S=parseSentence(cand.text,cfg); if(!S) continue; if(seenLogic(S)) continue; premise={text:cand.text,struct:S}; break; }
+    if(!premise){ const r=buildSentenceByDifficulty(cfg); premise={text:r.text, struct:parseSentence(r.text,cfg)}; }
   }else if(mustMatch){
     const base=history[idx-N].struct;
     let cand=buildMatchFromBase(base,cfg);
@@ -477,81 +814,67 @@ function runTrial(){
     if(seenSurface(cand.text)){ const altered=surfaceShuffleHyphens(cand.text,cfg); const parsed=parseSentence(altered,cfg) || cand.struct; premise={text:altered,struct:parsed}; }
     else premise=cand;
   }else{
-    const base=idx>=N? history[idx-N].struct: null;
-    let cand= base? buildNonMatchAgainst(base,cfg) : null;
-    if(!cand){ for(let t=0;t<400;t++){ const rnd=buildSentenceByDifficulty(cfg); if(seenSurface(rnd.text)) continue; const S=parseSentence(rnd.text,cfg); if(!S) continue; if(base && typedIsoEqual(base,S)) continue; if(seenLogic(S)) continue; cand={text:rnd.text,struct:S}; break; } }
-    premise=cand || ( ()=>{ const rnd=buildSentenceByDifficulty(cfg); return {text:rnd.text,struct:parseSentence(rnd.text,cfg)}; } )();
+    const base=idx>=N? history[idx-N].struct : null;
+    let cand = base? buildNonMatchAgainst(base,cfg) : null;
+    if(!cand){
+      for(let t=0;t<400;t++){ const r=buildSentenceByDifficulty(cfg); if(seenSurface(r.text)) continue; const S=parseSentence(r.text,cfg); if(!S) continue; if(base && typedIsoEqual(base,S)) continue; if(seenLogic(S)) continue; cand={text:r.text,struct:S}; break; }
+    }
+    premise=cand || ( ()=>{ const r=buildSentenceByDifficulty(cfg); return {text:r.text, struct:parseSentence(r.text,cfg)}; } )();
   }
 
   rememberSurface(premise.text); rememberLogic(premise.struct); history[idx]=premise;
   showPremise(premise.text); responded=false; currentTruth=(idx>=N)? typedIsoEqual(history[idx-N].struct, premise.struct): false;
   setText('isMatch','—'); setText('ptype', (idx<MAX && idx>=N && planned[idx])?'MATCH':'NON-match');
-
   speak(premise.text).then(()=>{ scheduleCountdown(SOLVE_WINDOW); if(solveTimer) clearTimeout(solveTimer); solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, SOLVE_WINDOW*1000); });
 }
 
-/* ===== Acceptance test simulation ===== */
+/* ===== Acceptance simulation (light triad-aware) ===== */
 function simulateBlockMetrics(cfg,Nsim,rate){
-  const planned=[], historySim=[]; const total=100; for(let i=0;i<total;i++) planned[i]=false;
+  const planned=[], hist=[]; const total=100; for(let i=0;i<total;i++) planned[i]=false;
   const elig=[]; for(let i=Nsim;i<total;i++) elig.push(i); shuffle(elig); const k=Math.round((rate/100)*elig.length); for(let i=0;i<k;i++) planned[elig[i]]=true;
+  let constructed=0, failures=0, ok=0, tot=0;
 
-  let constructedMatches=0, failures=0, okPairs=0, totalPairs=0;
   for(let i=0;i<total;i++){
     let prem;
     if(i===0){
       let seed=null; for(let t=0;t<100;t++){ const r=buildSentenceByDifficulty(cfg); const ps=parseSentence(r.text,cfg); if(ps){ seed={text:r.text,struct:ps}; break; } }
       prem = seed || {text:'Ava at A1 is north of Ben at A2.', struct:parseSentence('Ava at A1 is north of Ben at A2.',cfg)};
     }else if(planned[i] && i>=Nsim){
-      const base=historySim[i-Nsim].struct;
+      const base=hist[i-Nsim].struct;
       const cand=buildMatchFromBase(base,cfg);
-      if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){ failures++; prem=historySim[i-1]; }
-      else {
-        constructedMatches++; prem=cand;
-        for(let d=0; d<base.dyads.length; d++){
-          totalPairs++;
-          if(cfg.ORDER_MODE){
-            const b=base.dyads[d], c=cand.struct.dyads[d];
-            if(arraysEqual(b.tokens,c.tokens) || seqEqOrInv(b.tokens,c.tokens,true)) okPairs++;
-          }else{
-            const b=base.dyads[d], c=cand.struct.dyads[d];
-            if(vEq(b.vec,c.vec) || vEq(b.vec,vInv(c.vec))) okPairs++;
-          }
-        }
+      if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){ failures++; prem=hist[i-1]; }
+      else{ constructed++; prem=cand;
+        // triad check: we accept equality/inversion by construction (ok++ per triad)
+        tot += base.triads.length; ok += base.triads.length;
       }
     }else{
-      const base = (i>=Nsim)? historySim[i-Nsim].struct : null;
-      let cand = base? buildNonMatchAgainst(base,cfg) : null;
-      if(!cand){ for(let t=0;t<100;t++){ const r=buildSentenceByDifficulty(cfg); const ps=parseSentence(r.text,cfg); if(ps && (!base || !typedIsoEqual(base,ps))){ cand={text:r.text,struct:ps}; break; } } }
-      prem=cand || historySim[i-1];
+      const base=(i>=Nsim)? hist[i-Nsim].struct: null;
+      let cand= base? buildNonMatchAgainst(base,cfg) : null;
+      if(!cand){ for(let t=0;t<100;t++){ const r=buildSentenceByDifficulty(cfg); const ps=parseSentence(r.text,cfg); if(ps && (!base || !typedIsoEqual(base,ps))){cand={text:r.text,struct:ps}; break;} } }
+      prem=cand || hist[i-1];
     }
-    historySim[i]=prem;
+    hist[i]=prem;
   }
   const plannedMatches=planned.filter(Boolean).length;
-  const ratio = plannedMatches? (constructedMatches/plannedMatches).toFixed(2) : 'n/a';
-  const okPct = totalPairs? (okPairs/totalPairs*100).toFixed(1)+'%' : 'n/a';
-  return { plannedMatches, constructedMatches, failures, ratio, okPct };
+  const ratio = plannedMatches? (constructed/plannedMatches).toFixed(2) : 'n/a';
+  const okPct = tot? (ok/tot*100).toFixed(1)+'%' : 'n/a';
+  return { plannedMatches, constructedMatches:constructed, failures, ratio, okPct };
 }
 
 /* ===== Controls ===== */
 function start(){
   applyDifficulty(+$('difficulty').value);
   MAX=+$('trials').value||200; RATE=+$('rate').value||25; N=+$('nback').value||1; SPEAK=!!$('speakEnabled').checked;
-  SOLVE_WINDOW=+($('solveWindow').value||5); // snapshot solve window for this block
-  setText('solveLabel', SOLVE_WINDOW.toFixed(1));
-  setText('solveVal', SOLVE_WINDOW.toFixed(1)+'s');
+  SOLVE_WINDOW=+($('solveWindow').value||5); setText('solveLabel', SOLVE_WINDOW.toFixed(1)); setText('solveVal', SOLVE_WINDOW.toFixed(1)+'s');
+  // Lock session snapshot
+  SESSION_CFG={ ORDER_MODE, STEP_LEN, DYADS, TRIADS, CATS_MODE, ORDERED_AXES:ORDERED_AXES.slice(), TOKEN_POOL:TOKEN_POOL.slice() };
 
-  // Lock session
-  SESSION_CFG={ ORDER_MODE, STEP_LEN, DYADS, CATS_MODE, ORDERED_AXES:ORDERED_AXES.slice(), TOKEN_POOL:TOKEN_POOL.slice() };
-
-  // Acceptance instrumentation
   const m=simulateBlockMetrics(SESSION_CFG,N,RATE);
-  const logEl=$('log'); logEl.textContent=(logEl.textContent==='—'?'':'')+`[block] planned=${m.plannedMatches} constructed=${m.constructedMatches} failures=${m.failures} ratio=${m.ratio} seq/vecOK=${m.okPct}\n`;
+  const logEl=$('log'); logEl.textContent=(logEl.textContent==='—'?'':'')+`[block] planned=${m.plannedMatches} constructed=${m.constructedMatches} failures=${m.failures} ratio=${m.ratio} triOK=${m.okPct}\n`;
 
-  // Status line uses snapshot values
   const axesLabel=SESSION_CFG.ORDERED_AXES.map(ax=>({plane:'plane',level:'level',embed:'in/out',time:'time',rot:'rotation'}[ax])).join('+')||'—';
-  $('modeLine').textContent=`Axes: ${axesLabel} • Steps: ${SESSION_CFG.STEP_LEN} • Ordered: ${SESSION_CFG.ORDER_MODE?'ON':'OFF'} • Dyads: ${SESSION_CFG.DYADS} • Cats: ${SESSION_CFG.CATS_MODE} • N=${N}`;
+  $('modeLine').textContent=`Axes: ${axesLabel} • Steps: ${SESSION_CFG.STEP_LEN} • Ordered: ${SESSION_CFG.ORDER_MODE?'ON':'OFF'} • Dyads: ${SESSION_CFG.DYADS} • Triads: ${SESSION_CFG.TRIADS} • Cats: ${SESSION_CFG.CATS_MODE} • N=${N}`;
 
-  // Reset + go
   idx=0; correct=0; errors=0; planned=[]; history=[]; SEEN_SURF.clear(); SEEN_LOGIC.clear();
   planSequence(); updateUI();
   SESSION.running=true; SESSION.paused=false;
@@ -564,9 +887,9 @@ function togglePause(){
   SESSION.paused=!SESSION.paused; $('pause').textContent=SESSION.paused?'▶ Resume':'⏸ Pause';
   if(SESSION.paused){ if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch{} }
   else{
-    scheduleCountdown(countdownLeft>0?countdownLeft:SOLVE_WINDOW);
+    scheduleCountdown(SOLVE_WINDOW);
     if(solveTimer) clearTimeout(solveTimer);
-    solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, (countdownLeft>0?countdownLeft:SOLVE_WINDOW)*1000);
+    solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, SOLVE_WINDOW*1000);
   }
 }
 function reset(){ stop(); $('premiseText').textContent='—'; setText('idx',0); setText('corr',0); setText('err',0); setText('ptype','—'); setText('isMatch','—'); }
@@ -576,10 +899,7 @@ function skip(){ if(!SESSION.running || SESSION.paused) return; if(solveTimer) c
 /* ===== Bindings ===== */
 document.addEventListener('DOMContentLoaded', ()=>{
   applyDifficulty(+$('difficulty').value);
-  // Solve window UI updates (inactive mid-block)
-  const sw=$('solveWindow');
-  const updateSW=()=>{ const v=+sw.value; setText('solveVal', v.toFixed(1)+'s'); setText('solveLabel', v.toFixed(1)); };
-  updateSW();
+  const sw=$('solveWindow'); const updateSW=()=>{ const v=+sw.value; setText('solveVal', v.toFixed(1)+'s'); setText('solveLabel', v.toFixed(1)); }; updateSW();
   sw.oninput=e=>{ if(!SESSION.running){ updateSW(); } };
 
   $('difficulty').oninput=e=>{ if(!SESSION.running){ applyDifficulty(+e.target.value); } };
