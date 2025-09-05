@@ -1,15 +1,17 @@
+analyse this games html code as deeply as posisble until you understand the game like the greatest super genius that ever existed and ever will exist. therefore think to incredibly deep levels and beyond:
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Relational N-Back — One-Sentence, Logic-Only (Triads + Full-Axis Coverage)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Relational N-Back — Logic-Only N-Match (6D + Diagonals + Hard Gates)</title>
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
 html,body{ height:100% }
-body{ margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif }
-.wrap{ max-width:1280px; margin:0 auto; padding:16px }
+body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); margin:0; padding:16px }
+.wrap{ max-width:1280px; margin:0 auto }
 .row{ display:flex; gap:12px; flex-wrap:wrap }
 .col{ flex:1 1 360px }
 .box{ background:#101418; border:1px solid rgba(0,200,255,.25); border-radius:14px; padding:12px }
@@ -17,45 +19,70 @@ body{ margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-ap
 .btn{ background:#0b0d10; color:var(--a); border:1px solid var(--a); border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer }
 .btn:disabled{ opacity:.5; cursor:not-allowed }
 label{ font-size:12px; color:var(--mut); display:block; margin:6px 0 }
-input[type=range], input[type=number]{ width:100% }
+input[type=range], input[type=number], select{ width:100% }
+select{ min-height:38px }
 .kbd{ border:1px solid rgba(255,255,255,.25); padding:2px 6px; border-radius:6px; background:#0b0d10 }
 .mut{ color:var(--mut); font-size:12px }
+#premiseText{ margin-top:12px; min-height:110px; background:#0e1113; border:1px solid rgba(0,200,255,.25); border-radius:12px; padding:10px; font-size:18px; line-height:1.6; word-break:break-word }
+#premiseText .rel{ padding:0 4px; border-radius:6px }
+#premiseText .rel.active{ background:rgba(0,200,255,.20); outline:1px solid rgba(0,200,255,.45) }
+#premiseText .sep{ opacity:.65 }
+.small{ font-size:12px; color:var(--mut) }
 hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
-#premiseText{ margin-top:12px; min-height:110px; background:#0e1113; border:1px solid rgba(0,200,255,.25); border-radius:12px; padding:12px; font-size:20px; line-height:1.5; word-break:break-word }
-.badge{ display:inline-block; padding:2px 8px; border:1px solid rgba(0,200,255,.35); border-radius:999px; font-size:12px; color:var(--mut); margin-left:6px }
-#countdown{ font-weight:800; color:var(--a) }
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* No diagnostics UI presented */
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="row">
+    <!-- Timing / Complexity -->
     <div class="col">
       <div class="box">
-        <div class="title">Difficulty & N-Back</div>
-        <label>Difficulty (1–10): <span id="diffVal">1</span></label>
-        <input id="difficulty" type="range" min="1" max="10" step="1" value="1">
-        <div class="mut" id="diffExplain">Axes: plane • Steps: 1 • Ordered: OFF • Dyads: 1 • Cats: 0 • Triads: OFF at L1</div>
-        <hr class="hr">
-        <label>N-Back level (independent): <span id="nVal">1</span></label>
-        <input id="nback" type="range" min="1" max="5" step="1" value="1">
-        <div class="mut small">N controls comparison depth only; difficulty controls premise complexity.</div>
-      </div>
-    </div>
-
-    <div class="col">
-      <div class="box">
-        <div class="title">Timing & Block</div>
-        <div class="mut">Solve window: <strong><span id="solveLabel">5.0</span>s</strong> after the sentence finishes speaking.</div>
-        <label>Solve window (1–10s): <span id="solveVal">5.0s</span></label>
-        <input id="solveWindow" type="range" min="1" max="10" step="0.1" value="5">
-        <label>Trials per block: <span id="tVal">200</span></label>
-        <input id="trials" type="range" min="20" max="500" step="10" value="200">
+        <div class="title">Timing & Complexity</div>
+        <label>N-back level: <span id="nVal">1</span></label>
+        <input id="n" type="range" min="1" max="10" value="1">
+        <label>Trials per block: <span id="tVal">500</span></label>
+        <input id="trials" type="range" min="10" max="500" step="1" value="500">
+        <label>Pause between relations in a premise (seconds): <span id="pVal">30.0 s</span></label>
+        <input id="pauseTime" type="range" min="0" max="60" step="0.1" value="30">
+        <label>Pause between premises (seconds): <span id="premiseIntervalVal">30.0 s</span></label>
+        <input id="premiseInterval" type="range" min="0" max="60" step="0.1" value="30">
         <label>Target match rate: <span id="rVal">25%</span></label>
         <input id="rate" type="range" min="0" max="100" step="1" value="25">
-        <label><input id="speakEnabled" type="checkbox" checked> Speak sentences</label>
+        <hr class="hr">
+        <div class="title">Relational Complexity</div>
+        <label>Relations per premise (clauses): <span id="relCountVal">1</span></label>
+        <input id="relCount" type="number" min="1" step="1" value="1">
+        <div class="mut small" style="margin-top:6px">
+          Axes: plane (north/south/east/west + diagonals), level (up/down),
+          embedding (in/out), time (ahead/behind), rotation (rotated right/rotated left).
+        </div>
       </div>
     </div>
 
+    <!-- Stressors -->
+    <div class="col">
+      <div class="box">
+        <div class="title">Advanced Stressors</div>
+        <div class="grid2">
+          <label><input id="orderMode" type="checkbox"> Order matters (non-commutative)</label>
+          <label>Steps per clause
+            <select id="orderLen">
+              <option value="2" selected>2 steps</option>
+              <option value="3">3 steps</option>
+            </select>
+          </label>
+          <label><input id="isoMode" type="checkbox"> Isomorphism (allow relabeling)</label>
+          <label><input id="speakEnabled" type="checkbox" checked> Speak premises</label>
+        </div>
+        <div class="mut small" style="margin-top:6px">
+          Max stress: Order ON + 3 steps + ISO ON.
+        </div>
+      </div>
+    </div>
+
+    <!-- Controls -->
     <div class="col">
       <div class="box">
         <div class="title">Controls / Status</div>
@@ -67,700 +94,700 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
           <button id="skip" class="btn" disabled>⏭ Skip</button>
         </div>
         <div class="mut" style="margin-top:8px">
-          Trial <span id="idx">0</span>/<span id="max">200</span>
-          <span class="badge">Planned: <span id="ptype">—</span></span>
-          <span class="badge">Actual: <span id="isMatch">—</span></span>
-          <span class="badge">Countdown: <span id="countdown">—</span></span>
+          Trial <span id="idx">0</span>/<span id="max">500</span> • Planned: <span id="ptype">—</span> • Actual (logic): <span id="isMatch">—</span>
         </div>
         <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
-        <div class="mut small" id="modeLine">Axes: plane • Steps: 1 • Ordered: OFF • Dyads: 1 • Cats: 0 • N=1</div>
       </div>
     </div>
   </div>
 
+  <!-- Premise -->
   <div class="box" style="margin-top:12px">
-    <div class="title">Premise (single sentence)</div>
+    <div class="title">Premise (spoken + visual)</div>
     <div id="premiseText" aria-live="polite">—</div>
   </div>
 
+  <!-- No diagnostics presented to the user -->
   <div id="log" style="display:none" aria-hidden="true">—</div>
 </div>
 
 <script>
-/* ============================================================
-   Relational N-Back — One-Sentence Logic-Only (Triads + Full-Axis Coverage)
-   REQUIRED FIXES IMPLEMENTED:
-   - DYAD PARSER (L1) to avoid start deadlock
-   - COVERAGE INTO TRIAD AXES (no raw non-plane tokens in 'where')
-   - FIXED RE_MATCHVEC NAMED GROUP (and RE_ALIGNED)
-   - Axis safety, level-wise guarantees, robust first sentence, status line snapshot
-   ============================================================ */
+/*
+INTERNAL: Logic-only matches with strict step budgets.
+- Steps per clause = UI 'Steps per clause' in BOTH modes.
+- ORDER_MODE OFF builds from atomic steps, may compress at render.
+- ORDER_MODE ON uses atomic tokens only; no diagonal or 2/3-level compression.
+- Strict ISO: equal node counts; ordered compares multisets per pair.
+- Token whitelist enforced; unknown tokens invalidate.
+- Hard gates (ban opposites) always on; never relaxed.
+*/
 
 /* ===== Utilities ===== */
 const $ = id => document.getElementById(id);
-function setText(id,v){ const el=$(id); if(el) el.textContent=v; }
+const clone = o => JSON.parse(JSON.stringify(o));
 function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a; }
-function uniq(a){ return [...new Set(a)]; }
+function logLine(s){ const el=$('log'); if(!el) return; el.textContent=(el.textContent==='—'?'':el.textContent+'\n')+s; }
+function setText(id,val){ const el=$(id); if(el) el.textContent=val; }
+function repeats(word, n){ return Array(Math.abs(n)).fill(word); }
 
-/* ===== Names & Categories ===== */
-const NAMES = ['Ava','Ben','Zara','Liam','Maya','Eli','Noah','Tara','Leo','Nina','Aria','Milo','Iris','Owen','Luca','June','Reid','Skye','Ezra','Quinn','Nova','Rene','Kai'];
-const CATS  = ['Red','Blue','Gold','Green','Alpha','Beta','Gamma','Delta','Theta','Iota','Kappa','Lambda'];
+/* ===== Global knobs ===== */
+let ORDER_MODE=false, ORDER_LEN=2, ISO_MODE=false, SPEAK=true;
 
-/* ===== Atomic axis tokens ===== */
-const AXES = {
-  plane: ['north','south','east','west'],
-  level: ['one level above','two levels above','three levels above','one level below','two levels below','three levels below'],
-  depth: ['in','out'],
-  time:  ['forwards','backwards'],
-  rot:   ['turn-right','turn-left','turn-back']
-};
-const ALL_TOKENS = new Set([].concat(...Object.values(AXES)));
+/* Hard gates (always ON) */
+const BAN_OPP_CLAUSE = true;
+const BAN_OPP_UNION  = true;
+
+/* ===== Tokens & Opposites ===== */
+const TOKENS = [
+  'north','south','east','west',
+  'northeast','northwest','southeast','southwest',
+  'in','out','ahead','behind',
+  'one level up','two levels up','three levels up',
+  'one level down','two levels down','three levels down',
+  'rotated right','rotated left','origin'
+];
+const ATOMIC_TOKENS = new Set([
+  'north','south','east','west',
+  'in','out','ahead','behind',
+  'rotated right','rotated left',
+  'one level up','one level down'
+]);
+const ALLOWED = new Set(TOKENS);
+
 const OPP = {
   north:'south', south:'north', east:'west', west:'east',
-  'one level above':'one level below','two levels above':'two levels below','three levels above':'three levels below',
-  'one level below':'one level above','two levels below':'two levels above','three levels below':'three levels above',
-  in:'out', out:'in', forwards:'backwards', backwards:'forwards',
-  'turn-right':'turn-left','turn-left':'turn-right','turn-back':'turn-back'
+  northeast:'southwest', northwest:'southeast', southeast:'northwest', southwest:'northeast',
+  in:'out', out:'in', ahead:'behind', behind:'ahead',
+  'one level up':'one level down','two levels up':'two levels down','three levels up':'three levels down',
+  'one level down':'one level up','two levels down':'two levels up','three levels down':'three levels up',
+  'rotated right':'rotated left','rotated left':'rotated right'
 };
-function axisOf(t){
-  if(AXES.plane.includes(t)) return 'plane';
-  if(AXES.level.includes(t)) return 'level';
-  if(AXES.depth.includes(t)) return 'depth';
-  if(AXES.time.includes(t))  return 'time';
-  if(AXES.rot.includes(t))   return 'rot';
-  return 'x';
-}
 
-/* Vector-like accumulation (for legacy/internals) */
-function tokenToDelta(t){
+/* ===== 6D math ===== */
+function tokenToDelta(tok){
   const d={x:0,y:0,z:0,w:0,u:0,v:0};
-  if(t==='north') d.y-=1; else if(t==='south') d.y+=1;
-  else if(t==='east') d.x+=1; else if(t==='west') d.x-=1;
-  else if(t==='one level above') d.z+=1; else if(t==='two levels above') d.z+=2; else if(t==='three levels above') d.z+=3;
-  else if(t==='one level below') d.z-=1; else if(t==='two levels below') d.z-=2; else if(t==='three levels below') d.z-=3;
-  else if(t==='in') d.w+=1; else if(t==='out') d.w-=1;
-  else if(t==='forwards') d.v+=1; else if(t==='backwards') d.v-=1;
-  else if(t==='turn-right') d.u+=1; else if(t==='turn-left') d.u-=1; else if(t==='turn-back') d.u+=2;
+  if(tok==='north') d.y-=1;
+  else if(tok==='south') d.y+=1;
+  else if(tok==='east') d.x+=1;
+  else if(tok==='west') d.x-=1;
+  else if(tok==='northeast'){ d.x+=1; d.y-=1; }
+  else if(tok==='northwest'){ d.x-=1; d.y-=1; }
+  else if(tok==='southeast'){ d.x+=1; d.y+=1; }
+  else if(tok==='southwest'){ d.x-=1; d.y+=1; }
+  else if(tok==='in') d.w+=1;
+  else if(tok==='out') d.w-=1;
+  else if(tok==='ahead') d.v+=1;
+  else if(tok==='behind') d.v-=1;
+  else if(tok==='one level up') d.z+=1;
+  else if(tok==='two levels up') d.z+=2;
+  else if(tok==='three levels up') d.z+=3;
+  else if(tok==='one level down') d.z-=1;
+  else if(tok==='two levels down') d.z-=2;
+  else if(tok==='three levels down') d.z-=3;
+  else if(tok==='rotated right') d.u+=1;
+  else if(tok==='rotated left') d.u-=1;
   return d;
 }
-function vAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
-function vInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
-function vEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
+function vecAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
+function vecInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
+function vecEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
 
-/* ===== Global knobs (defaults; snapshotted at start) ===== */
-let DIFF=1, ORDER_MODE=false, STEP_LEN=1, DYADS=1, CATS_MODE=0, ORDERED_AXES=['plane'], TOKEN_POOL=[];
-let MAX=200, RATE=25, N=1, SPEAK=true;
-let SOLVE_WINDOW=5.0;
-let SESSION_CFG=null; // snapshot
-
-/* ===== Difficulty mapping ===== */
-function axesForDiff(d){
-  if(d===1) return ['plane'];
-  if(d===2) return ['plane'];
-  if(d===3) return ['plane','level'];
-  if(d===4) return ['plane','level'];
-  if(d===5) return ['plane','level','depth'];
-  if(d===6) return ['plane','level','depth','time'];
-  if(d===7) return ['plane','level','depth','time'];
-  if(d===8) return ['plane','level','depth','time','rot'];
-  if(d===9) return ['plane','level','depth','time','rot'];
-  return ['plane','level','depth','time','rot'];
+/* ===== Atomic expansion & gates ===== */
+function expandAtomic(tok){
+  // Return array of atomic tokens for one token
+  if(tok==='northeast') return ['north','east'];
+  if(tok==='northwest') return ['north','west'];
+  if(tok==='southeast') return ['south','east'];
+  if(tok==='southwest') return ['south','west'];
+  if(tok==='two levels up') return ['one level up','one level up'];
+  if(tok==='three levels up') { return ['one level up','one level up','one level up']; }
+  if(tok==='two levels down') return ['one level down','one level down'];
+  if(tok==='three levels down') { return ['one level down','one level down','one level down']; }
+  if(tok==='origin') return [];
+  return [tok];
 }
-function applyDifficulty(d){
-  DIFF=d;
-  ORDERED_AXES = axesForDiff(d);
-  TOKEN_POOL = ORDERED_AXES.flatMap(ax=>AXES[ax]);
-  if(d===1) STEP_LEN=1; else if(d<=4) STEP_LEN=2; else if(d<=7) STEP_LEN=3; else STEP_LEN=4;
-  ORDER_MODE = d>=5;                  // ordered triads (aligned/match-vector) from L5
-  DYADS = (d>=7) ? 2 : 1;             // number of triads in sentence
-  CATS_MODE = (d<=3) ? 0 : (d<=6?1:2);// 0 none; 1 one outrank; 2 two outranks
-
-  const axesLabel = ORDERED_AXES.map(ax => ({plane:'plane',level:'level',depth:'in/out',time:'time',rot:'rotation'}[ax])).join('+') || '—';
-  setText('diffVal', d);
-  $('diffExplain').textContent = `Axes: ${axesLabel} • Steps: ${STEP_LEN} • Ordered: ${ORDER_MODE?'ON':'OFF'} • Dyads: ${DYADS} • Cats: ${CATS_MODE} • Triads: ${d>=2?'ON':'OFF'}`;
-  $('modeLine').textContent    = `Axes: ${axesLabel} • Steps: ${STEP_LEN} • Ordered: ${ORDER_MODE?'ON':'OFF'} • Dyads: ${DYADS} • Cats: ${CATS_MODE} • N=${N}`;
+function tokensAllowedInMode(tokens){
+  for(const t of tokens){
+    if(!ALLOWED.has(t)) return false;
+    if(ORDER_MODE && !ATOMIC_TOKENS.has(t)) return false; // ordered mode: atomic only
+  }
+  return true;
+}
+function clauseHasOppositesAtomic(tokens){
+  // tokens are atomic after expansion
+  const set=new Set(tokens);
+  for(const t of set){ const opp=OPP[t]; if(opp && set.has(opp)) return true; }
+  return false;
+}
+function getCoreTokensFromEdgePart(core){
+  const items = ORDER_MODE ? core.split(/\s+then\s+/i) : core.split(/\s+and\s+/i);
+  return items.map(s=>s.trim().toLowerCase()).filter(Boolean);
+}
+function computeAtomicLenForCoreTokens(coreTokens){
+  let len=0;
+  for(const t of coreTokens){ len += expandAtomic(t).length; }
+  return len;
+}
+function passesStepGates(sentence){
+  const parts = extractEdges(sentence);
+  for(const p of parts){
+    const toks = getCoreTokensFromEdgePart(p.core);
+    if(!tokensAllowedInMode(toks)) return false;
+    // Expand to atomic for gates
+    const atomic = toks.flatMap(expandAtomic);
+    if(atomic.length !== ORDER_LEN) return false;
+    if(BAN_OPP_CLAUSE && clauseHasOppositesAtomic(atomic)) return false;
+  }
+  return true;
 }
 
-/* ===== Helpers ===== */
+/* ===== Rendering helpers ===== */
+function planeComponentsCompressed(x,y){
+  const out=[]; let dx=x, dy=y;
+  while(dx!==0 && dy!==0){
+    if(dx>0 && dy<0){ out.push('northeast'); dx-=1; dy+=1; }
+    else if(dx<0 && dy<0){ out.push('northwest'); dx+=1; dy+=1; }
+    else if(dx>0 && dy>0){ out.push('southeast'); dx-=1; dy-=1; }
+    else if(dx<0 && dy>0){ out.push('southwest'); dx+=1; dy-=1; }
+  }
+  if(dx>0) out.push(...repeats('east', dx));
+  if(dx<0) out.push(...repeats('west', -dx));
+  if(dy<0) out.push(...repeats('north', -dy));
+  if(dy>0) out.push(...repeats('south', dy));
+  return out;
+}
+function levelComponents(z, split=false){
+  const out=[]; const abs=Math.abs(z); const dir=z>=0?'up':'down';
+  if(abs===0) return out;
+  if(!split){
+    if(abs===1) out.push(`one level ${dir}`);
+    else if(abs===2) out.push(`two levels ${dir}`);
+    else if(abs===3) out.push(`three levels ${dir}`);
+    else for(let i=0;i<abs;i++) out.push(`one level ${dir}`);
+  }else{
+    for(let i=0;i<abs;i++) out.push(`one level ${dir}`);
+  }
+  return out;
+}
+function rotationComponents(u){
+  const out=[]; if(u>0) out.push(...repeats('rotated right', u)); if(u<0) out.push(...repeats('rotated left', -u)); return out;
+}
+function timeComponents(v){
+  const out=[]; if(v>0) out.push(...repeats('ahead', v)); if(v<0) out.push(...repeats('behind', -v)); return out;
+}
+function vectorComponents(r, style){
+  const comps=[];
+  comps.push(...planeComponentsCompressed(r.x,r.y));
+  comps.push(...levelComponents(r.z, style.splitLevels));
+  if(r.w>0) comps.push(...repeats('in', r.w));
+  if(r.w<0) comps.push(...repeats('out', -r.w));
+  comps.push(...rotationComponents(r.u));
+  comps.push(...timeComponents(r.v));
+  if(style.shuffleComponents) shuffle(comps);
+  return comps;
+}
+function relToStringVectorStyled(r, style){
+  const parts=vectorComponents(r, style);
+  return parts.length? parts.join(' and ') : 'origin';
+}
+function seqToString(seq){ return (seq&&seq.length)? seq.join(' then ') : 'origin'; }
+
+/* ===== Symbols ===== */
 function sym(){ const L='ABCDEFGHIJKLMNOPQRSTUVWXYZ'; return L[(Math.random()*26)|0] + (1+((Math.random()*9)|0)); }
-function pickNames(k){ const a=NAMES.slice(); shuffle(a); return a.slice(0,k); }
-function pickCats(k){ const a=CATS.slice(); shuffle(a); return a.slice(0,k); }
+function pickSymbols(k){ const s=new Set(); while(s.size<k) s.add(sym()); return [...s]; }
 
-/* ===== Axis parsing & safety ===== */
-function parseAxes(hyphenSeq){
-  const raw = (hyphenSeq||'').toLowerCase().trim();
-  if(!raw) return [];
-  const parts = raw.split(/\s*-\s*/).filter(Boolean);
-  const seen=new Set();
-  for(const tok of parts){
-    if(!ALL_TOKENS.has(tok)) return null;
-    if(seen.has(OPP[tok])) return null; // forbid opposite in same group
-    seen.add(tok);
-  }
-  return parts;
-}
-
-/* ===== TRIAD clause builders ===== */
-function hy(ax){ return ax.join('-'); }
-function triadAligned(X, PX, Cx, ax, Y, PY, Cy, Z, PZ, Cz){
-  const left  = `${X} at ${PX}${Cx?` in ${Cx}`:''}`;
-  const mid   = `${Y} at ${PY}${Cy?` in ${Cy}`:''}`;
-  const right = `${Z} at ${PZ}${Cz?` in ${Cz}`:''}`;
-  return `${left} is aligned ${hy(ax)} with ${mid} toward ${right}`;
-}
-function triadMatchVec(X, PX, Cx, ax, Y, PY, Cy, Z, PZ, Cz){
-  const left  = `${X} at ${PX}${Cx?` in ${Cx}`:''}`;
-  const mid   = `${Y} at ${PY}${Cy?` in ${Cy}`:''}`;
-  const right = `${Z} at ${PZ}${Cz?` in ${Cz}`:''}`;
-  return `${left} matches vector from ${mid} toward ${right} ${hy(ax)}`;
-}
-function triadBetween(X, PX, Cx, Y, PY, Cy, Z, PZ, Cz){
-  const a = `${X} at ${PX}${Cx?` in ${Cx}`:''}`;
-  const b = `${Y} at ${PY}${Cy?` in ${Cy}`:''}`;
-  const c = `${Z} at ${PZ}${Cz?` in ${Cz}`:''}`;
-  return `${a} is between ${b} and ${c}`;
-}
-function triadMidpoint(X, PX, Cx, Y, PY, Cy, Z, PZ, Cz){
-  const a = `${X} at ${PX}${Cx?` in ${Cx}`:''}`;
-  const b = `${Y} at ${PY}${Cy?` in ${Cy}`:''}`;
-  const c = `${Z} at ${PZ}${Cz?` in ${Cz}`:''}`;
-  return `${a} is midpoint of ${b} and ${c}`;
-}
-
-/* ===== COVERAGE INTO TRIAD AXES =====
-   - No raw non-plane tokens in ', where ...'
-   - Plane words can be added via cross-constraint only
-*/
-function makeCoverageAxes(stepLen, needTurnBack){
-  // Split tokens across up to two triads, avoiding opposites in same group
-  const A=[], B=[];
-  // Non-plane essentials
-  A.push('in'); B.push('out');
-  A.push('forwards'); B.push('backwards');
-  A.push('one level above'); B.push('one level below');
-  A.push('turn-right'); if(needTurnBack) A.push('turn-back'); else B.push('turn-left');
-  // Trim to stepLen budget (keep diversity)
-  function trim(arr){ return arr.slice(0, Math.min(stepLen, 4)); }
-  return [trim(A), trim(B)];
-}
-function planeCrossForMissing(sentence){
-  // Only plane constraints are allowed in 'where'
-  const have = {north:false,south:false,east:false,west:false};
-  for(const k of Object.keys(have)) if(sentence.toLowerCase().includes(k)) have[k]=true;
-  const missing = Object.keys(have).filter(k=>!have[k]);
-  if(!missing.length) return '';
-  // Synthesize up to 4 plane relations
-  const pts=[sym(),sym(),sym(),sym(),sym(),sym(),sym(),sym()];
-  const pairs=[];
-  for(let i=0;i<missing.length;i++){
-    const tok=missing[i];
-    pairs.push(`${pts[i*2]} ${tok} of ${pts[i*2+1]}`);
-  }
-  return pairs.length? (sentence.includes(' where ')? ' and ' : ', where ') + pairs.join(' and ') : '';
-}
-
-/* ===== Sentence generation ===== */
-function tokensSample(len, allowedAxes){
-  const pool = allowedAxes.flatMap(ax=>AXES[ax]);
-  let tries=0;
-  while(tries++<200){
-    const seq=[]; const seen=new Set();
+/* ===== Build edges with step budgets ===== */
+function sampleAtomicSeq(len){
+  // Build an atomic sequence of exact length without opposite pairs within the same clause
+  const pool = [...ATOMIC_TOKENS];
+  let attempts=0;
+  while(attempts++<200){
+    const seq=[];
+    const present = new Set();
     while(seq.length<len){
       const t = pool[(Math.random()*pool.length)|0];
-      if(seen.has(OPP[t])) continue;
-      seq.push(t); seen.add(t);
+      const opp = OPP[t];
+      if(present.has(opp)) { continue; } // avoid opposite conflicts
+      seq.push(t);
+      present.add(t);
     }
-    // prefer ≥2 axes if len≥2
-    const kinds=new Set(seq.map(axisOf)); if(len<2 || kinds.size>=2) return seq;
+    // final sanity (should be fine)
+    if(!clauseHasOppositesAtomic(seq)) return seq;
   }
-  return Array(len).fill(pool[0]||'north');
+  // fallback deterministic fill (all 'north', for example)
+  return Array(len).fill('north');
+}
+function buildEdgeOrdered(orderLen, symPool){
+  const u=symPool[(Math.random()*symPool.length)|0];
+  let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
+  const seq = sampleAtomicSeq(orderLen); // atomic only
+  let r={x:0,y:0,z:0,w:0,u:0,v:0}; seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
+  return {u,v,rel:r,seq};
+}
+function buildEdgeVectorAtomic(orderLen, symPool){
+  const u=symPool[(Math.random()*symPool.length)|0];
+  let v=symPool[(Math.random()*symPool.length)|0]; if(v===u){ v=symPool.find(x=>x!==u)||v; }
+  const seq = sampleAtomicSeq(orderLen); // build by atomic steps, but render as vector
+  let r={x:0,y:0,z:0,w:0,u:0,v:0}; seq.forEach(t=>{ r=vecAdd(r, tokenToDelta(t)); });
+  return {u,v,rel:r,seq:null};
 }
 
-function buildSentenceByDifficulty(cfg){
-  // DIFF=1 special dyad (legacy L1)
-  if(DIFF===1){
-    const a=pickNames(2); const p=[sym(),sym()];
-    return { text: `${a[0]} at ${p[0]} is north of ${a[1]} at ${p[1]}.` };
-  }
+/* ===== Render edges -> sentence ===== */
+function renderEdges(edges, style){
+  return edges.map(e=>{
+    const core = ORDER_MODE ? seqToString(e.seq) : relToStringVectorStyled(e.rel, style||{shuffleComponents:false, splitLevels:false});
+    return `${e.u} is ${core} of ${e.v}`;
+  }).join(' and ');
+}
 
-  const names = pickNames(6);
-  const pts   = [sym(),sym(),sym(),sym(),sym(),sym()];
-  const cats  = (cfg.CATS_MODE===0)? [] : pickCats(cfg.CATS_MODE===1?2:4);
-  const P=(i)=>names[i], X=(i)=>pts[i], C=(i)=> (cats.length? cats[i%cats.length]: null);
-
-  let triads=[], sentence='';
-
-  // Decide number of triads
-  const triadCount = (DIFF>=7)? 2 : 1;
-
-  // Prepare axes to satisfy non-plane coverage inside triads
-  const [axesA, axesB] = makeCoverageAxes(cfg.STEP_LEN, DIFF>=8);
-
-  function alignedOrMatch(aX,aY,aZ,ax){ return (ORDER_MODE? (Math.random()<0.5) : true)
-    ? triadAligned(aX.P,aX.X,aX.C, ax, aY.P,aY.X,aY.C, aZ.P,aZ.X,aZ.C)
-    : triadMatchVec(aX.P,aX.X,aX.C, ax, aY.P,aY.X,aY.C, aZ.P,aZ.X,aZ.C); }
-
-  // Build triad(s)
-  if(triadCount===1){
-    // Use an ordered triad from L2 as we must embed non-plane coverage into axes
-    const A={P:P(0),X:X(0),C:C(0)}, B={P:P(1),X:X(1),C:C(1)}, Z={P:P(2),X:X(2),C:C(2)};
-    const ax = (axesA.length? axesA : tokensSample(cfg.STEP_LEN, cfg.ORDERED_AXES));
-    sentence = alignedOrMatch(A,B,Z,ax);
-  }else{
-    // Two triads with axes split to avoid opposites per group
-    const A1={P:P(0),X:X(0),C:C(0)}, B1={P:P(1),X:X(1),C:C(1)}, Z1={P:P(2),X:X(2),C:C(2)};
-    const A2={P:P(3),X:X(3),C:C(3)}, B2={P:P(4),X:X(4),C:C(0)}, Z2={P:P(5),X:X(5),C:C(1)};
-    const ax1 = axesA.length? axesA : tokensSample(cfg.STEP_LEN, cfg.ORDERED_AXES);
-    const ax2 = axesB.length? axesB : tokensSample(cfg.STEP_LEN, cfg.ORDERED_AXES);
-    const t1 = alignedOrMatch(A1,B1,Z1,ax1);
-    // use between as second occasionally but we need axes coverage, so aligned/match also valid
-    const t2 = (ORDER_MODE? alignedOrMatch(A2,B2,Z2,ax2) : triadBetween(A2.P,A2.X,A2.C,B2.P,B2.X,B2.C,Z2.P,Z2.X,Z2.C));
-    sentence = t1 + ', while ' + t2;
-  }
-
-  // Append categories outrank if needed (legal in 'with')
-  if(cfg.CATS_MODE>=1){
-    const chain1 = `${C(0)} over ${C(1)}`;
-    sentence += `, with ${chain1}`;
-    if(cfg.CATS_MODE>=2){
-      const chain2 = `${C(2)} over ${C(3)}`;
-      sentence += ` and ${chain2}`;
+/* ===== Extract & Parse ===== */
+function extractEdges(sentence){
+  const re=/([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)/gi;
+  const out=[]; let m; while((m=re.exec(String(sentence||'')))) out.push({raw:m[0],A:m[1],core:m[2],B:m[3]}); return out;
+}
+function parsePremise(sentence){
+  const edges=[], nodes=new Set();
+  const parts=extractEdges(sentence);
+  for(const part of parts){
+    const A=part.A, B=part.B; nodes.add(A); nodes.add(B);
+    let rel={x:0,y:0,z:0,w:0,u:0,v:0}, seq=null;
+    if(ORDER_MODE){
+      const items=part.core.split(/\s+then\s+/i).map(s=>s.trim()).filter(Boolean);
+      if(!tokensAllowedInMode(items)) return {nodes:[], edges:[]};
+      seq=items.map(tok=>tok.toLowerCase());
+      seq.forEach(t=>{ rel=vecAdd(rel, tokenToDelta(t)); });
+    }else{
+      const items=part.core.split(/\s+and\s+/i).map(s=>s.trim()).filter(Boolean);
+      if(!tokensAllowedInMode(items)) return {nodes:[], edges:[]};
+      items.forEach(t=>{ if(t==='origin') return; rel=vecAdd(rel, tokenToDelta(t.toLowerCase())); });
     }
+    edges.push({u:A,v:B,rel,seq});
   }
-
-  // Add plane cross-constraint ONLY if plane coverage missing (no raw non-plane tokens)
-  const wherePlane = planeCrossForMissing(sentence);
-  sentence += wherePlane;
-  if(!/[.!?]$/.test(sentence)) sentence += '.';
-  return { text: sentence };
+  return {nodes:[...nodes], edges};
 }
 
-/* ===== Regexes (TRIAD + DYAD L1) ===== */
-/* FIXED RE_MATCHVEC NAMED GROUP + RE_ALIGNED NAMED GROUP */
-const NAME = '([A-Za-z]+)';
-const POINT= '([A-Z]\\d+)';
-const CAT  = '([A-Za-z]+)';
-const OPTCAT = `(?:\\s+in\\s+${CAT})?`;
-const WS='\\s+';
-
-// BETWEEN / MIDPOINT
-const RE_BETWEEN  = new RegExp(`^${NAME}${WS}at${WS}${POINT}${OPTCAT}${WS}is${WS}between${WS}${NAME}${WS}at${WS}${POINT}${OPTCAT}${WS}and${WS}${NAME}${WS}at${WS}${POINT}${OPTCAT}$`, 'i');
-const RE_MIDPOINT = new RegExp(`^${NAME}${WS}at${WS}${POINT}${OPTCAT}${WS}is${WS}midpoint${WS}of${WS}${NAME}${WS}at${WS}${POINT}${OPTCAT}${WS}and${WS}${NAME}${WS}at${WS}${POINT}${OPTCAT}$`, 'i');
-
-/* RE_ALIGNED with named axes */
-const RE_ALIGNED  = new RegExp(`^${NAME}${WS}at${WS}${POINT}${OPTCAT}${WS}is${WS}aligned${WS}(?<axes>[a-z\\-\\s]+)${WS}with${WS}${NAME}${WS}at${WS}${POINT}${OPTCAT}${WS}toward${WS}${NAME}${WS}at${WS}${POINT}${OPTCAT}$`, 'i');
-/* RE_MATCHVEC with named axes at end */
-const RE_MATCHVEC = new RegExp(`^${NAME}${WS}at${WS}${POINT}${OPTCAT}${WS}matches${WS}vector${WS}from${WS}${NAME}${WS}at${WS}${POINT}${OPTCAT}${WS}toward${WS}${NAME}${WS}at${WS}${POINT}${OPTCAT}${WS}(?<axes>[a-z\\-\\s]+)$`, 'i');
-
-/* Plane cross + outrank in 'where' */
-const RE_CROSS = /([A-Z]\d+)\s+(north|south|east|west)\s+of\s+([A-Z]\d+)/ig;
-const RE_OUTR  = /([A-Za-z]+)\s+over\s+([A-Za-z]+)/ig;
-
-/* DYAD PARSER (L1) — minimal, only for Difficulty 1 */
-const RE_DYAD = new RegExp(
-  `^${NAME}${WS}at${WS}${POINT}(?:${WS}in${WS}${CAT})?${WS}is${WS}(?:(?<axes>[a-z\\-\\s]+)${WS})?of${WS}${NAME}${WS}at${WS}${POINT}(?:${WS}in${WS}${CAT})?$`
-,'i');
-
-/* ===== Parsing ===== */
-function parseTriadClause(str){
-  const s = str.trim().replace(/\s+/g,' ');
-  let m;
-
-  m = RE_BETWEEN.exec(s);
-  if(m){
-    const [X,Px,Cx,Y,Py,Cy,Z,Pz,Cz]=[m[1],m[2],m[3]||null,m[4],m[5],m[6]||null,m[7],m[8],m[9]||null];
-    return {kind:'between', X:{P:X,X:Px,C:Cx}, Y:{P:Y,X:Py,C:Cy}, Z:{P:Z,X:Pz,C:Cz}, ordered:false, axes:[]};
-  }
-  m = RE_MIDPOINT.exec(s);
-  if(m){
-    const [X,Px,Cx,Y,Py,Cy,Z,Pz,Cz]=[m[1],m[2],m[3]||null,m[4],m[5],m[6]||null,m[7],m[8],m[9]||null];
-    return {kind:'midpoint', X:{P:X,X:Px,C:Cx}, Y:{P:Y,X:Py,C:Cy}, Z:{P:Z,X:Pz,C:Cz}, ordered:false, axes:[]};
-  }
-  m = RE_ALIGNED.exec(s);
-  if(m){
-    const axes = parseAxes(m.groups.axes); if(axes===null) return null;
-    const [X,Px,Cx,Y,Py,Cy,Z,Pz,Cz]=[m[1],m[2],m[3]||null,m[4],m[5],m[6]||null,m[7],m[8],m[9]||null];
-    return {kind:'aligned', X:{P:X,X:Px,C:Cx}, Y:{P:Y,X:Py,C:Cy}, Z:{P:Z,X:Pz,C:Cz}, ordered:true, axes};
-  }
-  m = RE_MATCHVEC.exec(s);
-  if(m){
-    const axes = parseAxes(m.groups.axes); if(axes===null) return null;
-    const [X,Px,Cx,Y,Py,Cy,Z,Pz,Cz]=[m[1],m[2],m[3]||null,m[4],m[5],m[6]||null,m[7],m[8],m[9]||null];
-    return {kind:'matchvec', X:{P:X,X:Px,C:Cx}, Y:{P:Y,X:Py,C:Cy}, Z:{P:Z,X:Pz,C:Cz}, ordered:true, axes};
-  }
-  return null;
+/* ===== Constraints ===== */
+function containsOpposites(tokens){
+  const set=new Set(tokens); for(const t of set){ const opp=OPP[t]; if(opp && set.has(opp)) return true; } return false;
+}
+function clauseTokens(e){
+  const parts=[]; parts.push(...planeComponentsCompressed(e.rel.x,e.rel.y));
+  parts.push(...levelComponents(e.rel.z,false));
+  if(e.rel.w>0) parts.push(...repeats('in', e.rel.w));
+  if(e.rel.w<0) parts.push(...repeats('out', -e.rel.w));
+  parts.push(...rotationComponents(e.rel.u));
+  parts.push(...timeComponents(e.rel.v));
+  return parts;
+}
+function checkClauseConstraints(edges){
+  if(!BAN_OPP_CLAUSE) return true;
+  for(const e of edges){ if(containsOpposites(clauseTokens(e))) return false; }
+  return true;
+}
+function checkUnionConstraints(merged){
+  if(!BAN_OPP_UNION) return true;
+  const sol=solveCoordsFromEdges(merged); if(!sol.ok) return false;
+  const tokens=[]; for(const e of merged) tokens.push(...clauseTokens(e));
+  return !containsOpposites(tokens);
 }
 
-/* Parse sentence into structure (L1 dyad OR triads + where) */
-function parseSentence(s,cfg){
-  s = String(s||'').trim();
-  if(!s.endsWith('.')) return null;
-  s = s.slice(0,-1);
-
-  // Split where (only plane cross + outrank)
-  let where=null;
-  const wIdx=s.toLowerCase().lastIndexOf(', where ');
-  if(wIdx>=0){ where=s.slice(wIdx+8).trim(); s=s.slice(0,wIdx).trim(); }
-
-  // L1: allow dyad
-  if(DIFF===1){
-    const m=RE_DYAD.exec(s);
-    if(!m) return null;
-    const axes = m.groups.axes? parseAxes(m.groups.axes) : ['north'];
-    if(axes===null) return null;
-    const [A,Ax,Ac,B,Bx,Bc]=[m[1],m[2],null,m[3],m[4],null]; // we didn't capture cats in dyad for brevity
-    const players=uniq([A,B]), points=uniq([Ax,Bx]), cats=[];
-    // Represent dyad as a special "aligned" triad with a dummy Z=second point and X=A (minimal for isomorphism reuse)
-    const triads=[{kind:'aligned', X:{P:A,X:Ax,C:null}, Y:{P:B,X:Bx,C:null}, Z:{P:B,X:Bx,C:null}, ordered:true, axes}];
-    return {players, points, cats, triads, outrank:[], cross:[], order:true};
-  }
-
-  // L2+: possibly two triads separated by ", while "
-  const parts = s.split(/,\s*while\s+/i);
-  if(parts.length<1 || parts.length>2) return null;
-
-  const triads=[];
+/* ===== Solver & Signatures ===== */
+function solveCoordsFromEdges(edges){
+  const adj=new Map(), nodes=new Set();
+  const add=(u,v,rel)=>{ if(!adj.has(u)) adj.set(u,[]); adj.get(u).push({v,rel}); nodes.add(u); nodes.add(v); };
+  edges.forEach(e=>{ add(e.u,e.v,e.rel); add(e.v,e.u,vecInv(e.rel)); });
+  const coords=new Map(), comps=[], seen=new Set(); let ok=true;
+  nodes.forEach(root=>{
+    if(seen.has(root)) return;
+    coords.set(root,{x:0,y:0,z:0,w:0,u:0,v:0}); seen.add(root);
+    const comp=[root]; comps.push(comp);
+    const st=[root];
+    while(st.length){
+      const u=st.pop(), pu=coords.get(u);
+      (adj.get(u)||[]).forEach(({v,rel})=>{
+        const want=vecAdd(pu,rel);
+        if(!coords.has(v)){ coords.set(v,want); seen.add(v); comp.push(v); st.push(v); }
+        else{ const pv=coords.get(v); if(!vecEq(pv,want)) ok=false; }
+      });
+    }
+  });
+  return {ok, coords, comps};
+}
+function pairwiseDeltas(coords, comps){
+  const sig=new Map();
+  comps.forEach(comp=>{
+    const a=comp.slice().sort();
+    for(let i=0;i<a.length;i++) for(let j=i+1;j<a.length;j++){
+      const u=a[i], v=a[j], cu=coords.get(u), cv=coords.get(v);
+      sig.set(`${u}|${v}`, {x:cv.x-cu.x, y:cv.y-cu.y, z:cv.z-cu.z, w:cv.w-cu.w, u:cv.u-cu.u, v:cv.v-cu.v});
+    }
+  });
+  return sig;
+}
+function canonicalSeq(u,v,seq){
+  const needFlip=(u>v), s=(seq||[]); if(!needFlip) return s.join('>');
+  const inv=s.slice().reverse().map(t=>OPP[t]||t); return inv.join('>');
+}
+function tokensGloballyAllowed(sentence){
+  // quick precheck used by signature functions
+  const parts=extractEdges(sentence);
   for(const p of parts){
-    const t = parseTriadClause(p);
-    if(!t) return null;
-    triads.push(t);
+    const toks = getCoreTokensFromEdgePart(p.core);
+    if(!tokensAllowedInMode(toks)) return false;
   }
-
-  // Parse where tail (plane cross + outranks)
-  const outrank=[], cross=[];
-  if(where){
-    let m; RE_OUTR.lastIndex=0; RE_CROSS.lastIndex=0;
-    while((m=RE_OUTR.exec(where))!==null) outrank.push([m[1],m[2]]);
-    while((m=RE_CROSS.exec(where))!==null) cross.push({X1:m[1], tok:m[2].toLowerCase(), X2:m[3]});
-  }
-
-  // Collect entities
-  const players=[], points=[], cats=[];
-  function pushEnt(e){ if(e.P&&!players.includes(e.P)) players.push(e.P); if(e.X&&!points.includes(e.X)) points.push(e.X); if(e.C&&!cats.includes(e.C)) cats.push(e.C); }
-  triads.forEach(t=>{ pushEnt(t.X); pushEnt(t.Y); pushEnt(t.Z); });
-
-  return {players, points, cats, triads, outrank, cross, order: triads.some(t=>t.ordered)};
+  return true;
+}
+function sigVector(sentence){
+  if(!tokensGloballyAllowed(sentence)) return 'INVALID';
+  const P=parsePremise(sentence); if(!checkClauseConstraints(P.edges)) return 'INVALID';
+  const sol=solveCoordsFromEdges(P.edges); if(!sol.ok) return 'INVALID';
+  const sig=pairwiseDeltas(sol.coords, sol.comps);
+  return [...sig.keys()].sort().map(k=>{ const d=sig.get(k); return `${k}:${d.x},${d.y},${d.z},${d.w},${d.u},${d.v}`; }).join('|');
+}
+function sigOrdered(sentence){
+  if(!tokensGloballyAllowed(sentence)) return 'INVALID';
+  const P=parsePremise(sentence); if(!checkClauseConstraints(P.edges)) return 'INVALID';
+  const bag=new Map();
+  P.edges.forEach(e=>{
+    const k=[e.u,e.v].sort().join('|'); const s=canonicalSeq(e.u,e.v,e.seq||[]);
+    const arr=bag.get(k)||[]; arr.push(s); bag.set(k,arr);
+  });
+  return [...bag.keys()].sort().map(k=>`${k}:[${bag.get(k).slice().sort().join(',')}]`).join('|');
 }
 
-/* ===== Isomorphism (type-preserving over triads) ===== */
-function perms(arr){ const out=[], used=Array(arr.length).fill(false), cur=[]; (function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; } for(let i=0;i<arr.length;i++){ if(used[i]) continue; used[i]=true; cur.push(arr[i]); rec(); cur.pop(); used[i]=false; } })(); return out; }
-function arraysEqual(a,b){ if(a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false; return true; }
-function seqEqOrInv(a,b,invert){ if(!invert) return arraysEqual(a,b); const inv=b.slice().reverse().map(t=>OPP[t]||t); return arraysEqual(a,inv); }
-function multisetEq(A,B){ if(A.length!==B.length) return false; const m=new Map(); for(const x of A) m.set(x,(m.get(x)||0)+1); for(const y of B){ if(!m.has(y)) return false; const v=m.get(y)-1; if(v===0) m.delete(y); else m.set(y,v); } return m.size===0; }
-
-function triadEqualUnderMap(tA, tB, pBij, xBij, cBij){
-  if(tA.kind!==tB.kind) return false;
-  const mapEnt=e=>({P:pBij.get(e.P), X:xBij.get(e.X), C:e.C? cBij.get(e.C): null});
-  const XA=mapEnt(tA.X), YA=mapEnt(tA.Y), ZA=mapEnt(tA.Z);
-  const XB=tB.X,         YB=tB.Y,         ZB=tB.Z;
-
-  if(tA.kind==='between'||tA.kind==='midpoint'){
-    const xOK = XA.P===XB.P && XA.X===XB.X && XA.C===XB.C;
-    if(!xOK) return false;
-    const yz1 = YA.P===YB.P && YA.X===YB.X && YA.C===YB.C && ZA.P===ZB.P && ZA.X===ZB.X && ZA.C===ZB.C;
-    const yz2 = YA.P===ZB.P && YA.X===ZB.X && YA.C===ZB.C && ZA.P===YB.P && ZA.X===YB.X && ZA.C===YB.C;
-    return yz1||yz2;
-  }
-  // ordered kinds (aligned, matchvec)
-  const roleOK = XA.P===XB.P && XA.X===XB.X && YA.P===YB.P && YA.X===YB.X && ZA.P===ZB.P && ZA.X===ZB.X;
-  if(!roleOK) return false;
-  return arraysEqual(tA.axes||[], tB.axes||[]);
+/* ===== Isomorphism (strict) ===== */
+function permutations(arr){
+  const out=[], used=Array(arr.length).fill(false), cur=[];
+  (function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; }
+    for(let i=0;i<arr.length;i++){ if(used[i]) continue; used[i]=true; cur.push(arr[i]); rec(); cur.pop(); used[i]=false; } })();
+  return out;
 }
+function* combos(arr,k,i=0,buf=[]){ if(buf.length===k){ yield buf.slice(); return; } for(let j=i;j<arr.length;j++){ buf.push(arr[j]); yield* combos(arr,k,j+1,buf); buf.pop(); } }
+function multisetEqual(a,b){
+  if(a.length!==b.length) return false;
+  const m=new Map();
+  for(const x of a) m.set(x,(m.get(x)||0)+1);
+  for(const x of b) m.set(x,(m.get(x)||0)-1);
+  for(const v of m.values()) if(v!==0) return false;
+  return true;
+}
+function isoMatch(aStr,bStr){
+  if(!tokensGloballyAllowed(aStr) || !tokensGloballyAllowed(bStr)) return false;
+  const PA=parsePremise(aStr), PB=parsePremise(bStr);
+  if(!checkClauseConstraints(PA.edges)||!checkClauseConstraints(PB.edges)) return false;
+  const A=PA.nodes.slice().sort(), B=PB.nodes.slice().sort();
+  if(A.length===0 || B.length!==A.length) return false; // strict equal node count
 
-function typedIsoEqual(A,B){
-  if(!A||!B) return false;
-  if(A.players.length!==B.players.length || A.points.length!==B.points.length || A.cats.length!==B.cats.length) return false;
-  if(A.triads.length!==B.triads.length) return false;
-  if(A.outrank.length!==B.outrank.length) return false;
-  if(A.cross.length!==B.cross.length) return false;
-
-  const pPerms=perms(B.players), xPerms=perms(B.points), cPerms=perms(B.cats);
-
-  function outrankOK(cBij){
-    const a=A.outrank.map(([u,v])=>`${cBij.get(u)}>${cBij.get(v)}`).sort();
-    const b=B.outrank.map(([u,v])=>`${u}>${v}`).sort();
-    return multisetEq(a,b);
-  }
-  function crossOK(xBij){
-    const a=A.cross.map(c=>`${xBij.get(c.X1)}|${c.tok}|${xBij.get(c.X2)}`).sort();
-    const b=B.cross.map(c=>`${c.X1}|${c.tok}|${c.X2}`).sort();
-    return multisetEq(a,b);
-  }
-
-  for(const pMap of pPerms){
-    const pBij=new Map(A.players.map((p,i)=>[p,pMap[i]]));
-    for(const xMap of xPerms){
-      const xBij=new Map(A.points.map((x,i)=>[x,xMap[i]]));
-      for(const cMap of cPerms){
-        const cBij=new Map(A.cats.map((c,i)=>[c,cMap[i]]));
-
-        if(!outrankOK(cBij)) continue;
-        if(!crossOK(xBij)) continue;
-
-        const used = Array(B.triads.length).fill(false);
+  if(!ORDER_MODE){
+    const sa=solveCoordsFromEdges(PA.edges); if(!sa.ok) return false;
+    const sigA=pairwiseDeltas(sa.coords, sa.comps);
+    const sb=solveCoordsFromEdges(PB.edges); if(!sb.ok) return false;
+    const sigB=pairwiseDeltas(sb.coords, sb.comps);
+    for(const subset of combos(B, A.length)){
+      for(const perm of permutations(subset)){
+        const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i], perm[i]);
         let ok=true;
-        triadLoop:
-        for(const tA of A.triads){
-          for(let j=0;j<B.triads.length;j++){
-            if(used[j]) continue;
-            if(triadEqualUnderMap(tA,B.triads[j],pBij,xBij,cBij)){ used[j]=true; continue triadLoop; }
+        for(let i=0;i<A.length;i++){
+          for(let j=i+1;j<A.length;j++){
+            const a=A[i], b=A[j]; const dA=sigA.get(`${a}|${b}`); if(!dA){ ok=false; break; }
+            const aa=map.get(a), bb=map.get(b);
+            const dB=sigB.get([aa,bb].sort().join('|')); if(!dB||!vecEq(dA,dB)){ ok=false; break; }
           }
-          ok=false; break;
+          if(!ok) break;
         }
         if(ok) return true;
       }
     }
-  }
-  return false;
-}
-
-/* ===== Cache policy ===== */
-const SEEN_SURF=new Set(); const SEEN_LOGIC=new Set();
-function rememberSurface(s){ if(SEEN_SURF.size>500) SEEN_SURF.clear(); SEEN_SURF.add(s); }
-function seenSurface(s){ return SEEN_SURF.has(s); }
-function logicSig(S){
-  const tri=S.triads.map(t=>{
-    const roles=`X=${t.X.X}|Y=${t.Y.X}|Z=${t.Z.X}`;
-    const ax=(t.axes&&t.axes.length)?`:${t.axes.join('>')}`:'';
-    return `${t.kind}${ax}|${roles}`;
-  }).sort().join('||');
-  const or=S.outrank.map(([a,b])=>`C:${a}>${b}`).sort().join('|');
-  const cr=S.cross.map(c=>`X:${c.X1}|${c.tok}|${c.X2}`).sort().join('|');
-  return `T=${tri}|OR=${or}|CR=${cr}`;
-}
-function rememberLogic(S){ const sig=logicSig(S); if(SEEN_LOGIC.size>800) SEEN_LOGIC.clear(); SEEN_LOGIC.add(sig); }
-function seenLogic(S){ return SEEN_LOGIC.has(logicSig(S)); }
-
-/* ===== MATCH TRANSFORM ===== */
-function buildMatchFromBase(base,cfg){
-  for(let attempt=0;attempt<20;attempt++){
-    const names=pickNames(base.players.length);
-    const points=Array.from({length:base.points.length}, ()=>sym());
-    const cats=pickCats(base.cats.length);
-    const pBij=new Map(base.players.map((p,i)=>[p,names[i]]));
-    const xBij=new Map(base.points.map((x,i)=>[x,points[i]]));
-    const cBij=new Map(base.cats.map((c,i)=>[c,cats[i]]));
-
-    const parts=[];
-    for(const t of base.triads){
-      const X={P:pBij.get(t.X.P), X:xBij.get(t.X.X), C:t.X.C? cBij.get(t.X.C): null};
-      const Y={P:pBij.get(t.Y.P), X:xBij.get(t.Y.X), C:t.Y.C? cBij.get(t.Y.C): null};
-      const Z={P:pBij.get(t.Z.P), X:xBij.get(t.Z.X), C:t.Z.C? cBij.get(t.Z.C): null};
-      if(t.kind==='between') parts.push(triadBetween(X.P,X.X,X.C, Y.P,Y.X,Y.C, Z.P,Z.X,Z.C));
-      else if(t.kind==='midpoint') parts.push(triadMidpoint(X.P,X.X,X.C, Y.P,Y.X,Y.C, Z.P,Z.X,Z.C));
-      else if(t.kind==='aligned') parts.push(triadAligned(X.P,X.X,X.C, t.axes.slice(), Y.P,Y.X,Y.C, Z.P,Z.X,Z.C));
-      else if(t.kind==='matchvec') parts.push(triadMatchVec(X.P,X.X,X.C, t.axes.slice(), Y.P,Y.X,Y.C, Z.P,Z.X,Z.C));
-    }
-    let text = parts.length===2 ? parts[0] + ', while ' + parts[1] : parts[0];
-    if(base.outrank.length){
-      const items=base.outrank.map(([a,b])=>`${cBij.get(a)} over ${cBij.get(b)}`);
-      text += ', with ' + items.join(' and ');
-    }
-    if(base.cross.length){
-      const items=base.cross.map(c=>`${xBij.get(c.X1)} ${c.tok} of ${xBij.get(c.X2)}`);
-      text += (text.includes(' with ')? ' and ' : ', where ') + items.join(' and ');
-    }
-    if(!/[.!?]$/.test(text)) text+='.';
-    if(seenSurface(text)) continue;
-    const cand=parseSentence(text,cfg); if(!cand) continue;
-    if(typedIsoEqual(base,cand)) return {text, struct:cand};
-  }
-  // fallback (direct relabel handled above effectively)
-  const fallback=buildSentenceByDifficulty(cfg);
-  return {text:fallback.text, struct:parseSentence(fallback.text,cfg)};
-}
-
-/* ===== NONMATCH EDIT ===== */
-function buildNonMatchAgainst(base,cfg){
-  function mutate(b){
-    const triads=b.triads.map(t=>JSON.parse(JSON.stringify(t)));
-    if(triads.length){
-      const idx=(Math.random()*triads.length)|0;
-      const T=triads[idx];
-      // change one axis token if available; else swap Y/Z for unordered
-      if(T.axes && T.axes.length){
-        const i=(Math.random()*T.axes.length)|0, cur=T.axes[i];
-        const cands=cfg.TOKEN_POOL.filter(tok=>tok!==cur && OPP[tok]!==cur && axisOf(tok)!==axisOf(cur));
-        if(cands.length) T.axes[i]=cands[(Math.random()*cands.length)|0];
-      }else{
-        if(T.kind==='between' || T.kind==='midpoint'){ const tmp=T.Y; T.Y=T.Z; T.Z=tmp; }
+    return false;
+  }else{
+    function pairSeqMap(P){ const m=new Map(); P.edges.forEach(e=>{ const k=[e.u,e.v].sort().join('|'); const s=canonicalSeq(e.u,e.v,e.seq||[]); const a=m.get(k)||[]; a.push(s); m.set(k,a); }); return m; }
+    const mapA=pairSeqMap(PA), mapB=pairSeqMap(PB);
+    for(const subset of combos(B, A.length)){
+      for(const perm of permutations(subset)){
+        const map=new Map(); for(let i=0;i<A.length;i++) map.set(A[i], perm[i]);
+        let ok=true;
+        for(let i=0;i<A.length;i++){
+          for(let j=i+1;j<A.length;j++){
+            const a=A[i], b=A[j];
+            const arrA=mapA.get(`${a}|${b}`); if(!arrA||arrA.length===0){ ok=false; break; }
+            const aa=map.get(a), bb=map.get(b);
+            const arrB=mapB.get([aa,bb].sort().join('|')); if(!arrB){ ok=false; break; }
+            if(!multisetEqual(arrA.slice().sort(), arrB.slice().sort())) { ok=false; break; }
+          }
+          if(!ok) break;
+        }
+        if(ok) return true;
       }
     }
-    const parts=triads.map(t=>{
-      const X=t.X,Y=t.Y,Z=t.Z;
-      if(t.kind==='between') return triadBetween(X.P,X.X,X.C, Y.P,Y.X,Y.C, Z.P,Z.X,Z.C);
-      if(t.kind==='midpoint')return triadMidpoint(X.P,X.X,X.C, Y.P,Y.X,Y.C, Z.P,Z.X,Z.C);
-      if(t.kind==='aligned') return triadAligned(X.P,X.X,X.C, t.axes, Y.P,Y.X,Y.C, Z.P,Z.X,Z.C);
-      return triadMatchVec(X.P,X.X,X.C, t.axes, Y.P,Y.X,Y.C, Z.P,Z.X,Z.C);
-    });
-    let s = parts.length===2? parts[0]+', while '+parts[1] : parts[0];
-    if(b.outrank.length) s += ', with ' + b.outrank.map(([a,c])=>`${a} over ${c}`).join(' and ');
-    if(b.cross.length){ const items=b.cross.map(c=>`${c.X1} ${c.tok} of ${c.X2}`); s += (b.outrank.length? ' and ' : ', where ') + items.join(' and '); }
-    if(!/[.!?]$/.test(s)) s+='.';
-    return s;
+    return false;
   }
-  for(let t=0;t<200;t++){
-    const candTxt=mutate(base);
-    if(seenSurface(candTxt)) continue;
-    const cand=parseSentence(candTxt,SESSION_CFG); if(!cand) continue;
-    if(typedIsoEqual(base,cand)) continue;
-    if(seenLogic(cand)) continue;
-    return {text:candTxt, struct:cand};
-  }
-  return null;
 }
 
-/* ===== Surface shuffle (emergency) ===== */
-function surfaceShuffleHyphens(text){
-  return text.replace(/\baligned\s+([a-z\-\s]+)\s+with\b/gi,(m,g)=>'aligned '+g.split('-').sort(()=>Math.random()-.5).join('-')+' with')
-             .replace(/\bvector\s+from\s+([A-Za-z]+\s+at\s+[A-Z]\d+.*?)\s+toward\s+([A-Za-z]+\s+at\s+[A-Z]\d+.*?)\s+([a-z\-\s]+?)\b/gi,(m,a,b,g)=>`vector from ${a} toward ${b} `+g.split('-').sort(()=>Math.random()-.5).join('-'));
+/* ===== Logic match ===== */
+function logicMatch(aStr,bStr){
+  // Step gates must hold for both
+  if(!passesStepGates(aStr) || !passesStepGates(bStr)) return false;
+
+  if(ISO_MODE){
+    if(!isoMatch(aStr,bStr)) return false;
+    const A=parsePremise(aStr), B=parsePremise(bStr);
+    const merged=[...A.edges,...B.edges]; const sol=solveCoordsFromEdges(merged);
+    if(!checkUnionConstraints(merged)) return false;
+    return sol.ok;
+  }else{
+    const A=parsePremise(aStr), B=parsePremise(bStr);
+    const sA=new Set(A.nodes), sB=new Set(B.nodes); for(const s of sA){ if(!sB.has(s)) return false; }
+    if(!checkClauseConstraints(A.edges)||!checkClauseConstraints(B.edges)) return false;
+    const sigA=ORDER_MODE?sigOrdered(aStr):sigVector(aStr);
+    const sigB=ORDER_MODE?sigOrdered(bStr):sigVector(bStr);
+    if(sigA==='INVALID'||sigB==='INVALID'||sigA!==sigB) return false;
+    const merged=[...A.edges,...B.edges]; const sol=solveCoordsFromEdges(merged);
+    if(!checkUnionConstraints(merged)) return false;
+    return sol.ok;
+  }
 }
 
-/* ===== Trial engine ===== */
-let idx=0, correct=0, errors=0, planned=[], history=[], SESSION={running:false, paused:false};
-let currentTruth=false, responded=false, solveTimer=null, countdownTimer=null, countdownLeft=0;
+/* ===== Anti-leak memory ===== */
+const RECENT_SURF=[]; const RECENT_SURF_MAX=120; const RECENT_LOGIC=new Set();
+function rememberSurface(s){ RECENT_SURF.push(s); if(RECENT_SURF.length>RECENT_SURF_MAX) RECENT_SURF.shift(); }
+function seenSurface(s){ return RECENT_SURF.includes(s); }
+function rememberLogic(sig){ if(!sig) return; if(RECENT_LOGIC.size>800){ RECENT_LOGIC.clear(); } RECENT_LOGIC.add(sig); }
+function seenLogic(sig){ return RECENT_LOGIC.has(sig); }
+
+/* ===== Neutral transforms ===== */
+function invertSeq(seq){ return (seq||[]).slice().reverse().map(t=>OPP[t]||t); }
+function invertEdge(e){ return { u:e.v, v:e.u, rel:vecInv(e.rel), seq:ORDER_MODE?invertSeq(e.seq):null }; }
+function permuteSymbols(edges, bij){ return edges.map(e=>({u:bij.get(e.u)||e.u, v:bij.get(e.v)||e.v, rel:clone(e.rel), seq:e.seq?e.seq.slice():null})); }
+function reorderClauses(edges){ const arr=edges.slice(); return shuffle(arr); }
+function randomBijection(symbols){ const B=symbols.slice(); shuffle(B); const bij=new Map(); for(let i=0;i<symbols.length;i++) bij.set(symbols[i], B[i]); return bij; }
+function uniqueSymbols(edges){ const s=new Set(); edges.forEach(e=>{ s.add(e.u); s.add(e.v); }); return [...s]; }
+
+/* ===== Speech ===== */
+async function speakLine(text){
+  if(!SPEAK) return; if(typeof window==='undefined'||!('speechSynthesis' in window)) return;
+  return new Promise(res=>{
+    try{
+      const u=new SpeechSynthesisUtterance(text);
+      u.lang='en-GB'; u.rate=1.0; u.pitch=1.0; u.volume=1.0;
+      u.onend=res; u.onerror=res;
+      if(window.speechSynthesis.speaking) window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    }catch(_){ res(); }
+  });
+}
+
+/* ===== Generator core / state ===== */
+let N=1, MAX=500, PAUSE_SEC=30, PREMISE_INTERVAL_SEC=30, RATE=25;
+let idx=0, paused=false, responded=false, waitTimer=null;
+const history=[], planned=[]; let correct=0, errors=0;
 
 function planSequence(){
   planned.length=MAX; for(let i=0;i<MAX;i++) planned[i]=false;
-  const elig=[]; for(let i=N;i<MAX;i++) elig.push(i);
-  const k=Math.round((RATE/100)*elig.length); shuffle(elig); for(let i=0;i<k;i++) planned[elig[i]]=true;
+  const eligible=[]; for(let i=+N;i<MAX;i++) eligible.push(i);
+  const k=Math.round((RATE/100)*eligible.length); shuffle(eligible);
+  for(let i=0;i<k;i++) planned[eligible[i]]=true;
 }
-function showPremise(text){ $('premiseText').textContent=text; }
-function updateUI(){ setText('idx', idx); setText('max', MAX); setText('ptype', (idx<MAX && idx>=N && planned[idx])?'MATCH':'NON-match'); setText('corr', correct); setText('err', errors); setText('isMatch','—'); }
 
-async function speak(text){
-  if(!SPEAK) return Promise.resolve();
-  if(typeof window==='undefined'||!('speechSynthesis' in window)) return Promise.resolve();
-  return new Promise(res=>{ try{ const u=new SpeechSynthesisUtterance(text); u.lang='en-GB'; u.rate=1.0; u.pitch=1.0; u.volume=1.0; u.onend=()=>res(); u.onerror=()=>res(); if(window.speechSynthesis.speaking) window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }catch{ res(); } });
+/* Builders */
+function buildMatchFrom(prevStr){
+  const P=parsePremise(prevStr); let edges=clone(P.edges);
+  // neutral transforms only (preserve signature and per-clause steps)
+  const count=Math.round(edges.length*(0.3+Math.random()*0.3));
+  const idxs=shuffle([...Array(edges.length).keys()]).slice(0, Math.max(0, Math.min(edges.length, count)));
+  edges=edges.map((e,i)=> idxs.includes(i)? invertEdge(e) : clone(e));
+  if(ISO_MODE){ const syms=uniqueSymbols(edges); const bij=randomBijection(syms); edges=permuteSymbols(edges, bij); }
+  edges=reorderClauses(edges);
+  const style={shuffleComponents:!ORDER_MODE && Math.random()<0.7, splitLevels:!ORDER_MODE && Math.random()<0.5};
+  const s = renderEdges(edges, style);
+  return s;
 }
-function scheduleCountdown(sec){ countdownLeft=sec; setText('countdown', countdownLeft.toFixed(1)+'s'); if(countdownTimer) clearInterval(countdownTimer); countdownTimer=setInterval(()=>{ countdownLeft=Math.max(0,countdownLeft-0.1); setText('countdown', countdownLeft.toFixed(1)+'s'); if(countdownLeft<=0){ clearInterval(countdownTimer); countdownTimer=null; } },100); }
-function evaluateAndAdvance(){ const resp=responded, truth=currentTruth; if(resp===truth) correct++; else errors++; setText('corr',correct); setText('err',errors); setText('isMatch', String(truth).toUpperCase()); idx++; if(idx>=MAX){ stop(); return; } runTrial(); }
-
-/* robust first sentence */
-function robustFirstSentence(cfg){
-  for(let t=0;t<200;t++){
-    const cand=buildSentenceByDifficulty(cfg);
-    const parsed=parseSentence(cand.text,cfg);
-    if(parsed && !seenSurface(cand.text)){ return {text:cand.text, struct:parsed}; }
+function buildNonMatch(prevStr, relsPerPremise){
+  const syms=pickSymbols(3); const edges=[];
+  for(let i=0;i<relsPerPremise;i++){
+    edges.push( ORDER_MODE? buildEdgeOrdered(ORDER_LEN, syms) : buildEdgeVectorAtomic(ORDER_LEN, syms) );
   }
-  // Hard fallback: small aligned triad with known axes to satisfy coverage minimally
-  const names=pickNames(3), pts=[sym(),sym(),sym()];
-  let s = `${names[0]} at ${pts[0]} is aligned north-one level above-in-forwards-turn-right with ${names[1]} at ${pts[1]} toward ${names[2]} at ${pts[2]}`;
-  s += planeCrossForMissing(s) + '.';
-  const parsed=parseSentence(s,cfg);
-  return {text:s, struct:parsed};
+  const style={shuffleComponents:!ORDER_MODE && Math.random()<0.7, splitLevels:!ORDER_MODE && Math.random()<0.5};
+  return renderEdges(edges, style);
 }
 
-function runTrial(){
-  if(!SESSION.running || SESSION.paused) return;
-  const cfg=SESSION_CFG; let premise;
+/* UI helpers */
+function showPremise(sentence){
+  const el=$('premiseText'); if(!el) return; el.innerHTML='';
+  const edges=extractEdges(sentence);
+  edges.forEach((E,i)=>{
+    const span=document.createElement('span'); span.className='rel'; span.textContent=E.raw; el.appendChild(span);
+    if(i<edges.length-1){ const sep=document.createElement('span'); sep.className='sep'; sep.textContent=' and '; el.appendChild(sep); }
+  });
+}
+
+/* Trial engine */
+async function runTrial(){
+  if(!SESSION.running||paused) return;
+  if(idx>=MAX){ stop(); return; }
+
   const mustMatch=(idx>=N)&&planned[idx];
+  const prev=(idx>=N)? history[idx-N] : null;
 
-  if(idx===0){
-    premise = robustFirstSentence(cfg);
-  }else if(mustMatch){
-    const base=history[idx-N].struct;
-    let cand=buildMatchFromBase(base,cfg);
-    if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){
-      cand=buildMatchFromBase(base,{...cfg});
-      if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){
-        const prev=history[idx-N].text; const altered=surfaceShuffleHyphens(prev); const parsed=parseSentence(altered,cfg) || base; cand={text:altered,struct:parsed};
+  let sentence=null, tries=0, lastReject='';
+  if(mustMatch && prev){
+    const prevSig=ORDER_MODE?sigOrdered(prev):sigVector(prev);
+    do{
+      sentence=buildMatchFrom(prev);
+      if(sentence===prev){ sentence=null; lastReject='identical surface'; continue; }
+      if(seenSurface(sentence)){ sentence=null; lastReject='surface seen'; continue; }
+      if(!passesStepGates(sentence)){ sentence=null; lastReject='step gate'; continue; }
+      const nowSig=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
+      if(nowSig==='INVALID'){ sentence=null; lastReject='invalid sig'; continue; }
+      if(nowSig!==prevSig){ sentence=null; lastReject='sig mismatch'; continue; }
+      const A=parsePremise(prev), B=parsePremise(sentence);
+      if(!checkClauseConstraints(A.edges)||!checkClauseConstraints(B.edges)){ sentence=null; lastReject='clause ban'; continue; }
+      const merged=[...A.edges,...B.edges];
+      const s1=solveCoordsFromEdges(A.edges).ok, s2=solveCoordsFromEdges(B.edges).ok, s3=solveCoordsFromEdges(merged).ok;
+      if(!(s1&&s2&&s3)){ sentence=null; lastReject='solver'; continue; }
+      if(!checkUnionConstraints(merged)){ sentence=null; lastReject='union ban'; continue; }
+      if(!ISO_MODE){
+        const sA=new Set(A.nodes), sB=new Set(B.nodes); let ok=true; for(const s of sA){ if(!sB.has(s)){ ok=false; break; } }
+        if(!ok){ sentence=null; lastReject='symbol set'; continue; }
       }
-    }
-    if(seenSurface(cand.text)){ const altered=surfaceShuffleHyphens(cand.text); const parsed=parseSentence(altered,cfg) || cand.struct; premise={text:altered,struct:parsed}; } else premise=cand;
+      break;
+    } while(++tries<300);
+    logLine(`[trial ${idx}] MATCH tries=${tries} reason=${lastReject||'ok'} prevSig=${prevSig} nowSig=${ORDER_MODE?sigOrdered(sentence):sigVector(sentence)} iso=${ISO_MODE}`);
   }else{
-    const base=idx>=N? history[idx-N].struct: null;
-    let cand= base? buildNonMatchAgainst(base,cfg) : null;
-    if(!cand){ for(let t=0;t<400;t++){ const rnd=buildSentenceByDifficulty(cfg); if(seenSurface(rnd.text)) continue; const S=parseSentence(rnd.text,cfg); if(!S) continue; if(base && typedIsoEqual(base,S)) continue; if(seenLogic(S)) continue; cand={text:rnd.text,struct:S}; break; } }
-    premise=cand || robustFirstSentence(cfg);
+    const prevSig=prev? (ORDER_MODE?sigOrdered(prev):sigVector(prev)) : null;
+    do{
+      sentence=buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
+      if(prev && sentence===prev){ sentence=null; lastReject='identical surface'; continue; }
+      if(seenSurface(sentence)){ sentence=null; lastReject='surface seen'; continue; }
+      if(!passesStepGates(sentence)){ sentence=null; lastReject='step gate'; continue; }
+      const nowSig=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
+      if(nowSig==='INVALID'){ sentence=null; lastReject='invalid sig'; continue; }
+      if(prev){
+        if(nowSig===prevSig){ sentence=null; lastReject='sig equals'; continue; }
+        if(ISO_MODE && isoMatch(prev, sentence)){ sentence=null; lastReject='iso-equal'; continue; }
+        const A=parsePremise(prev), B=parsePremise(sentence);
+        if(!checkClauseConstraints(A.edges)||!checkClauseConstraints(B.edges)){ sentence=null; lastReject='clause ban'; continue; }
+        const merged=[...A.edges,...B.edges];
+        const s1=solveCoordsFromEdges(A.edges).ok, s2=solveCoordsFromEdges(B.edges).ok, s3=solveCoordsFromEdges(merged).ok;
+        if(!(s1&&s2&&s3)){ sentence=null; lastReject='solver'; continue; }
+        if(!checkUnionConstraints(merged)){ sentence=null; lastReject='union ban'; continue; }
+      }else{
+        const B=parsePremise(sentence);
+        if(!solveCoordsFromEdges(B.edges).ok || !checkClauseConstraints(B.edges)){ sentence=null; lastReject='solver/clause'; continue; }
+      }
+      if(seenLogic(nowSig)){ sentence=null; lastReject='logic seen'; continue; }
+      break;
+    } while(++tries<300);
+    logLine(`[trial ${idx}] NON-MATCH tries=${tries} reason=${lastReject||'ok'} prevSig=${prevSig||'—'} nowSig=${ORDER_MODE?sigOrdered(sentence):sigVector(sentence)} iso=${ISO_MODE}`);
   }
 
-  rememberSurface(premise.text); rememberLogic(premise.struct); history[idx]=premise;
-  showPremise(premise.text); responded=false; currentTruth=(idx>=N)? typedIsoEqual(history[idx-N].struct, premise.struct): false;
-  setText('isMatch','—'); setText('ptype', (idx<MAX && idx>=N && planned[idx])?'MATCH':'NON-match');
-
-  speak(premise.text).then(()=>{ scheduleCountdown(SOLVE_WINDOW); if(solveTimer) clearTimeout(solveTimer); solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, SOLVE_WINDOW*1000); });
-}
-
-/* ===== Acceptance test simulation ===== */
-function simulateBlockMetrics(cfg,Nsim,rate){
-  const planned=[], historySim=[]; const total=100; for(let i=0;i<total;i++) planned[i]=false;
-  const elig=[]; for(let i=Nsim;i<total;i++) elig.push(i); shuffle(elig); const k=Math.round((rate/100)*elig.length); for(let i=0;i<k;i++) planned[elig[i]]=true;
-
-  let constructedMatches=0, failures=0;
-  for(let i=0;i<total;i++){
-    let prem;
-    if(i===0){
-      prem = robustFirstSentence(cfg);
-    }else if(planned[i] && i>=Nsim){
-      const base=historySim[i-Nsim].struct;
-      const cand=buildMatchFromBase(base,cfg);
-      if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){ failures++; prem=historySim[i-1]; }
-      else { constructedMatches++; prem=cand; }
-    }else{
-      const base = (i>=Nsim)? historySim[i-Nsim].struct : null;
-      let cand = base? buildNonMatchAgainst(base,cfg) : null;
-      if(!cand){ for(let t=0;t<100;t++){ const r=buildSentenceByDifficulty(cfg); const ps=parseSentence(r.text,cfg); if(ps && (!base || !typedIsoEqual(base,ps))){ cand={text:r.text,struct:ps}; break; } } }
-      prem=cand || historySim[i-1] || robustFirstSentence(cfg);
-    }
-    historySim[i]=prem;
+  if(!sentence){
+    // fallback: relax only surface similarity; NEVER relax steps/solver/signature policy
+    const fb = mustMatch && prev ? buildMatchFrom(prev) : buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
+    if(passesStepGates(fb)) sentence=fb; else sentence = buildNonMatch(prev, SESSION.RELS_PER_PREMISE);
+    logLine(`[trial ${idx}] fallback (surface relaxed only)`);
   }
-  const plannedMatches=planned.filter(Boolean).length;
-  const ratio = plannedMatches? (constructedMatches/plannedMatches).toFixed(2) : 'n/a';
-  return { plannedMatches, constructedMatches, failures, ratio };
+
+  rememberSurface(sentence);
+  const nowSigF=ORDER_MODE?sigOrdered(sentence):sigVector(sentence);
+  rememberLogic(nowSigF);
+
+  history[idx]=sentence; showPremise(sentence); responded=false;
+
+  const edges=extractEdges(sentence);
+  for(let i=0;i<edges.length;i++){
+    const nodes=[...document.querySelectorAll('#premiseText .rel')];
+    nodes.forEach((n,k)=>n.classList.toggle('active', k===i));
+    await speakLine(edges[i].raw+'.'); if(!SESSION.running||paused) return;
+    await new Promise(r=>{ if(waitTimer) clearTimeout(waitTimer); waitTimer=setTimeout(()=>{ waitTimer=null; r(); }, (i<edges.length-1?PAUSE_SEC:PREMISE_INTERVAL_SEC)*1000); });
+    if(!SESSION.running||paused) return;
+  }
+  document.querySelectorAll('#premiseText .rel').forEach(n=>n.classList.remove('active'));
+
+  idx++; updateUI(); runTrial();
 }
 
-/* ===== Controls ===== */
+/* ===== Game state & controls ===== */
+const SESSION={ running:false, RELS_PER_PREMISE:1 };
+
 function start(){
-  applyDifficulty(+$('difficulty').value);
-  MAX=+$('trials').value||200; RATE=+$('rate').value||25; N=+$('nback').value||1; SPEAK=!!$('speakEnabled').checked;
-  SOLVE_WINDOW=+($('solveWindow').value||5); setText('solveLabel', SOLVE_WINDOW.toFixed(1)); setText('solveVal', SOLVE_WINDOW.toFixed(1)+'s');
+  ORDER_MODE=!!($('orderMode')&&$('orderMode').checked);
+  ORDER_LEN=$('orderLen')? parseInt($('orderLen').value,10):2; // steps per clause in BOTH modes
+  ISO_MODE=!!($('isoMode')&&$('isoMode').checked);
+  SPEAK=!!($('speakEnabled')&&$('speakEnabled').checked);
 
-  // snapshot config
-  SESSION_CFG={ ORDER_MODE, STEP_LEN, DYADS, CATS_MODE, ORDERED_AXES:ORDERED_AXES.slice(), TOKEN_POOL:TOKEN_POOL.slice() };
+  SESSION.RELS_PER_PREMISE=Math.max(1, parseInt(($('relCount')&&$('relCount').value)||'1',10));
+  if($('relCount')) $('relCount').disabled=true;
 
-  // Status line from snapshot
-  const axesLabel=SESSION_CFG.ORDERED_AXES.map(ax=>({plane:'plane',level:'level',depth:'in/out',time:'time',rot:'rotation'}[ax])).join('+')||'—';
-  $('modeLine').textContent=`Axes: ${axesLabel} • Steps: ${SESSION_CFG.STEP_LEN} • Ordered: ${SESSION_CFG.ORDER_MODE?'ON':'OFF'} • Dyads: ${SESSION_CFG.DYADS} • Cats: ${SESSION_CFG.CATS_MODE} • N=${N}`;
+  N=+($('n')&&$('n').value)||1;
+  MAX=+($('trials')&&$('trials').value)||500;
+  PAUSE_SEC=+($('pauseTime')&&$('pauseTime').value)||30;
+  PREMISE_INTERVAL_SEC=+($('premiseInterval')&&$('premiseInterval').value)||30;
+  RATE=+($('rate')&&$('rate').value)||25;
 
-  // Acceptance sim
-  const m=simulateBlockMetrics(SESSION_CFG,N,RATE);
-  const logEl=$('log'); logEl.textContent=(logEl.textContent==='—'?'':'')+`[block] planned=${m.plannedMatches} constructed=${m.constructedMatches} failures=${m.failures} ratio=${m.ratio}\n`;
-
-  // Reset + run
-  idx=0; correct=0; errors=0; planned=[]; history=[]; SEEN_SURF.clear(); SEEN_LOGIC.clear();
+  idx=0; responded=false; correct=0; errors=0; history.length=0; planned.length=0;
+  RECENT_SURF.length=0; RECENT_LOGIC.clear(); const logEl=$('log'); if(logEl) logEl.textContent='—';
   planSequence(); updateUI();
-  SESSION.running=true; SESSION.paused=false;
+
+  SESSION.running=true; paused=false;
   $('pause').disabled=false; $('reset').disabled=false; $('hit').disabled=false; $('skip').disabled=false;
   runTrial();
 }
-function stop(){ SESSION.running=false; SESSION.paused=false; if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); setText('countdown','—'); try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch{} }
+function stop(){
+  SESSION.running=false; paused=false;
+  if(waitTimer){ clearTimeout(waitTimer); waitTimer=null; }
+  try{ if(typeof window!=='undefined' && window.speechSynthesis){ window.speechSynthesis.cancel(); } }catch(_){}
+  responded=false;
+}
 function togglePause(){
   if(!SESSION.running) return;
-  SESSION.paused=!SESSION.paused; $('pause').textContent=SESSION.paused?'▶ Resume':'⏸ Pause';
-  if(SESSION.paused){ if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch{} }
-  else{ scheduleCountdown(SOLVE_WINDOW); if(solveTimer) clearTimeout(solveTimer); solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, SOLVE_WINDOW*1000); }
+  paused=!paused; setText('pause', paused?'▶ Resume':'⏸ Pause'); $('pause').textContent=paused?'▶ Resume':'⏸ Pause';
+  if(paused){
+    if(waitTimer){ clearTimeout(waitTimer); waitTimer=null; }
+    try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch(_){}
+  }else{
+    runTrial();
+  }
 }
-function reset(){ stop(); $('premiseText').textContent='—'; setText('idx',0); setText('corr',0); setText('err',0); setText('ptype','—'); setText('isMatch','—'); }
-function registerHit(){ if(!SESSION.running || SESSION.paused) return; responded=true; }
-function skip(){ if(!SESSION.running || SESSION.paused) return; if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); setText('countdown','—'); evaluateAndAdvance(); }
+function reset(){
+  stop();
+  if($('relCount')) $('relCount').disabled=false;
+  $('premiseText').textContent='—'; const logEl=$('log'); if(logEl) logEl.textContent='—';
+  idx=0; correct=0; errors=0; updateUI();
+}
 
-/* ===== Bindings ===== */
+/* ===== Input binding ===== */
+function registerHit(){
+  if(!SESSION.running||responded) return;
+  responded=true; const truth=(idx>=N)? logicMatch(history[idx-N], history[idx-0]) : false;
+  if(truth) correct++; else errors++; updateUI();
+}
+function skip(){
+  if(!SESSION.running) return;
+  if(waitTimer){ clearTimeout(waitTimer); waitTimer=null; }
+  idx++; updateUI(); runTrial();
+}
+function updateUI(){
+  setText('idx', idx); setText('max', MAX);
+  setText('ptype', (idx<MAX && idx>=N && planned[idx])?'planned MATCH':'planned NON-match');
+  const actual=(idx>=N)? String(logicMatch(history[idx-N]||'', history[idx]||'')).toUpperCase() : '—';
+  setText('isMatch', actual);
+  setText('corr', correct); setText('err', errors);
+  setText('nVal', N); setText('tVal', MAX);
+  setText('pVal', PAUSE_SEC.toFixed(1)+' s'); setText('premiseIntervalVal', PREMISE_INTERVAL_SEC.toFixed(1)+' s');
+  setText('rVal', RATE+'%'); setText('relCountVal', SESSION.RELS_PER_PREMISE);
+}
+window.addEventListener('keydown', e=>{
+  if(!SESSION.running) return;
+  if(e.code==='Space'){ registerHit(); e.preventDefault(); }
+});
 document.addEventListener('DOMContentLoaded', ()=>{
-  applyDifficulty(+$('difficulty').value);
-  const sw=$('solveWindow'); const updateSW=()=>{ const v=+sw.value; setText('solveVal', v.toFixed(1)+'s'); setText('solveLabel', v.toFixed(1)); };
-  updateSW(); sw.oninput=e=>{ if(!SESSION.running){ updateSW(); } };
-
-  $('difficulty').oninput=e=>{ if(!SESSION.running){ applyDifficulty(+e.target.value); } };
-  $('nback').oninput=e=>{ if(!SESSION.running){ N=+e.target.value; setText('nVal',N); const axesLabel=ORDERED_AXES.map(ax=>({plane:'plane',level:'level',depth:'in/out',time:'time',rot:'rotation'}[ax])).join('+')||'—'; $('modeLine').textContent=`Axes: ${axesLabel} • Steps: ${STEP_LEN} • Ordered: ${ORDER_MODE?'ON':'OFF'} • Dyads: ${DYADS} • Cats: ${CATS_MODE} • N=${N}`; } };
-  $('trials').oninput=e=>{ if(!SESSION.running){ MAX=+e.target.value; setText('tVal',MAX); setText('max',MAX); } };
-  $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; setText('rVal',RATE+'%'); } };
-  $('speakEnabled').onchange=e=>{ SPEAK=!!e.target.checked; };
-
+  $('n').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; N=v; setText('nVal', v); } };
+  $('trials').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; MAX=v; setText('tVal', v); setText('max', v); } };
+  $('pauseTime').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; PAUSE_SEC=v; setText('pVal', v.toFixed(1)+' s'); } };
+  $('premiseInterval').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; PREMISE_INTERVAL_SEC=v; setText('premiseIntervalVal', v.toFixed(1)+' s'); } };
+  $('rate').oninput=e=>{ if(!SESSION.running){ const v=+e.target.value; RATE=v; setText('rVal', v+'%'); } };
+  $('relCount').oninput=e=>{ if(!SESSION.running){ const v=Math.max(1,parseInt(e.target.value,10)||1); SESSION.RELS_PER_PREMISE=v; setText('relCountVal', v); } };
   $('start').onclick=start; $('pause').onclick=togglePause; $('reset').onclick=reset; $('hit').onclick=registerHit; $('skip').onclick=skip;
-  window.addEventListener('keydown', e=>{ if(!SESSION.running) return; if(e.code==='Space'){ registerHit(); e.preventDefault(); } });
-
-  setText('nVal',N); setText('tVal',MAX); setText('rVal',RATE+'%');
   updateUI();
 });
 </script>
