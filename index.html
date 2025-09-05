@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Relational N-Back — One-Sentence, Logic-Only (Difficulty-Linked & 5-Second Solve)</title>
+<title>Relational N-Back — One-Sentence, Logic-Only (Difficulty-Linked & Solve-Window Customizable)</title>
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
@@ -45,7 +45,9 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
     <div class="col">
       <div class="box">
         <div class="title">Timing & Block</div>
-        <div class="mut">Solve window: <strong>5.0s</strong> after the sentence finishes speaking.</div>
+        <div class="mut">Solve window: <strong><span id="solveLabel">5.0</span>s</strong> after the sentence finishes speaking.</div>
+        <label>Solve window (1–10s): <span id="solveVal">5.0s</span></label>
+        <input id="solveWindow" type="range" min="1" max="10" step="0.1" value="5">
         <label>Trials per block: <span id="tVal">200</span></label>
         <input id="trials" type="range" min="20" max="500" step="10" value="200">
         <label>Target match rate: <span id="rVal">25%</span></label>
@@ -87,7 +89,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 <script>
 /* ============================================================
    Relational N-Back — One-Sentence Logic-Only (max g-load)
-   // CACHE POLICY, MATCH TRANSFORM, NONMATCH EDIT — see tagged blocks
+   (Includes customizable solve window 1–10s)
    ============================================================ */
 
 /* ===== Utilities ===== */
@@ -130,7 +132,7 @@ function vEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&
 /* ===== Global knobs (defaults; snapshotted at start) ===== */
 let DIFF=1, ORDER_MODE=false, STEP_LEN=1, DYADS=1, CATS_MODE=0, ORDERED_AXES=['plane'], TOKEN_POOL=[];
 let MAX=200, RATE=25, N=1, SPEAK=true;
-const SOLVE_WINDOW_SEC=5.0;
+let SOLVE_WINDOW=5.0; // seconds (customizable 1–10)
 
 /* ===== Session config (locked per block) ===== */
 let SESSION_CFG=null; // { ORDER_MODE, STEP_LEN, DYADS, CATS_MODE, ORDERED_AXES, TOKEN_POOL }
@@ -352,11 +354,11 @@ function synthSentenceFromStruct(base,pBij,xBij,cBij,swapMask,cfg){
     const L=swap? d.R : d.L, R=swap? d.L : d.R;
     const seq = cfg.ORDER_MODE
       ? (swap? invertTokens(d.tokens) : d.tokens.slice())
-      : (swap? invertTokens(d.tokens) : d.tokens.slice()); // CHANGED: invert tokens on swap in unordered mode, to invert vector
+      : (swap? invertTokens(d.tokens) : d.tokens.slice()); // invert in unordered mode to invert vector under LR swap
     const core=buildCore(seq,cfg);
     const PL=pBij.get(L.P), XL=xBij.get(L.X), CL=L.C? cBij.get(L.C): null;
     const PR=pBij.get(R.P), XR=xBij.get(R.X), CR=R.C? cBij.get(R.C): null;
-    return { text:`${PL} at ${XL}${cfg.CATS_MODE?` in ${CL}`:''} is ${core} of ${PR} at ${XR}${cfg.CATS_MODE?` in ${CR}`:''}`, leftXL:XL, rightXR:XR };
+    return { text:`${PL} at ${XL}${cfg.CATS_MODE?` in ${CL}`:''} is ${core} of ${PR} at ${XR}${cfg.CATS_MODE?` in ${CR}`:''}` };
   }
   const parts=[]; for(let i=0;i<base.dyads.length;i++) parts.push(dyadText(base.dyads[i], !!swapMask[i]));
   let s=parts[0].text; if(parts.length===2) s+=`, while ${parts[1].text}`;
@@ -380,7 +382,7 @@ function buildMatchFromBase(base,cfg){
     const cand=parseSentence(text,cfg); if(!cand) continue;
     if(typedIsoEqual(base,cand)) return {text,struct:cand};
   }
-  // fallback: direct relabel, no swaps
+  // fallback
   const names=pickNames(base.players.length);
   const points=Array.from({length:base.points.length}, ()=>sym());
   const cats=pickCats(base.cats.length);
@@ -485,7 +487,7 @@ function runTrial(){
   showPremise(premise.text); responded=false; currentTruth=(idx>=N)? typedIsoEqual(history[idx-N].struct, premise.struct): false;
   setText('isMatch','—'); setText('ptype', (idx<MAX && idx>=N && planned[idx])?'MATCH':'NON-match');
 
-  speak(premise.text).then(()=>{ scheduleCountdown(SOLVE_WINDOW_SEC); if(solveTimer) clearTimeout(solveTimer); solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, SOLVE_WINDOW_SEC*1000); });
+  speak(premise.text).then(()=>{ scheduleCountdown(SOLVE_WINDOW); if(solveTimer) clearTimeout(solveTimer); solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, SOLVE_WINDOW*1000); });
 }
 
 /* ===== Acceptance test simulation ===== */
@@ -505,7 +507,6 @@ function simulateBlockMetrics(cfg,Nsim,rate){
       if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){ failures++; prem=historySim[i-1]; }
       else {
         constructedMatches++; prem=cand;
-        // Robust metric: accept equality OR inverse (no label dependency)
         for(let d=0; d<base.dyads.length; d++){
           totalPairs++;
           if(cfg.ORDER_MODE){
@@ -535,6 +536,9 @@ function simulateBlockMetrics(cfg,Nsim,rate){
 function start(){
   applyDifficulty(+$('difficulty').value);
   MAX=+$('trials').value||200; RATE=+$('rate').value||25; N=+$('nback').value||1; SPEAK=!!$('speakEnabled').checked;
+  SOLVE_WINDOW=+($('solveWindow').value||5); // snapshot solve window for this block
+  setText('solveLabel', SOLVE_WINDOW.toFixed(1));
+  setText('solveVal', SOLVE_WINDOW.toFixed(1)+'s');
 
   // Lock session
   SESSION_CFG={ ORDER_MODE, STEP_LEN, DYADS, CATS_MODE, ORDERED_AXES:ORDERED_AXES.slice(), TOKEN_POOL:TOKEN_POOL.slice() };
@@ -543,7 +547,7 @@ function start(){
   const m=simulateBlockMetrics(SESSION_CFG,N,RATE);
   const logEl=$('log'); logEl.textContent=(logEl.textContent==='—'?'':'')+`[block] planned=${m.plannedMatches} constructed=${m.constructedMatches} failures=${m.failures} ratio=${m.ratio} seq/vecOK=${m.okPct}\n`;
 
-  // Status line uses snapshot values (consistency)
+  // Status line uses snapshot values
   const axesLabel=SESSION_CFG.ORDERED_AXES.map(ax=>({plane:'plane',level:'level',embed:'in/out',time:'time',rot:'rotation'}[ax])).join('+')||'—';
   $('modeLine').textContent=`Axes: ${axesLabel} • Steps: ${SESSION_CFG.STEP_LEN} • Ordered: ${SESSION_CFG.ORDER_MODE?'ON':'OFF'} • Dyads: ${SESSION_CFG.DYADS} • Cats: ${SESSION_CFG.CATS_MODE} • N=${N}`;
 
@@ -559,7 +563,11 @@ function togglePause(){
   if(!SESSION.running) return;
   SESSION.paused=!SESSION.paused; $('pause').textContent=SESSION.paused?'▶ Resume':'⏸ Pause';
   if(SESSION.paused){ if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch{} }
-  else{ scheduleCountdown(countdownLeft>0?countdownLeft:SOLVE_WINDOW_SEC); if(solveTimer) clearTimeout(solveTimer); solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, (countdownLeft>0?countdownLeft:SOLVE_WINDOW_SEC)*1000); }
+  else{
+    scheduleCountdown(countdownLeft>0?countdownLeft:SOLVE_WINDOW);
+    if(solveTimer) clearTimeout(solveTimer);
+    solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, (countdownLeft>0?countdownLeft:SOLVE_WINDOW)*1000);
+  }
 }
 function reset(){ stop(); $('premiseText').textContent='—'; setText('idx',0); setText('corr',0); setText('err',0); setText('ptype','—'); setText('isMatch','—'); }
 function registerHit(){ if(!SESSION.running || SESSION.paused) return; responded=true; }
@@ -568,14 +576,23 @@ function skip(){ if(!SESSION.running || SESSION.paused) return; if(solveTimer) c
 /* ===== Bindings ===== */
 document.addEventListener('DOMContentLoaded', ()=>{
   applyDifficulty(+$('difficulty').value);
+  // Solve window UI updates (inactive mid-block)
+  const sw=$('solveWindow');
+  const updateSW=()=>{ const v=+sw.value; setText('solveVal', v.toFixed(1)+'s'); setText('solveLabel', v.toFixed(1)); };
+  updateSW();
+  sw.oninput=e=>{ if(!SESSION.running){ updateSW(); } };
+
   $('difficulty').oninput=e=>{ if(!SESSION.running){ applyDifficulty(+e.target.value); } };
   $('nback').oninput=e=>{ if(!SESSION.running){ N=+e.target.value; setText('nVal',N); $('modeLine').textContent=$('modeLine').textContent.replace(/N=\d+$/,`N=${N}`); } };
   $('trials').oninput=e=>{ if(!SESSION.running){ MAX=+e.target.value; setText('tVal',MAX); setText('max',MAX); } };
   $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; setText('rVal',RATE+'%'); } };
   $('speakEnabled').onchange=e=>{ SPEAK=!!e.target.checked; };
+
   $('start').onclick=start; $('pause').onclick=togglePause; $('reset').onclick=reset; $('hit').onclick=registerHit; $('skip').onclick=skip;
   window.addEventListener('keydown', e=>{ if(!SESSION.running) return; if(e.code==='Space'){ registerHit(); e.preventDefault(); } });
-  setText('nVal',N); setText('tVal',MAX); setText('rVal',RATE+'%'); updateUI();
+
+  setText('nVal',N); setText('tVal',MAX); setText('rVal',RATE+'%');
+  updateUI();
 });
 </script>
 </body>
