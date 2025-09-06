@@ -89,7 +89,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 <script>
 /* ============================================================
    Relational N-Back — One-Sentence Logic-Only (max g-load)
-   Fix: canonical compass ordering (e.g., "north-west", not "west-north")
+   (Includes customizable solve window 1–10s)
    ============================================================ */
 
 /* ===== Utilities ===== */
@@ -129,19 +129,13 @@ function vAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:
 function vInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
 function vEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
 
-/* ===== Canonical surface ordering for unordered mode ===== */
-const SURF_ORDER = ['north','south','east','west','above','below','in','out','ahead','behind','turn-right','turn-left'];
-function canonicalizeSurfaceTokens(tokens){
-  return tokens.slice().sort((a,b)=>SURF_ORDER.indexOf(a)-SURF_ORDER.indexOf(b));
-}
-
 /* ===== Global knobs (defaults; snapshotted at start) ===== */
 let DIFF=1, ORDER_MODE=false, STEP_LEN=1, DYADS=1, CATS_MODE=0, ORDERED_AXES=['plane'], TOKEN_POOL=[];
 let MAX=200, RATE=25, N=1, SPEAK=true;
-let SOLVE_WINDOW=5.0;
+let SOLVE_WINDOW=5.0; // seconds (customizable 1–10)
 
 /* ===== Session config (locked per block) ===== */
-let SESSION_CFG=null;
+let SESSION_CFG=null; // { ORDER_MODE, STEP_LEN, DYADS, CATS_MODE, ORDERED_AXES, TOKEN_POOL }
 
 /* ===== Difficulty mapping ===== */
 function axesForDiff(d){
@@ -185,11 +179,7 @@ function pickNames(k){ const a=NAMES.slice(); shuffle(a); return a.slice(0,k); }
 function pickCats(k){ const a=CATS.slice(); shuffle(a); return a.slice(0,k); }
 
 /* ===== Builders / Parser (use cfg snapshot) ===== */
-function buildCore(seq, cfg){
-  // In unordered mode, use canonical order (fixes "west-north" → "north-west")
-  const a = cfg.ORDER_MODE ? seq.slice() : canonicalizeSurfaceTokens(seq);
-  return a.join('-');
-}
+function buildCore(seq, cfg){ const a=seq.slice(); if(!cfg.ORDER_MODE) shuffle(a); return a.join('-'); }
 function sampleSeq(len,cfg){
   let tries=0;
   while(tries++<200){
@@ -289,12 +279,321 @@ function parseSentence(s,cfg){
   return S;
 }
 
-/* ===== Isomorphism, cache, match/non-match constructors, engine, etc. ===== */
-/*  The rest of the script remains identical to your latest version,
-    including: typedIsoEqual, SEEN_SURF/SEEN_LOGIC policy, MATCH/NON-MATCH
-    builders (which rely on buildCore for surface), acceptance simulation,
-    customizable solve window, and block/session controls. For brevity in
-    this message, I’ve not duplicated those unchanged sections.  */
+/* ===== Isomorphism ===== */
+function perms(arr){ const out=[], used=Array(arr.length).fill(false), cur=[]; (function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; } for(let i=0;i<arr.length;i++){ if(used[i]) continue; used[i]=true; cur.push(arr[i]); rec(); cur.pop(); used[i]=false; } })(); return out; }
+function arraysEqual(a,b){ if(a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false; return true; }
+function seqEqOrInv(a,b,invert){ if(!invert) return arraysEqual(a,b); const inv=b.slice().reverse().map(t=>OPP[t]||t); return arraysEqual(a,inv); }
+function multisetEq(A,B){ if(A.length!==B.length) return false; const m=new Map(); for(const x of A) m.set(x,(m.get(x)||0)+1); for(const y of B){ if(!m.has(y)) return false; const v=m.get(y)-1; if(v===0) m.delete(y); else m.set(y,v); } return m.size===0; }
+function typedIsoEqual(A,B){
+  if(!A||!B) return false;
+  if(A.players.length!==B.players.length || A.points.length!==B.points.length || A.cats.length!==B.cats.length) return false;
+  const pPerms=perms(B.players), xPerms=perms(B.points), cPerms=perms(B.cats);
+  function findDyad(bDyads,Lx,Rx,toks,vec,ordered){
+    for(const d of bDyads){
+      if(d._used) continue;
+      if(d.L.X===Lx && d.R.X===Rx){ if(ordered? arraysEqual(toks,d.tokens): vEq(vec,d.vec)){ d._used=true; return true; } }
+      if(d.L.X===Rx && d.R.X===Lx){ if(ordered? seqEqOrInv(toks,d.tokens,true): vEq(vec,vInv(d.vec))){ d._used=true; return true; } }
+    }
+    return false;
+  }
+  for(const pMap of pPerms){
+    const pBij=new Map(A.players.map((p,i)=>[p,pMap[i]]));
+    for(const xMap of xPerms){
+      const xBij=new Map(A.points.map((x,i)=>[x,xMap[i]]));
+      for(const cMap of cPerms){
+        const cBij=new Map(A.cats.map((c,i)=>[c,cMap[i]]));
+        let ok=true;
+
+        for(const p of A.players){ const xa=A.bind[p]; const pb=pBij.get(p), xb=xBij.get(xa); if(B.bind[pb]!==xb){ ok=false; break; } }
+        if(!ok) continue;
+
+        for(const x of A.points){ const ca=A.inCat[x]||null; const xb=xBij.get(x); const cb=(xb in B.inCat)? B.inCat[xb]: null; const want=ca? cBij.get(ca): null; if(cb!==want){ ok=false; break; } }
+        if(!ok) continue;
+
+        const aPairs=A.outrank.map(([u,v])=>`${cBij.get(u)}>${cBij.get(v)}`).sort();
+        const bPairs=B.outrank.map(([u,v])=>`${u}>${v}`).sort();
+        if(!multisetEq(aPairs,bPairs)) continue;
+
+        if(A.cross || B.cross){
+          if(!A.cross || !B.cross) ok=false;
+          else{
+            const ax=xBij.get(A.cross.X1), ay=xBij.get(A.cross.X2);
+            if(B.cross.tok!==A.cross.tok || B.cross.X1!==ax || B.cross.X2!==ay) ok=false;
+          }
+          if(!ok) continue;
+        }
+
+        const bDyads=B.dyads.map(d=>({L:{X:d.L.X},R:{X:d.R.X},tokens:d.tokens.slice(),vec:{...d.vec}}));
+        for(const d of bDyads) d._used=false;
+        for(const d of A.dyads){ const Lm=xBij.get(d.L.X), Rm=xBij.get(d.R.X); if(!findDyad(bDyads,Lm,Rm,d.tokens,d.vec,A.order)){ ok=false; break; } }
+        if(ok) return true;
+      }
+    }
+  }
+  return false;
+}
+
+/* ===== Anti-leak memory ===== */
+// CACHE POLICY
+const SEEN_SURF=new Set(); const SEEN_LOGIC=new Set();
+function rememberSurface(s){ if(SEEN_SURF.size>500) SEEN_SURF.clear(); SEEN_SURF.add(s); }
+function seenSurface(s){ return SEEN_SURF.has(s); }
+function logicSig(S){
+  const dy=S.dyads.map(d=>`DX:${d.vec.x},${d.vec.y},${d.vec.z},${d.vec.w},${d.vec.u},${d.vec.v}`).sort().join('|');
+  const or=S.outrank.map(([a,b])=>`C:${a}>${b}`).sort().join('|');
+  const cr=S.cross?`X:${S.cross.tok}`:'';
+  return `${S.order?'ORD':'VEC'}|${dy}|${or}|${cr}|D${S.dyads.length}|Cats${S.cats.length}`;
+}
+function rememberLogic(S){ const sig=logicSig(S); if(SEEN_LOGIC.size>800) SEEN_LOGIC.clear(); SEEN_LOGIC.add(sig); }
+function seenLogic(S){ return SEEN_LOGIC.has(logicSig(S)); }
+
+/* ===== MATCH TRANSFORM ===== */
+function invertTokens(seq){ return seq.slice().reverse().map(t=>OPP[t]||t); }
+function synthSentenceFromStruct(base,pBij,xBij,cBij,swapMask,cfg){
+  function dyadText(d,swap){
+    const L=swap? d.R : d.L, R=swap? d.L : d.R;
+    const seq = cfg.ORDER_MODE
+      ? (swap? invertTokens(d.tokens) : d.tokens.slice())
+      : (swap? invertTokens(d.tokens) : d.tokens.slice()); // invert in unordered mode to invert vector under LR swap
+    const core=buildCore(seq,cfg);
+    const PL=pBij.get(L.P), XL=xBij.get(L.X), CL=L.C? cBij.get(L.C): null;
+    const PR=pBij.get(R.P), XR=xBij.get(R.X), CR=R.C? cBij.get(R.C): null;
+    return { text:`${PL} at ${XL}${cfg.CATS_MODE?` in ${CL}`:''} is ${core} of ${PR} at ${XR}${cfg.CATS_MODE?` in ${CR}`:''}` };
+  }
+  const parts=[]; for(let i=0;i<base.dyads.length;i++) parts.push(dyadText(base.dyads[i], !!swapMask[i]));
+  let s=parts[0].text; if(parts.length===2) s+=`, while ${parts[1].text}`;
+  const clauses=[];
+  if(base.outrank.length){ for(const [cA,cB] of base.outrank) clauses.push(`${cBij.get(cA)} over ${cBij.get(cB)}`); }
+  if(base.cross){ clauses.push(`${xBij.get(base.cross.X1)} ${base.cross.tok} of ${xBij.get(base.cross.X2)}`); }
+  if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.';
+  return s;
+}
+function buildMatchFromBase(base,cfg){
+  for(let attempt=0;attempt<20;attempt++){
+    const names=pickNames(base.players.length);
+    const points=Array.from({length:base.points.length}, ()=>sym());
+    const cats=pickCats(base.cats.length);
+    const pBij=new Map(base.players.map((p,i)=>[p,names[i]]));
+    const xBij=new Map(base.points.map((x,i)=>[x,points[i]]));
+    const cBij=new Map(base.cats.map((c,i)=>[c,cats[i]]));
+    const swapMask=Array(base.dyads.length).fill(false).map(()=>Math.random()<0.5);
+    const text=synthSentenceFromStruct(base,pBij,xBij,cBij,swapMask,cfg);
+    if(seenSurface(text)) continue;
+    const cand=parseSentence(text,cfg); if(!cand) continue;
+    if(typedIsoEqual(base,cand)) return {text,struct:cand};
+  }
+  // fallback
+  const names=pickNames(base.players.length);
+  const points=Array.from({length:base.points.length}, ()=>sym());
+  const cats=pickCats(base.cats.length);
+  const pBij=new Map(base.players.map((p,i)=>[p,names[i]]));
+  const xBij=new Map(base.points.map((x,i)=>[x,points[i]]));
+  const cBij=new Map(base.cats.map((c,i)=>[c,cats[i]]));
+  const text=synthSentenceFromStruct(base,pBij,xBij,cBij,Array(base.dyads.length).fill(false),cfg);
+  const cand=parseSentence(text,cfg);
+  return {text,struct:cand};
+}
+
+/* ===== NONMATCH EDIT ===== */
+function buildNonMatchAgainst(base,cfg){
+  function mutateOne(b){
+    const choice=(()=>{
+      const o=[]; if(b.dyads.length&&cfg.TOKEN_POOL.length>1) o.push('token'); if(b.outrank.length) o.push('flip'); if(Object.keys(b.inCat).length) o.push('recat'); return o[(Math.random()*o.length)|0]||'token';
+    })();
+    if(choice==='token'){
+      const dIdx=(Math.random()*b.dyads.length)|0, dx=b.dyads[dIdx];
+      const idx=(Math.random()*dx.tokens.length)|0, cur=dx.tokens[idx];
+      const axisOf=t=> AXES.plane.includes(t)?'plane':AXES.level.includes(t)?'level':AXES.embed.includes(t)?'embed':AXES.time.includes(t)?'time':AXES.rot.includes(t)?'rot':'x';
+      const cands=cfg.TOKEN_POOL.filter(t=>t!==cur && OPP[t]!==cur);
+      if(cands.length){
+        const curA=axisOf(cur); const diff=cands.filter(t=>axisOf(t)!==curA);
+        const pick=(diff.length?diff:cands)[(Math.random()*(diff.length?diff.length:cands.length))|0];
+        const newTokens=dx.tokens.slice(); newTokens[idx]=pick;
+        const parts=b.dyads.map((d,i)=>{ const seq=(i===dIdx)? newTokens: d.tokens.slice(); const core=buildCore(seq,cfg); return `${d.L.P} at ${d.L.X}${cfg.CATS_MODE?` in ${d.L.C}`:''} is ${core} of ${d.R.P} at ${d.R.X}${cfg.CATS_MODE?` in ${d.R.C}`:''}`;});
+        let s=parts[0]; if(parts.length===2) s+=`, while ${parts[1]}`; const clauses=[]; for(const [ca,cb] of b.outrank) clauses.push(`${ca} over ${cb}`); if(b.cross) clauses.push(`${b.cross.X1} ${b.cross.tok} of ${b.cross.X2}`); if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.'; return s;
+      }
+    }else if(choice==='flip' && b.outrank.length){
+      const k=(Math.random()*b.outrank.length)|0; const pairs=b.outrank.slice(); const [a,c]=pairs[k]; pairs[k]=[c,a];
+      const parts=b.dyads.map(d=>{ const core=buildCore(d.tokens,cfg); return `${d.L.P} at ${d.L.X}${cfg.CATS_MODE?` in ${d.L.C}`:''} is ${core} of ${d.R.P} at ${d.R.X}${cfg.CATS_MODE?` in ${d.R.C}`:''}`; });
+      let s=parts[0]; if(parts.length===2) s+=`, while ${parts[1]}`; const clauses=[]; for(const [ca,cb] of pairs) clauses.push(`${ca} over ${cb}`); if(b.cross) clauses.push(`${b.cross.X1} ${b.cross.tok} of ${b.cross.X2}`); if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.'; return s;
+    }else if(choice==='recat' && Object.keys(base.inCat).length){
+      const pts=b.points.slice(); const X=pts[(Math.random()*pts.length)|0]; const cur=base.inCat[X]||null; const pool=pickCats(1).concat(CATS).filter(c=>c!==cur); const newC=pool[(Math.random()*pool.length)|0];
+      const parts=b.dyads.map(d=>{ const Lc=d.L.C? (d.L.X===X? newC: d.L.C): null; const Rc=d.R.C? (d.R.X===X? newC: d.R.C): null; const core=buildCore(d.tokens,cfg); return `${d.L.P} at ${d.L.X}${cfg.CATS_MODE?` in ${Lc}`:''} is ${core} of ${d.R.P} at ${d.R.X}${cfg.CATS_MODE?` in ${Rc}`:''}`; });
+      let s=parts[0]; if(parts.length===2) s+=`, while ${parts[1]}`; const clauses=[]; for(const [ca,cb] of base.outrank) clauses.push(`${ca} over ${cb}`); if(base.cross) clauses.push(`${base.cross.X1} ${base.cross.tok} of ${base.cross.X2}`); if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.'; return s;
+    }
+    return null;
+  }
+  for(let tries=0;tries<200;tries++){
+    const text=mutateOne(base); if(!text || seenSurface(text)) continue;
+    const cand=parseSentence(text,cfg); if(!cand) continue;
+    if(typedIsoEqual(base,cand)) continue;
+    if(seenLogic(cand)) continue; // only non-match blocks logic repeats
+    return {text,struct:cand};
+  }
+  let fb=null; for(let k=0;k<200;k++){ const r=buildSentenceByDifficulty(cfg); if(seenSurface(r.text)) continue; const S=parseSentence(r.text,cfg); if(!S) continue; if(!typedIsoEqual(base,S) && !seenLogic(S)){ fb={text:r.text,struct:S}; break; } }
+  return fb;
+}
+
+/* ===== Surface shuffle (unordered only) ===== */
+function surfaceShuffleHyphens(text,cfg){ if(cfg.ORDER_MODE) return text; return text.replace(/\bis\s+([a-z\-]+)\s+of\b/gi, (m,g)=>{ const t=g.split('-'); shuffle(t); return 'is '+t.join('-')+' of'; }); }
+
+/* ===== Trial engine ===== */
+let idx=0, correct=0, errors=0, planned=[], history=[], SESSION={running:false, paused:false};
+let currentTruth=false, responded=false, solveTimer=null, countdownTimer=null, countdownLeft=0;
+
+function planSequence(){
+  planned.length=MAX; for(let i=0;i<MAX;i++) planned[i]=false;
+  const elig=[]; for(let i=N;i<MAX;i++) elig.push(i);
+  const k=Math.round((RATE/100)*elig.length); shuffle(elig); for(let i=0;i<k;i++) planned[elig[i]]=true;
+}
+function showPremise(text){ $('premiseText').textContent=text; }
+function updateUI(){ setText('idx', idx); setText('max', MAX); setText('ptype', (idx<MAX && idx>=N && planned[idx])?'MATCH':'NON-match'); setText('corr', correct); setText('err', errors); setText('isMatch','—'); }
+
+async function speak(text){
+  if(!SPEAK) return Promise.resolve();
+  if(typeof window==='undefined'||!('speechSynthesis' in window)) return Promise.resolve();
+  return new Promise(res=>{ try{ const u=new SpeechSynthesisUtterance(text); u.lang='en-GB'; u.rate=1.0; u.pitch=1.0; u.volume=1.0; u.onend=()=>res(); u.onerror=()=>res(); if(window.speechSynthesis.speaking) window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }catch{ res(); } });
+}
+function scheduleCountdown(sec){ countdownLeft=sec; setText('countdown', countdownLeft.toFixed(1)+'s'); if(countdownTimer) clearInterval(countdownTimer); countdownTimer=setInterval(()=>{ countdownLeft=Math.max(0,countdownLeft-0.1); setText('countdown', countdownLeft.toFixed(1)+'s'); if(countdownLeft<=0){ clearInterval(countdownTimer); countdownTimer=null; } },100); }
+function evaluateAndAdvance(){ const resp=responded, truth=currentTruth; if(resp===truth) correct++; else errors++; setText('corr',correct); setText('err',errors); setText('isMatch', String(truth).toUpperCase()); idx++; if(idx>=MAX){ stop(); return; } runTrial(); }
+
+function runTrial(){
+  if(!SESSION.running || SESSION.paused) return;
+  const cfg=SESSION_CFG; let premise;
+  const mustMatch=(idx>=N)&&planned[idx];
+
+  if(idx===0){
+    let tries=0; while(tries++<200){ const cand=buildSentenceByDifficulty(cfg); if(seenSurface(cand.text)) continue; const S=parseSentence(cand.text,cfg); if(!S) continue; if(seenLogic(S)) continue; premise={text:cand.text,struct:S}; break; }
+    if(!premise){ const rnd=buildSentenceByDifficulty(cfg); premise={text:rnd.text,struct:parseSentence(rnd.text,cfg)}; }
+  }else if(mustMatch){
+    const base=history[idx-N].struct;
+    let cand=buildMatchFromBase(base,cfg);
+    if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){
+      cand=buildMatchFromBase(base,{...cfg});
+      if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){
+        const prev=history[idx-N].text; const altered=surfaceShuffleHyphens(prev,cfg); const parsed=parseSentence(altered,cfg) || base; cand={text:altered,struct:parsed};
+      }
+    }
+    if(seenSurface(cand.text)){ const altered=surfaceShuffleHyphens(cand.text,cfg); const parsed=parseSentence(altered,cfg) || cand.struct; premise={text:altered,struct:parsed}; }
+    else premise=cand;
+  }else{
+    const base=idx>=N? history[idx-N].struct: null;
+    let cand= base? buildNonMatchAgainst(base,cfg) : null;
+    if(!cand){ for(let t=0;t<400;t++){ const rnd=buildSentenceByDifficulty(cfg); if(seenSurface(rnd.text)) continue; const S=parseSentence(rnd.text,cfg); if(!S) continue; if(base && typedIsoEqual(base,S)) continue; if(seenLogic(S)) continue; cand={text:rnd.text,struct:S}; break; } }
+    premise=cand || ( ()=>{ const rnd=buildSentenceByDifficulty(cfg); return {text:rnd.text,struct:parseSentence(rnd.text,cfg)}; } )();
+  }
+
+  rememberSurface(premise.text); rememberLogic(premise.struct); history[idx]=premise;
+  showPremise(premise.text); responded=false; currentTruth=(idx>=N)? typedIsoEqual(history[idx-N].struct, premise.struct): false;
+  setText('isMatch','—'); setText('ptype', (idx<MAX && idx>=N && planned[idx])?'MATCH':'NON-match');
+
+  speak(premise.text).then(()=>{ scheduleCountdown(SOLVE_WINDOW); if(solveTimer) clearTimeout(solveTimer); solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, SOLVE_WINDOW*1000); });
+}
+
+/* ===== Acceptance test simulation ===== */
+function simulateBlockMetrics(cfg,Nsim,rate){
+  const planned=[], historySim=[]; const total=100; for(let i=0;i<total;i++) planned[i]=false;
+  const elig=[]; for(let i=Nsim;i<total;i++) elig.push(i); shuffle(elig); const k=Math.round((rate/100)*elig.length); for(let i=0;i<k;i++) planned[elig[i]]=true;
+
+  let constructedMatches=0, failures=0, okPairs=0, totalPairs=0;
+  for(let i=0;i<total;i++){
+    let prem;
+    if(i===0){
+      let seed=null; for(let t=0;t<100;t++){ const r=buildSentenceByDifficulty(cfg); const ps=parseSentence(r.text,cfg); if(ps){ seed={text:r.text,struct:ps}; break; } }
+      prem = seed || {text:'Ava at A1 is north of Ben at A2.', struct:parseSentence('Ava at A1 is north of Ben at A2.',cfg)};
+    }else if(planned[i] && i>=Nsim){
+      const base=historySim[i-Nsim].struct;
+      const cand=buildMatchFromBase(base,cfg);
+      if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){ failures++; prem=historySim[i-1]; }
+      else {
+        constructedMatches++; prem=cand;
+        for(let d=0; d<base.dyads.length; d++){
+          totalPairs++;
+          if(cfg.ORDER_MODE){
+            const b=base.dyads[d], c=cand.struct.dyads[d];
+            if(arraysEqual(b.tokens,c.tokens) || seqEqOrInv(b.tokens,c.tokens,true)) okPairs++;
+          }else{
+            const b=base.dyads[d], c=cand.struct.dyads[d];
+            if(vEq(b.vec,c.vec) || vEq(b.vec,vInv(c.vec))) okPairs++;
+          }
+        }
+      }
+    }else{
+      const base = (i>=Nsim)? historySim[i-Nsim].struct : null;
+      let cand = base? buildNonMatchAgainst(base,cfg) : null;
+      if(!cand){ for(let t=0;t<100;t++){ const r=buildSentenceByDifficulty(cfg); const ps=parseSentence(r.text,cfg); if(ps && (!base || !typedIsoEqual(base,ps))){ cand={text:r.text,struct:ps}; break; } } }
+      prem=cand || historySim[i-1];
+    }
+    historySim[i]=prem;
+  }
+  const plannedMatches=planned.filter(Boolean).length;
+  const ratio = plannedMatches? (constructedMatches/plannedMatches).toFixed(2) : 'n/a';
+  const okPct = totalPairs? (okPairs/totalPairs*100).toFixed(1)+'%' : 'n/a';
+  return { plannedMatches, constructedMatches, failures, ratio, okPct };
+}
+
+/* ===== Controls ===== */
+function start(){
+  applyDifficulty(+$('difficulty').value);
+  MAX=+$('trials').value||200; RATE=+$('rate').value||25; N=+$('nback').value||1; SPEAK=!!$('speakEnabled').checked;
+  SOLVE_WINDOW=+($('solveWindow').value||5); // snapshot solve window for this block
+  setText('solveLabel', SOLVE_WINDOW.toFixed(1));
+  setText('solveVal', SOLVE_WINDOW.toFixed(1)+'s');
+
+  // Lock session
+  SESSION_CFG={ ORDER_MODE, STEP_LEN, DYADS, CATS_MODE, ORDERED_AXES:ORDERED_AXES.slice(), TOKEN_POOL:TOKEN_POOL.slice() };
+
+  // Acceptance instrumentation
+  const m=simulateBlockMetrics(SESSION_CFG,N,RATE);
+  const logEl=$('log'); logEl.textContent=(logEl.textContent==='—'?'':'')+`[block] planned=${m.plannedMatches} constructed=${m.constructedMatches} failures=${m.failures} ratio=${m.ratio} seq/vecOK=${m.okPct}\n`;
+
+  // Status line uses snapshot values
+  const axesLabel=SESSION_CFG.ORDERED_AXES.map(ax=>({plane:'plane',level:'level',embed:'in/out',time:'time',rot:'rotation'}[ax])).join('+')||'—';
+  $('modeLine').textContent=`Axes: ${axesLabel} • Steps: ${SESSION_CFG.STEP_LEN} • Ordered: ${SESSION_CFG.ORDER_MODE?'ON':'OFF'} • Dyads: ${SESSION_CFG.DYADS} • Cats: ${SESSION_CFG.CATS_MODE} • N=${N}`;
+
+  // Reset + go
+  idx=0; correct=0; errors=0; planned=[]; history=[]; SEEN_SURF.clear(); SEEN_LOGIC.clear();
+  planSequence(); updateUI();
+  SESSION.running=true; SESSION.paused=false;
+  $('pause').disabled=false; $('reset').disabled=false; $('hit').disabled=false; $('skip').disabled=false;
+  runTrial();
+}
+function stop(){ SESSION.running=false; SESSION.paused=false; if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); setText('countdown','—'); try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch{} }
+function togglePause(){
+  if(!SESSION.running) return;
+  SESSION.paused=!SESSION.paused; $('pause').textContent=SESSION.paused?'▶ Resume':'⏸ Pause';
+  if(SESSION.paused){ if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch{} }
+  else{
+    scheduleCountdown(countdownLeft>0?countdownLeft:SOLVE_WINDOW);
+    if(solveTimer) clearTimeout(solveTimer);
+    solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, (countdownLeft>0?countdownLeft:SOLVE_WINDOW)*1000);
+  }
+}
+function reset(){ stop(); $('premiseText').textContent='—'; setText('idx',0); setText('corr',0); setText('err',0); setText('ptype','—'); setText('isMatch','—'); }
+function registerHit(){ if(!SESSION.running || SESSION.paused) return; responded=true; }
+function skip(){ if(!SESSION.running || SESSION.paused) return; if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); setText('countdown','—'); evaluateAndAdvance(); }
+
+/* ===== Bindings ===== */
+document.addEventListener('DOMContentLoaded', ()=>{
+  applyDifficulty(+$('difficulty').value);
+  // Solve window UI updates (inactive mid-block)
+  const sw=$('solveWindow');
+  const updateSW=()=>{ const v=+sw.value; setText('solveVal', v.toFixed(1)+'s'); setText('solveLabel', v.toFixed(1)); };
+  updateSW();
+  sw.oninput=e=>{ if(!SESSION.running){ updateSW(); } };
+
+  $('difficulty').oninput=e=>{ if(!SESSION.running){ applyDifficulty(+e.target.value); } };
+  $('nback').oninput=e=>{ if(!SESSION.running){ N=+e.target.value; setText('nVal',N); $('modeLine').textContent=$('modeLine').textContent.replace(/N=\d+$/,`N=${N}`); } };
+  $('trials').oninput=e=>{ if(!SESSION.running){ MAX=+e.target.value; setText('tVal',MAX); setText('max',MAX); } };
+  $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; setText('rVal',RATE+'%'); } };
+  $('speakEnabled').onchange=e=>{ SPEAK=!!e.target.checked; };
+
+  $('start').onclick=start; $('pause').onclick=togglePause; $('reset').onclick=reset; $('hit').onclick=registerHit; $('skip').onclick=skip;
+  window.addEventListener('keydown', e=>{ if(!SESSION.running) return; if(e.code==='Space'){ registerHit(); e.preventDefault(); } });
+
+  setText('nVal',N); setText('tVal',MAX); setText('rVal',RATE+'%');
+  updateUI();
+});
 </script>
 </body>
 </html>
