@@ -46,8 +46,8 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
       <div class="box">
         <div class="title">Timing & Block</div>
         <div class="mut">Solve window: <strong><span id="solveLabel">5.0</span>s</strong> after the sentence finishes speaking.</div>
-        <label>Solve window (1–10s): <span id="solveVal">5.0s</span></label>
-        <input id="solveWindow" type="range" min="1" max="10" step="0.1" value="5">
+        <label>Solve window (1–20s): <span id="solveVal">5.0s</span></label>
+        <input id="solveWindow" type="range" min="1" max="20" step="0.1" value="5">
         <label>Trials per block: <span id="tVal">200</span></label>
         <input id="trials" type="range" min="20" max="500" step="10" value="200">
         <label>Target match rate: <span id="rVal">25%</span></label>
@@ -89,11 +89,7 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
 <script>
 /* ============================================================
    Relational N-Back — One-Sentence Logic-Only
-   FIXES IMPLEMENTED:
-   - Canonical surface ordering in unordered mode to avoid odd phrases like "west-north".
-   - No duplicate tokens inside a clause (prevents "below-below" etc.).
-   - Customizable solve window (1–10s).
-   Other previously delivered guarantees (match construction, cache policy, session lock) retained.
+   (Includes customizable solve window 1–20s)
    ============================================================ */
 
 /* ===== Utilities ===== */
@@ -136,7 +132,7 @@ function vEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&
 /* ===== Global knobs (defaults; snapshotted at start) ===== */
 let DIFF=1, ORDER_MODE=false, STEP_LEN=1, DYADS=1, CATS_MODE=0, ORDERED_AXES=['plane'], TOKEN_POOL=[];
 let MAX=200, RATE=25, N=1, SPEAK=true;
-let SOLVE_WINDOW=5.0;
+let SOLVE_WINDOW=5.0; // seconds (customizable 1–20)
 
 /* ===== Session config (locked per block) ===== */
 let SESSION_CFG=null; // { ORDER_MODE, STEP_LEN, DYADS, CATS_MODE, ORDERED_AXES, TOKEN_POOL }
@@ -177,7 +173,7 @@ function applyDifficulty(d){
   $('modeLine').textContent    = `Axes: ${axesLabel} • Steps: ${STEP_LEN} • Ordered: ${ORDER_MODE?'ON':'OFF'} • Dyads: ${DYADS} • Cats: ${CATS_MODE} • N=${N}`;
 }
 
-/* ===== Canonical surface ordering (prevents "west-north", duplicates, etc.) ===== */
+/* ===== Canonical surface ordering ===== */
 function axisOf(t){
   if(AXES.plane.includes(t)) return 'plane';
   if(AXES.level.includes(t)) return 'level';
@@ -188,20 +184,12 @@ function axisOf(t){
 }
 const AXIS_ORDER = ['plane','level','embed','time','rot'];
 const PLANE_INDEX = Object.fromEntries(AXES.plane.map((d,i)=>[d,i])); // NESW = 0,1,2,3
-
 function sortTokensCanonical(seq){
-  // stable canonical order: plane (N,E,S,W) → level (above,below) → embed → time → rot
   return seq.slice().sort((a,b)=>{
     const aa=axisOf(a), bb=axisOf(b);
     if(aa!==bb) return AXIS_ORDER.indexOf(aa)-AXIS_ORDER.indexOf(bb);
     if(aa==='plane') return PLANE_INDEX[a]-PLANE_INDEX[b];
-    // level: prefer "above" then "below"; embed: "in" then "out"; time: "ahead" then "behind"; rot: "turn-right" then "turn-left"
-    const pref = {
-      level: ['above','below'],
-      embed: ['in','out'],
-      time:  ['ahead','behind'],
-      rot:   ['turn-right','turn-left']
-    }[aa] || [];
+    const pref = { level:['above','below'], embed:['in','out'], time:['ahead','behind'], rot:['turn-right','turn-left'] }[aa] || [];
     const ia=pref.indexOf(a), ib=pref.indexOf(b);
     return (ia<0?99:ia)-(ib<0?99:ib);
   });
@@ -214,39 +202,30 @@ function pickCats(k){ const a=CATS.slice(); shuffle(a); return a.slice(0,k); }
 
 /* ===== Builders / Parser (use cfg snapshot) ===== */
 function buildCore(seq, cfg){
-  // In ordered mode, preserve sequence exactly.
-  // In unordered mode, render in canonical order to avoid odd phrasings.
   const out = cfg.ORDER_MODE ? seq.slice() : sortTokensCanonical(seq);
   return out.join('-');
 }
 function sampleSeq(len,cfg){
-  // No duplicates, no opposites; ensure variety across axes when possible.
   let tries=0;
   while(tries++<300){
     const seq=[]; const seen=new Set(); const seenAxis=new Set();
     while(seq.length<len){
       const t = cfg.TOKEN_POOL[(Math.random()*cfg.TOKEN_POOL.length)|0];
-      if(seen.has(t)) continue;               // prevent duplicates like "below-below"
-      if(seen.has(OPP[t])) continue;          // prevent opposite within clause
-      // if we already used this axis and there are other axes available, try another token to keep phrases natural
+      if(seen.has(t)) continue;
+      if(seen.has(OPP[t])) continue;
       const ax = axisOf(t);
       if(len>=2 && cfg.ORDERED_AXES.length>=2 && seenAxis.has(ax) && seenAxis.size<cfg.ORDERED_AXES.length){
-        // try to pick a different axis first; allow same-axis only if forced later
         const altPool = cfg.TOKEN_POOL.filter(x=>axisOf(x)!==ax && !seen.has(x) && !seen.has(OPP[x]));
         const pick = altPool[(Math.random()*altPool.length)|0];
         if(pick){ seq.push(pick); seen.add(pick); seenAxis.add(axisOf(pick)); continue; }
       }
       seq.push(t); seen.add(t); seenAxis.add(ax);
     }
-    // extra guard: if unordered and all tokens are plane, sort will give NESW and read nicely
     return seq;
   }
-  // fallback deterministic simple, still non-duplicate if possible
   const base = cfg.TOKEN_POOL.find(t=>true) || 'north';
   return Array.from({length:len}, (_,i)=> i===0? base : (cfg.TOKEN_POOL.find(t=>t!==base && OPP[t]!==base) || base));
 }
-
-/* ===== Sentence generation with cfg ===== */
 function buildSentenceByDifficulty(cfg){
   const nameCount = cfg.DYADS===1? 2 : 4;
   const [p1,p2,p3,p4] = pickNames(nameCount).concat([null,null,null,null]).slice(0,4);
@@ -280,7 +259,6 @@ function buildSentenceByDifficulty(cfg){
   return { text:s };
 }
 
-/* ===== Parser (uses cfg snapshot; validates tokens) ===== */
 const DYAD_RE = /^([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+is\s+(.+?)\s+of\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?$/i;
 function parseSentence(s,cfg){
   s=String(s||'').trim(); if(!s.endsWith('.')) return null; s=s.slice(0,-1);
@@ -291,7 +269,6 @@ function parseSentence(s,cfg){
   function toks(core){
     const t=core.toLowerCase().split(/\s*-\s*/).filter(Boolean);
     if(t.length!==cfg.STEP_LEN) return null;
-    // disallow duplicates here too (keeps 'below-below' out even if sourced)
     const seen=new Set();
     for(const x of t){
       if(!cfg.TOKEN_POOL.includes(x)) return null;
@@ -329,22 +306,8 @@ function parseSentence(s,cfg){
   return S;
 }
 
-/* ===== Isomorphism and cache policy remain unchanged (omitted for brevity in this excerpt) ===== */
-/* For completeness, include your previously working typedIsoEqual, match/non-match constructors,
-   cache policy, trial engine, acceptance simulation, and controls exactly as in your last version,
-   since the requested fix is localized to:
-   - AXES.plane order (NESW),
-   - buildCore canonical ordering (unordered mode),
-   - sampleSeq preventing duplicates and preferring cross-axis variety,
-   - parseSentence duplicate-token guard,
-   - customizable SOLVE_WINDOW wiring (already present).
-*/
-
-/* ===== Insert the previously provided typedIsoEqual, cache, MATCH/NONMATCH, engine, and controls here ===== */
-
-/* ------- BEGIN: Unchanged core from your last working version (for completeness) ------- */
-/* (The following is identical to the last version you approved, except it now calls the new
-   buildCore/sampleSeq/parseSentence logic that enforce canonical wording and no duplicates.) */
+/* ===== Isomorphism, cache, match/non-match constructors, engine & acceptance sim ===== */
+/* (Identical to previous working version; omitted comments for brevity) */
 
 function perms(arr){ const out=[], used=Array(arr.length).fill(false), cur=[]; (function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; } for(let i=0;i<arr.length;i++){ if(used[i]) continue; used[i]=true; cur.push(arr[i]); rec(); cur.pop(); used[i]=false; } })(); return out; }
 function arraysEqual(a,b){ if(a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false; return true; }
@@ -441,7 +404,6 @@ function buildMatchFromBase(base,cfg){
     const cand=parseSentence(text,cfg); if(!cand) continue;
     if(typedIsoEqual(base,cand)) return {text,struct:cand};
   }
-  // fallback: direct relabel without swaps
   const names=pickNames(base.players.length);
   const points=Array.from({length:base.points.length}, ()=>sym());
   const cats=pickCats(base.cats.length);
@@ -504,7 +466,7 @@ function buildNonMatchAgainst(base,cfg){
 /* Surface shuffle (unordered only) */
 function surfaceShuffleHyphens(text,cfg){ if(cfg.ORDER_MODE) return text; return text.replace(/\bis\s+([a-z\-]+)\s+of\b/gi, (m,g)=>{ const t=g.split('-'); const canon=sortTokensCanonical(t); return 'is '+canon.join('-')+' of'; }); }
 
-/* Trial engine & acceptance sim (unchanged except solve-window variable) */
+/* Trial engine & acceptance sim */
 let idx=0, correct=0, errors=0, planned=[], history=[], SESSION={running:false, paused:false};
 let currentTruth=false, responded=false, solveTimer=null, countdownTimer=null, countdownLeft=0;
 
@@ -552,7 +514,6 @@ function runTrial(){
   speak(premise.text).then(()=>{ scheduleCountdown(SOLVE_WINDOW); if(solveTimer) clearTimeout(solveTimer); solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, SOLVE_WINDOW*1000); });
 }
 
-/* Acceptance test simulation (unchanged logic) */
 function simulateBlockMetrics(cfg,Nsim,rate){
   const planned=[], historySim=[]; const total=100; for(let i=0;i<total;i++) planned[i]=false;
   const elig=[]; for(let i=Nsim;i<total;i++) elig.push(i); shuffle(elig); const k=Math.round((rate/100)*elig.length); for(let i=0;i<k;i++) planned[elig[i]]=true;
