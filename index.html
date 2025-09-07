@@ -2,14 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Relational N-Back — One-Sentence, Logic-Only (Difficulty-Linked & Solve-Window Customizable)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Relational N-Back — Advanced Logic-Only N-Match (Voice Only)</title>
 <style>
 :root { --bg:#0b0d10; --fg:#e6fbff; --a:#00ccff; --mut:#8fe7ff }
 *{ box-sizing:border-box }
-html,body{ height:100% }
-body{ margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif }
-.wrap{ max-width:1280px; margin:0 auto; padding:16px }
+body{ font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); margin:0; padding:16px }
+.wrap{ max-width:1160px; margin:0 auto }
 .row{ display:flex; gap:12px; flex-wrap:wrap }
 .col{ flex:1 1 360px }
 .box{ background:#101418; border:1px solid rgba(0,200,255,.25); border-radius:14px; padding:12px }
@@ -17,13 +16,16 @@ body{ margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,-ap
 .btn{ background:#0b0d10; color:var(--a); border:1px solid var(--a); border-radius:10px; padding:10px 14px; font-weight:700; cursor:pointer }
 .btn:disabled{ opacity:.5; cursor:not-allowed }
 label{ font-size:12px; color:var(--mut); display:block; margin:6px 0 }
-input[type=range], input[type=number]{ width:100% }
+input[type=range],select{ width:100% }
+select{ min-height:38px }
 .kbd{ border:1px solid rgba(255,255,255,.25); padding:2px 6px; border-radius:6px; background:#0b0d10 }
 .mut{ color:var(--mut); font-size:12px }
-hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
-#premiseText{ margin-top:12px; min-height:110px; background:#0e1113; border:1px solid rgba(0,200,255,.25); border-radius:12px; padding:12px; font-size:20px; line-height:1.5; word-break:break-word }
-.badge{ display:inline-block; padding:2px 8px; border:1px solid rgba(0,200,255,.35); border-radius:999px; font-size:12px; color:var(--mut); margin-left:6px }
-#countdown{ font-weight:800; color:var(--a) }
+.badge{ display:inline-block; padding:2px 6px; border:1px solid rgba(0,200,255,.3); border-radius:8px; font-size:12px; color:var(--mut); margin-left:6px }
+#premiseText{ margin-top:12px; min-height:90px; background:#0e1113; border:1px solid rgba(0,200,255,.25); border-radius:12px; padding:10px; font-size:18px; line-height:1.6 }
+#premiseText .rel{ padding:0 4px; border-radius:6px }
+#premiseText .rel.active{ background:rgba(0,200,255,.20); outline:1px solid rgba(0,200,255,.45) }
+#premiseText .sep{ opacity:.65 }
+.checkwrap{ display:flex; align-items:center; gap:6px; margin:6px 0; font-size:12px; color:var(--mut) }
 </style>
 </head>
 <body>
@@ -31,35 +33,57 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
   <div class="row">
     <div class="col">
       <div class="box">
-        <div class="title">Difficulty & N-Back</div>
-        <label>Difficulty (1–10): <span id="diffVal">1</span></label>
-        <input id="difficulty" type="range" min="1" max="10" step="1" value="1">
-        <div class="mut" id="diffExplain">Axes: plane • Steps: 1 • Ordered: OFF • Dyads: 1 • Cats: 0</div>
-        <hr class="hr">
-        <label>N-Back level (independent): <span id="nVal">1</span></label>
-        <input id="nback" type="range" min="1" max="5" step="1" value="1">
-        <div class="mut small">N controls comparison depth only; difficulty controls premise complexity.</div>
+        <div class="title">Timing & Complexity</div>
+        <label>N-back level: <span id="nVal">1</span></label>
+        <input id="n" type="range" min="1" max="10" value="1">
+        <label>Trials per block: <span id="tVal">40</span></label>
+        <input id="trials" type="range" min="10" max="5000" step="5" value="40">
+        <label>Pause between relations in the same premise (seconds): <span id="pVal">1.0 s</span></label>
+        <input id="pauseTime" type="range" min="0" max="60" step="0.1" value="1">
+        <label>Pause between premises (seconds): <span id="premiseIntervalVal">1.0 s</span></label>
+        <!-- CHANGED: max from 60 to 20 to cap the solve window customization at 20s -->
+        <input id="premiseInterval" type="range" min="0" max="20" step="0.1" value="1">
+        <label>Target match rate: <span id="rVal">25%</span></label>
+        <input id="rate" type="range" min="0" max="100" step="1" value="25">
+        <hr style="border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0">
+        <div class="title">Relational Complexity</div>
+        <label>Symbols per premise: <span id="symVal">3</span></label>
+        <input id="symbols" type="range" min="3" max="15" value="3">
+        <label>Relations per premise: <span id="relCountVal">2</span></label>
+        <input id="relCount" type="range" min="2" max="15" value="2">
+        <label>Composition count (base relations per relation): <span id="compVal">1</span></label>
+        <input id="compCount" type="range" min="1" max="15" value="1">
+        <div class="checkwrap"><input id="scramble" type="checkbox"> <label for="scramble">Scramble clause order</label></div>
+        <div class="checkwrap"><input id="condMode" type="checkbox"> <label for="condMode">Conditional mode</label></div>
+        <div class="mut"><b>N-match rule:</b> Premise i matches i−N iff <b>all symbols from i−N reappear in i</b> and the <b>union</b> of their relations is <b>consistent</b> (no contradictions). Extra symbols allowed. Compass and level magnitudes are fixed.</div>
       </div>
     </div>
 
     <div class="col">
-      <div class="box">
-        <div class="title">Timing & Block</div>
-        <div class="mut">Solve window: <strong><span id="solveLabel">5.0</span>s</strong> after the sentence finishes speaking.</div>
-        <label>Solve window (1–10s): <span id="solveVal">5.0s</span></label>
-        <input id="solveWindow" type="range" min="1" max="10" step="0.1" value="5">
-        <label>Trials per block: <span id="tVal">200</span></label>
-        <input id="trials" type="range" min="20" max="500" step="10" value="200">
-        <label>Target match rate: <span id="rVal">25%</span></label>
-        <input id="rate" type="range" min="0" max="100" step="1" value="25">
-        <label><input id="speakEnabled" type="checkbox" checked> Speak sentences</label>
+      <div class="box" id="voiceBox">
+        <div class="title">Voice <span id="voiceStatus" class="badge">Ready</span></div>
+        <label>Country / Region</label>
+        <select id="regionSelect"></select>
+        <label>Voice</label>
+        <select id="voice"></select>
+        <div class="mut" id="voiceHint" style="margin-top:6px;">Menus fill instantly; they’ll auto-update if the system exposes more voices.</div>
+        <label style="margin-top:10px">Rate: <span id="rateVal">0.95</span></label>
+        <input id="vRate" type="range" min="0.7" max="1.6" step="0.01" value="0.95">
+        <label>Pitch: <span id="pitchVal">1.28</span></label>
+        <input id="vPitch" type="range" min="0.7" max="2" step="0.01" value="1.28">
+        <label>Volume: <span id="vVolVal">1.00</span></label>
+        <input id="vVol" type="range" min="0" max="1" step="0.05" value="1.0">
+        <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <button id="testVoice" class="btn" type="button">Test voice</button>
+          <button id="refreshVoices" class="btn" type="button">Refresh</button>
+        </div>
       </div>
     </div>
 
     <div class="col">
       <div class="box">
         <div class="title">Controls / Status</div>
-        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:6px">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
           <button id="start" class="btn">▶ Start</button>
           <button id="pause" class="btn" disabled>⏸ Pause</button>
           <button id="reset" class="btn" disabled>🔄 Reset</button>
@@ -67,585 +91,660 @@ hr.hr{border:none;border-top:1px solid rgba(0,200,255,.25);margin:8px 0}
           <button id="skip" class="btn" disabled>⏭ Skip</button>
         </div>
         <div class="mut" style="margin-top:8px">
-          Trial <span id="idx">0</span>/<span id="max">200</span>
-          <span class="badge">Planned: <span id="ptype">—</span></span>
-          <span class="badge">Actual: <span id="isMatch">—</span></span>
-          <span class="badge">Countdown: <span id="countdown">—</span></span>
+          Trial <span id="idx">0</span>/<span id="max">40</span> • Planned: <span id="ptype">—</span> • Actual: <span id="isMatch">—</span>
         </div>
         <div class="mut">Correct: <span id="corr">0</span> • Errors: <span id="err">0</span></div>
-        <div class="mut small" id="modeLine">Axes: plane • Steps: 1 • Ordered: OFF • Dyads: 1 • Cats: 0 • N=1</div>
       </div>
     </div>
   </div>
 
   <div class="box" style="margin-top:12px">
-    <div class="title">Premise (single sentence)</div>
+    <div class="title">Premise (spoken + visual)</div>
     <div id="premiseText" aria-live="polite">—</div>
   </div>
-
-  <div id="log" style="display:none" aria-hidden="true">—</div>
 </div>
 
 <script>
-/* ============================================================
-   Relational N-Back — One-Sentence Logic-Only
-   FIXES IMPLEMENTED:
-   - Canonical surface ordering in unordered mode to avoid odd phrases like "west-north".
-   - No duplicate tokens inside a clause (prevents "below-below" etc.).
-   - Customizable solve window (1–10s).
-   Other previously delivered guarantees (match construction, cache policy, session lock) retained.
-   ============================================================ */
-
-/* ===== Utilities ===== */
+/* Helpers */
 const $ = id => document.getElementById(id);
-function setText(id,v){ const el=$(id); if(el) el.textContent=v; }
-function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]] } return a; }
-function uniq(a){ return [...new Set(a)]; }
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
 
-/* ===== Names & Categories ===== */
-const NAMES = ['Ava','Ben','Zara','Liam','Maya','Eli','Noah','Tara','Leo','Nina','Aria','Milo','Iris','Owen','Luca','June','Reid','Skye','Ezra','Quinn','Nova','Rene','Kai'];
-const CATS  = ['Red','Blue','Gold','Green','Alpha','Beta','Gamma','Delta','Theta','Iota','Kappa','Lambda'];
-
-/* ===== Tokens / Axes ===== */
-const AXES = {
-  plane: ['north','east','south','west'],   // canonical NESW order for surface
-  level: ['above','below'],
-  embed: ['in','out'],
-  time:  ['ahead','behind'],
-  rot:   ['turn-right','turn-left']
+/* Directions */
+const DIRS = {
+  north:{x:0,y:-1}, south:{x:0,y:1}, east:{x:1,y:0}, west:{x:-1,y:0},
+  northeast:{x:1,y:-1}, northwest:{x:-1,y:-1}, southeast:{x:1,y:1}, southwest:{x:-1,y:1}
 };
-const OPP   = {
-  north:'south', south:'north', east:'west', west:'east',
-  above:'below', below:'above', in:'out', out:'in',
-  ahead:'behind', behind:'ahead', 'turn-right':'turn-left', 'turn-left':'turn-right'
+const HORIZ = Object.keys(DIRS);
+const LEVELS = [1,2,3];
+
+/* Complexity variables */
+let NUM_SYMBOLS = 3;
+let REL_COUNT = 2;
+let COMP_COUNT = 1;
+let SCRAMBLE = false;
+let COND_MODE = false;
+
+/* Voice loader state */
+let VOICE=null;
+let userRateChanged=false, userPitchChanged=false;
+const LAST_KEY='rnback_last_voice_v1';
+const REGION_NAMES={ AE:'United Arab Emirates', AU:'Australia', GB:'United Kingdom', UK:'United Kingdom',
+  US:'United States', CA:'Canada', NZ:'New Zealand', IE:'Ireland', IN:'India', ZA:'South Africa',
+  PH:'Philippines', SG:'Singapore', HK:'Hong Kong', NG:'Nigeria'
 };
-function tokenToDelta(t){
-  const d={x:0,y:0,z:0,w:0,u:0,v:0};
-  if(t==='north') d.y-=1; else if(t==='south') d.y+=1;
-  else if(t==='east') d.x+=1; else if(t==='west') d.x-=1;
-  else if(t==='above') d.z+=1; else if(t==='below') d.z-=1;
-  else if(t==='in') d.w+=1; else if(t==='out') d.w-=1;
-  else if(t==='ahead') d.v+=1; else if(t==='behind') d.v-=1;
-  else if(t==='turn-right') d.u+=1; else if(t==='turn-left') d.u-=1;
-  return d;
+const regionCode=lang=>(String(lang).match(/^[a-z]{2,3}[-_]?([A-Z]{2})/)||[])[1]||'';
+const regionName=lang=> (regionCode(lang)==='AE' ? 'United Arab Emirates'
+                         : REGION_NAMES[regionCode(lang)] || (/^en\b/i.test(lang)?'Global English':'Other Region'));
+const MALE_NEG=/\b(male|boy|man|daniel|david|george|michael|mark|tom|fred|brian|kevin|liam|adam|andy|ben|bruce|charles|chris|eric|frank|jack|john|luke|matt|mike|nathan|paul|peter|ryan|steve|tim|alex(?!a)|james|william|robert|andrew|henry|richard|pablo|ricardo|mateo)\b/i;
+const FEMALE_TOKENS=/\b(zira|samantha|karen|moira|tessa|serena|veena|victoria|joanna|jenny|aria|jessa|kimberly|kendra|ivy|nicole|salli|olivia|ella|ava|amy|emma|mia|sophia|isabella|natasha|catherine|allison|chloe|grace|zoe|sarah|sofia|camila|paulina|luciana|monica|anna|tatyana|zhiyu|hazel|helen|riva|luna|maya|noor|nour|layla|leila|hala|mariam|maryam|salma|dana|rania|yasmin|yasmine|amal|reem|farah|fatima|fatma|huda|nada|noura|nura)\b/i;
+function voicesNow(){ try{ return speechSynthesis.getVoices()||[]; }catch(_){ return []; } }
+function vKey(v){ return v.voiceURI||(v.name+'|'+v.lang); }
+function labelForVoice(v){
+  const lower=(v.name+' '+v.voiceURI).toLowerCase();
+  const m=lower.match(FEMALE_TOKENS);
+  if(m){ const s=m[0]; return s.charAt(0).toUpperCase()+s.slice(1); }
+  const region=regionName(v.lang);
+  const pools={
+    'United Arab Emirates':['Layla','Noor','Hala','Mariam','Salma','Dana','Rania','Yasmin','Amal','Leila'],
+    'Australia':['Zoe','Isla','Mia','Sophie','Olivia','Ava','Ella','Grace','Ruby','Lily','Chloe'],
+    'United Kingdom':['Sophie','Amelia','Olivia','Grace','Ava','Emily','Isla','Lucy','Chloe','Mia'],
+    'United States':['Amy','Emma','Ava','Mia','Sophia','Isabella','Olivia','Ella','Zoe','Grace'],
+    'Global English':['Amy','Ella','Zoe','Mia','Ava','Sophie','Lily','Ruby','Grace','Chloe'],
+    'Other Region':['Ella','Zoe','Mia','Ava','Sophie','Lily','Ruby','Grace','Chloe']
+  };
+  const pool=pools[region]||pools['Other Region'];
+  let h=0, key=vKey(v); for(let i=0;i<key.length;i++) h=(h*31+key.charCodeAt(i))>>>0;
+  return pool[h%pool.length];
 }
-function vAdd(a,b){ return {x:a.x+b.x,y:a.y+b.y,z:a.z+b.z,w:a.w+b.w,u:a.u+b.u,v:a.v+b.v}; }
-function vInv(a){ return {x:-a.x,y:-a.y,z:-a.z,w:-a.w,u:-a.u,v:-a.v}; }
-function vEq(a,b){ return a.x===b.x&&a.y===b.y&&a.z===b.z&&a.w===b.w&&a.u===b.u&&a.v===b.v; }
-
-/* ===== Global knobs (defaults; snapshotted at start) ===== */
-let DIFF=1, ORDER_MODE=false, STEP_LEN=1, DYADS=1, CATS_MODE=0, ORDERED_AXES=['plane'], TOKEN_POOL=[];
-let MAX=200, RATE=25, N=1, SPEAK=true;
-let SOLVE_WINDOW=5.0;
-
-/* ===== Session config (locked per block) ===== */
-let SESSION_CFG=null; // { ORDER_MODE, STEP_LEN, DYADS, CATS_MODE, ORDERED_AXES, TOKEN_POOL }
-
-/* ===== Difficulty mapping ===== */
-function axesForDiff(d){
-  if(d===1) return ['plane'];
-  if(d===2) return ['plane'];
-  if(d===3) return ['plane','level'];
-  if(d===4) return ['plane','level'];
-  if(d===5) return ['plane','level','embed'];
-  if(d===6) return ['plane','level','embed','time'];
-  if(d===7) return ['plane','level'];
-  if(d===8) return ['plane','level','embed'];
-  if(d===9) return ['plane','level','embed','time'];
-  return ['plane','level','embed','time','rot'];
+function femaleScore(v){
+  const n=(v.name+' '+v.voiceURI).toLowerCase();
+  let s=0;
+  if(/\bfemale\b/.test(n)) s+=3;
+  if(FEMALE_TOKENS.test(n)) s+=2;
+  if(!MALE_NEG.test(n)) s+=1;
+  if(/AE$/i.test(v.lang)) s+=1;
+  if(/^en[-_](AU|GB|US)/i.test(v.lang)) s+=1;
+  return s;
 }
-function applyDifficulty(d){
-  DIFF=d;
-  ORDERED_AXES = axesForDiff(d);
-  TOKEN_POOL = ORDERED_AXES.flatMap(ax=>AXES[ax]);
-  if(d===1) STEP_LEN=1;
-  else if(d<=4) STEP_LEN=2;
-  else if(d<=6) STEP_LEN=3 + (d===6?1:0);
-  else if(d===7) STEP_LEN=2;
-  else if(d===8) STEP_LEN=3;
-  else STEP_LEN=4;
-  ORDER_MODE = d>=8;
-  DYADS = d>=7 ? 2 : 1;
-  if(d<=2) CATS_MODE=0;
-  else if(d<=6) CATS_MODE=1;
-  else if(d<=9) CATS_MODE=2;
-  else CATS_MODE=3;
-
-  const axesLabel = ORDERED_AXES.map(ax => ({plane:'plane',level:'level',embed:'in/out',time:'time',rot:'rotation'}[ax])).join('+') || '—';
-  setText('diffVal', d);
-  $('diffExplain').textContent = `Axes: ${axesLabel} • Steps: ${STEP_LEN} • Ordered: ${ORDER_MODE?'ON':'OFF'} • Dyads: ${DYADS} • Cats: ${CATS_MODE}`;
-  $('modeLine').textContent    = `Axes: ${axesLabel} • Steps: ${STEP_LEN} • Ordered: ${ORDER_MODE?'ON':'OFF'} • Dyads: ${DYADS} • Cats: ${CATS_MODE} • N=${N}`;
+function chooseBestVoice(list){
+  try{
+    const last=localStorage.getItem(LAST_KEY);
+    if(last){ const found=list.find(v=>vKey(v)===last); if(found) return found; }
+  }catch(_){}
+  const sorted=list.slice().sort((a,b)=>femaleScore(b)-femaleScore(a));
+  const au=sorted.find(v=>/en[-_]?AU/i.test(v.lang));
+  return au || sorted[0] || null;
 }
+function populateMenusFast() {
+  const regionsOrder=['Australia','United Kingdom','United States','United Arab Emirates','Canada','Ireland','New Zealand','South Africa','Global English','Other Region'];
+  const regionSel=$('regionSelect'); regionSel.innerHTML='';
+  regionsOrder.forEach(r=>{
+    const o=document.createElement('option');
+    o.value=r; o.textContent=r;
+    regionSel.appendChild(o);
+  });
+  regionSel.value='Australia';
 
-/* ===== Canonical surface ordering (prevents "west-north", duplicates, etc.) ===== */
-function axisOf(t){
-  if(AXES.plane.includes(t)) return 'plane';
-  if(AXES.level.includes(t)) return 'level';
-  if(AXES.embed.includes(t)) return 'embed';
-  if(AXES.time.includes(t))  return 'time';
-  if(AXES.rot.includes(t))   return 'rot';
-  return 'x';
+  const voiceSel=$('voice'); voiceSel.innerHTML='';
+  const raw=voicesNow();
+  const list = raw.filter(v=>{
+    const n=(v.name+' '+v.voiceURI).toLowerCase();
+    return FEMALE_TOKENS.test(n) || (!MALE_NEG.test(n) && /\bfemale\b/.test(n));
+  });
+  const use = list.length? list : raw;
+  const inRegion = r=>use.filter(v=>regionName(v.lang)===r);
+
+  function fillVoicesFor(region){
+    voiceSel.innerHTML='';
+    const pack=inRegion(region);
+    (pack.length?pack:use).forEach(v=>{
+      const o=document.createElement('option');
+      o.value=vKey(v);
+      o.textContent=labelForVoice(v);
+      o.title=`${v.name} — ${regionName(v.lang)} — ${v.lang}`;
+      voiceSel.appendChild(o);
+    });
+    const best=chooseBestVoice(use);
+    if(best){
+      VOICE=best;
+      voiceSel.value=vKey(best);
+      try{ localStorage.setItem(LAST_KEY,vKey(best)); }catch(_){}
+    }
+  }
+  fillVoicesFor(regionSel.value);
+  regionSel.onchange=()=>fillVoicesFor(regionSel.value);
+  voiceSel.onchange=()=>{
+    const key=voiceSel.value;
+    const found=voicesNow().find(v=>vKey(v)===key);
+    if(found){
+      VOICE=found;
+      try{ localStorage.setItem(LAST_KEY,vKey(found)); }catch(_){}
+    }
+  };
+  if('speechSynthesis' in window){
+    speechSynthesis.onvoiceschanged = ()=>{ populateMenusFast(); };
+  }
 }
-const AXIS_ORDER = ['plane','level','embed','time','rot'];
-const PLANE_INDEX = Object.fromEntries(AXES.plane.map((d,i)=>[d,i])); // NESW = 0,1,2,3
-
-function sortTokensCanonical(seq){
-  // stable canonical order: plane (N,E,S,W) → level (above,below) → embed → time → rot
-  return seq.slice().sort((a,b)=>{
-    const aa=axisOf(a), bb=axisOf(b);
-    if(aa!==bb) return AXIS_ORDER.indexOf(aa)-AXIS_ORDER.indexOf(bb);
-    if(aa==='plane') return PLANE_INDEX[a]-PLANE_INDEX[b];
-    // level: prefer "above" then "below"; embed: "in" then "out"; time: "ahead" then "behind"; rot: "turn-right" then "turn-left"
-    const pref = {
-      level: ['above','below'],
-      embed: ['in','out'],
-      time:  ['ahead','behind'],
-      rot:   ['turn-right','turn-left']
-    }[aa] || [];
-    const ia=pref.indexOf(a), ib=pref.indexOf(b);
-    return (ia<0?99:ia)-(ib<0?99:ib);
+function applyVoiceDefaults(){
+  if(!userRateChanged){
+    $('vRate').value=0.95;
+    $('rateVal').textContent='0.95';
+  }
+  if(!userPitchChanged){
+    $('vPitch').value=1.28;
+    $('pitchVal').textContent='1.28';
+  }
+}
+async function speak(text){
+  if(!('speechSynthesis' in window)){ return; }
+  const u=new SpeechSynthesisUtterance(text);
+  if(VOICE) u.voice=VOICE;
+  u.lang=(VOICE&&VOICE.lang) ? VOICE.lang : 'en-AU';
+  u.rate=+$('vRate').value;
+  u.pitch=+$('vPitch').value;
+  u.volume=+$('vVol').value;
+  return new Promise(res=>{
+    let settled=false;
+    const done=()=>{ if(!settled){ settled=true; res(); } };
+    u.onend=done;
+    u.onerror=()=>{
+      const pool=voicesNow();
+      const alt = pool.find(v=>vKey(v)!== (VOICE? vKey(VOICE):'')) || null;
+      if(alt){
+        VOICE=alt;
+        try{ localStorage.setItem(LAST_KEY,vKey(alt)); }catch(_){}
+        const u2=new SpeechSynthesisUtterance(text);
+        u2.voice=VOICE;
+        u2.lang=VOICE.lang;
+        u2.rate=u.rate;
+        u2.pitch=u.pitch;
+        u2.volume=u.volume;
+        u2.onend=done;
+        u2.onerror=done;
+        try{ speechSynthesis.speak(u2); }catch(_){ done(); }
+      } else { done(); }
+    };
+    try{
+      if(speechSynthesis.speaking) speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+      setTimeout(done, 7000);
+    }catch(_){ done(); }
   });
 }
 
-/* ===== Helpers ===== */
-function sym(){ const L='ABCDEFGHIJKLMNOPQRSTUVWXYZ'; return L[(Math.random()*26)|0] + (1+((Math.random()*9)|0)); }
-function pickNames(k){ const a=NAMES.slice(); shuffle(a); return a.slice(0,k); }
-function pickCats(k){ const a=CATS.slice(); shuffle(a); return a.slice(0,k); }
-
-/* ===== Builders / Parser (use cfg snapshot) ===== */
-function buildCore(seq, cfg){
-  // In ordered mode, preserve sequence exactly.
-  // In unordered mode, render in canonical order to avoid odd phrasings.
-  const out = cfg.ORDER_MODE ? seq.slice() : sortTokensCanonical(seq);
-  return out.join('-');
+/* Relation helpers */
+function relationToString(rel){
+  const parts=[];
+  let dx=rel.x, dy=rel.y;
+  if(dx!==0 || dy!==0){
+    let dirWord='';
+    if(dy<0) dirWord+='north';
+    if(dy>0) dirWord+='south';
+    if(dx>0) dirWord+=dirWord? ' east':'east';
+    if(dx<0) dirWord+=dirWord? ' west':'west';
+    parts.push(dirWord.trim());
+  }
+  if(rel.z){
+    const n=Math.abs(rel.z);
+    const word=n===1?'one level':n===2?'two levels':`${n} levels`;
+    parts.push(`${word} ${rel.z>0?'above':'below'}`);
+  }
+  return parts.join(' and ');
 }
-function sampleSeq(len,cfg){
-  // No duplicates, no opposites; ensure variety across axes when possible.
-  let tries=0;
-  while(tries++<300){
-    const seq=[]; const seen=new Set(); const seenAxis=new Set();
-    while(seq.length<len){
-      const t = cfg.TOKEN_POOL[(Math.random()*cfg.TOKEN_POOL.length)|0];
-      if(seen.has(t)) continue;               // prevent duplicates like "below-below"
-      if(seen.has(OPP[t])) continue;          // prevent opposite within clause
-      // if we already used this axis and there are other axes available, try another token to keep phrases natural
-      const ax = axisOf(t);
-      if(len>=2 && cfg.ORDERED_AXES.length>=2 && seenAxis.has(ax) && seenAxis.size<cfg.ORDERED_AXES.length){
-        // try to pick a different axis first; allow same-axis only if forced later
-        const altPool = cfg.TOKEN_POOL.filter(x=>axisOf(x)!==ax && !seen.has(x) && !seen.has(OPP[x]));
-        const pick = altPool[(Math.random()*altPool.length)|0];
-        if(pick){ seq.push(pick); seen.add(pick); seenAxis.add(axisOf(pick)); continue; }
-      }
-      seq.push(t); seen.add(t); seenAxis.add(ax);
+function randomCompositeRel(){
+  let rel={x:0,y:0,z:0};
+  const n=1 + Math.floor(Math.random()*COMP_COUNT);
+  for(let i=0;i<n;i++){
+    if(Math.random()<0.5){
+      const d = DIRS[HORIZ[Math.floor(Math.random()*HORIZ.length)]];
+      rel.x+=d.x; rel.y+=d.y;
+    } else {
+      const nLev=LEVELS[Math.floor(Math.random()*LEVELS.length)];
+      const up=Math.random()<0.5;
+      rel.z += up? nLev : -nLev;
     }
-    // extra guard: if unordered and all tokens are plane, sort will give NESW and read nicely
-    return seq;
   }
-  // fallback deterministic simple, still non-duplicate if possible
-  const base = cfg.TOKEN_POOL.find(t=>true) || 'north';
-  return Array.from({length:len}, (_,i)=> i===0? base : (cfg.TOKEN_POOL.find(t=>t!==base && OPP[t]!==base) || base));
+  return rel;
 }
-
-/* ===== Sentence generation with cfg ===== */
-function buildSentenceByDifficulty(cfg){
-  const nameCount = cfg.DYADS===1? 2 : 4;
-  const [p1,p2,p3,p4] = pickNames(nameCount).concat([null,null,null,null]).slice(0,4);
-  const [x1,x2,x3,x4] = [sym(), sym(), sym(), sym()];
-  const catCount = (cfg.CATS_MODE===0)? 0 : (cfg.DYADS===1? 2 : 4);
-  const cats = pickCats(Math.max(catCount, (cfg.CATS_MODE===3?4:catCount)));
-  const [c1,c2,c3,c4] = cats.concat([null,null,null,null]).slice(0,4);
-
-  const seq1 = sampleSeq(cfg.STEP_LEN,cfg);
-  const core1 = buildCore(seq1,cfg);
-  let s = `${p1} at ${x1}${cfg.CATS_MODE?` in ${c1}`:''} is ${core1} of ${p2} at ${x2}${cfg.CATS_MODE?` in ${c2}`:''}`;
-
-  if(cfg.DYADS===2){
-    const seq2 = sampleSeq(cfg.STEP_LEN,cfg);
-    const core2 = buildCore(seq2,cfg);
-    s += `, while ${p3} at ${x3}${cfg.CATS_MODE?` in ${c3}`:''} is ${core2} of ${p4} at ${x4}${cfg.CATS_MODE?` in ${c4}`:''}`;
+function clauseString(from, rel, to){ return `${from} is ${relationToString(rel)} of ${to}`; }
+function token(){
+  const letters='ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  return letters[Math.floor(Math.random()*26)] + (1+Math.floor(Math.random()*9));
+}
+function uniqueTokens(k){
+  const s=new Set();
+  while(s.size<k) s.add(token());
+  return [...s];
+}
+function randomPremise(){
+  if(COND_MODE){
+    const toks=uniqueTokens(5);
+    const r1=randomCompositeRel();
+    const r2=randomCompositeRel();
+    const r3=randomCompositeRel();
+    const clause1=clauseString(toks[0],r1,toks[1]);
+    const clause2=clauseString(toks[2],r2,toks[3]);
+    const clause3=clauseString(toks[3],r3,toks[4]);
+    return `If ${clause1} and ${clause2} then ${clause3}`;
   }
-
+  const tokens=uniqueTokens(NUM_SYMBOLS);
   const clauses=[];
-  if(cfg.CATS_MODE>=2){
-    clauses.push(`${c1} over ${c2}`);
-    if(cfg.DYADS===2) clauses.push(`${c3} over ${c4}`);
+  let attempts=0;
+  for(let i=0;i<REL_COUNT;i++){
+    let u,v;
+    do{
+      u=tokens[Math.floor(Math.random()*tokens.length)];
+      v=tokens[Math.floor(Math.random()*tokens.length)];
+    }while(u===v && attempts++<10);
+    clauses.push(clauseString(u, randomCompositeRel(), v));
   }
-  if(cfg.CATS_MODE===3 && cfg.DYADS===2){
-    const planeChoices = AXES.plane.filter(t=>cfg.TOKEN_POOL.includes(t));
-    const planeTok = planeChoices.length? planeChoices[(Math.random()*planeChoices.length)|0] : 'west';
-    clauses.push(`${x1} ${planeTok} of ${x3}`);
-  }
-  if(clauses.length) s += `, where ${clauses.join(' and ')}`;
-  s += '.';
-  return { text:s };
+  if(SCRAMBLE) shuffle(clauses);
+  return clauses.join(' and ');
 }
-
-/* ===== Parser (uses cfg snapshot; validates tokens) ===== */
-const DYAD_RE = /^([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?\s+is\s+(.+?)\s+of\s+([A-Za-z]+)\s+at\s+([A-Z]\d+)(?:\s+in\s+([A-Za-z]+))?$/i;
-function parseSentence(s,cfg){
-  s=String(s||'').trim(); if(!s.endsWith('.')) return null; s=s.slice(0,-1);
-  let where=null; const idx = s.toLowerCase().lastIndexOf(', where '); if(idx>=0){ where=s.slice(idx+8).trim(); s=s.slice(0,idx).trim(); }
-  const parts=s.split(/,\s*while\s+/i); if(parts.length<1||parts.length>2) return null;
-
-  const S={ players:[], points:[], cats:[], bind:{}, inCat:{}, outrank:[], dyads:[], cross:null, tokensPool:cfg.TOKEN_POOL.slice(), order:cfg.ORDER_MODE };
-  function toks(core){
-    const t=core.toLowerCase().split(/\s*-\s*/).filter(Boolean);
-    if(t.length!==cfg.STEP_LEN) return null;
-    // disallow duplicates here too (keeps 'below-below' out even if sourced)
-    const seen=new Set();
-    for(const x of t){
-      if(!cfg.TOKEN_POOL.includes(x)) return null;
-      if(seen.has(x) || seen.has(OPP[x])) return null;
-      seen.add(x);
+function parseRelationWords(str){
+  str=str.trim().toLowerCase();
+  let vec={x:0,y:0,z:0};
+  const parts=str.split(/\s+and\s+/);
+  parts.forEach(part=>{
+    part=part.trim();
+    let m=part.match(/^(one|two|three|\d+)\s+levels?\s+(above|below)$/);
+    if(m){
+      const n=m[1];
+      let k=n==='one'?1:n==='two'?2:n==='three'?3:+n;
+      vec.z += m[2]==='above'? k : -k;
+      return;
     }
+    if(part){
+      part=part.replace(/\s+/g,'');
+      const d=DIRS[part];
+      if(d){ vec.x+=d.x; vec.y+=d.y; return; }
+    }
+  });
+  return vec;
+}
+function parsePremise(sentence){
+  let s=String(sentence).trim();
+  s=s.replace(/^if\s+/i,'');
+  s=s.replace(/\bthen\b/gi,'and');
+  const parts=s.split(/\s+and\s+/i).map(p=>p.trim()).filter(Boolean);
+  const edges=[]; const nodes=new Set();
+  parts.forEach(part=>{
+    const m=part.match(/^([A-Z]\d+)\s+is\s+(.+?)\s+of\s+([A-Z]\d+)$/i);
+    if(m){
+      const u=m[1], relWords=m[2], v=m[3];
+      edges.push({u,v,rel:parseRelationWords(relWords)});
+      nodes.add(u); nodes.add(v);
+    }
+  });
+  return {nodes:[...nodes], edges};
+}
+function invertRel(r){ return {x:-r.x,y:-r.y,z:-r.z}; }
+function vecAdd(a,b){ return {x:a.x+b.x, y:a.y+b.y, z:a.z+b.z}; }
+function closureFromEdges(edges){
+  const adj=new Map(), nodes=new Set();
+  function push(u,v,rel){
+    if(!adj.has(u)) adj.set(u,[]);
+    adj.get(u).push({v,rel});
+    nodes.add(u); nodes.add(v);
+  }
+  edges.forEach(e=>{
+    push(e.u,e.v,e.rel);
+    push(e.v,e.u,invertRel(e.rel));
+  });
+  const coords=new Map(); let ok=true;
+  nodes.forEach(start=>{
+    if(coords.has(start)) return;
+    coords.set(start,{x:0,y:0,z:0});
+    const stack=[start];
+    while(stack.length){
+      const u=stack.pop(), pu=coords.get(u);
+      (adj.get(u)||[]).forEach(({v,rel})=>{
+        const want=vecAdd(pu,rel);
+        if(!coords.has(v)){
+          coords.set(v,want);
+          stack.push(v);
+        } else {
+          const pv=coords.get(v);
+          if(pv.x!==want.x || pv.y!==want.y || pv.z!==want.z) ok=false;
+        }
+      });
+    }
+  });
+  return {ok,nodes:[...nodes],coords};
+}
+function sentencesRelMatch(a,b){
+  const A=parsePremise(a), B=parsePremise(b);
+  for(const s of A.nodes){ if(!B.nodes.includes(s)) return false; }
+  const merged=closureFromEdges([...A.edges,...B.edges]);
+  return merged.ok;
+}
+function buildMatching(prev){
+  const P=parsePremise(prev);
+  if(!P.edges.length) return prev;
+  const parts=P.edges.map(e=>{
+    const flip=Math.random()<0.5;
+    const u=flip?e.v:e.u;
+    const v=flip?e.u:e.v;
+    const rel=flip?invertRel(e.rel):e.rel;
+    return clauseString(u,rel,v);
+  });
+  if(parts.length>1 && SCRAMBLE) shuffle(parts);
+  return parts.join(' and ');
+}
+function buildNonMatching(prev){
+  const prevNodes=new Set(parsePremise(prev).nodes);
+  function freshToken(){
+    let t;
+    do{ t=token(); }while(prevNodes.has(t));
+    prevNodes.add(t);
     return t;
   }
-  const m1=DYAD_RE.exec(parts[0]); if(!m1) return null;
-  const [P1,X1,C1,CORE1,P2,X2,C2]=[m1[1],m1[2],m1[3]||null,m1[4],m1[5],m1[6],m1[7]||null];
-  const T1=toks(CORE1); if(!T1) return null; let V1={x:0,y:0,z:0,w:0,u:0,v:0}; T1.forEach(t=>V1=vAdd(V1,tokenToDelta(t)));
-  S.players.push(P1,P2); S.points.push(X1,X2); if(C1) S.cats.push(C1); if(C2) S.cats.push(C2);
-  S.bind[P1]=X1; S.bind[P2]=X2; if(C1) S.inCat[X1]=C1; if(C2) S.inCat[X2]=C2;
-  S.dyads.push({L:{P:P1,X:X1,C:C1},R:{P:P2,X:X2,C:C2},tokens:T1,vec:V1});
-
-  if(parts.length===2){
-    const m2=DYAD_RE.exec(parts[1]); if(!m2) return null;
-    const [P3,X3,C3,CORE2,P4,X4,C4]=[m2[1],m2[2],m2[3]||null,m2[4],m2[5],m2[6],m2[7]||null];
-    const T2=toks(CORE2); if(!T2) return null; let V2={x:0,y:0,z:0,w:0,u:0,v:0}; T2.forEach(t=>V2=vAdd(V2,tokenToDelta(t)));
-    S.players.push(P3,P4); S.points.push(X3,X4); if(C3) S.cats.push(C3); if(C4) S.cats.push(C4);
-    S.bind[P3]=X3; S.bind[P4]=X4; if(C3) S.inCat[X3]=C3; if(C4) S.inCat[X4]=C4;
-    S.dyads.push({L:{P:P3,X:X3,C:C3},R:{P:P4,X:X4,C:C4},tokens:T2,vec:V2});
-  }
-  if(where){
-    const items=where.split(/\s+and\s+/i).map(x=>x.trim());
-    for(const it of items){
-      let m;
-      if( (m=/^([A-Za-z]+)\s+over\s+([A-Za-z]+)$/i.exec(it)) ){ S.outrank.push([m[1],m[2]]); }
-      else if( (m=/^([A-Z]\d+)\s+(north|south|east|west)\s+of\s+([A-Z]\d+)$/i.exec(it)) ){
-        const tok=m[2].toLowerCase(); if(!AXES.plane.includes(tok)) return null; S.cross={X1:m[1],tok,X2:m[3]};
-      } else return null;
-    }
-  }
-  S.players=uniq(S.players); S.points=uniq(S.points); S.cats=uniq(S.cats);
-  return S;
-}
-
-/* ===== Isomorphism and cache policy remain unchanged (omitted for brevity in this excerpt) ===== */
-/* For completeness, include your previously working typedIsoEqual, match/non-match constructors,
-   cache policy, trial engine, acceptance simulation, and controls exactly as in your last version,
-   since the requested fix is localized to:
-   - AXES.plane order (NESW),
-   - buildCore canonical ordering (unordered mode),
-   - sampleSeq preventing duplicates and preferring cross-axis variety,
-   - parseSentence duplicate-token guard,
-   - customizable SOLVE_WINDOW wiring (already present).
-*/
-
-/* ===== Insert the previously provided typedIsoEqual, cache, MATCH/NONMATCH, engine, and controls here ===== */
-
-/* ------- BEGIN: Unchanged core from your last working version (for completeness) ------- */
-/* (The following is identical to the last version you approved, except it now calls the new
-   buildCore/sampleSeq/parseSentence logic that enforce canonical wording and no duplicates.) */
-
-function perms(arr){ const out=[], used=Array(arr.length).fill(false), cur=[]; (function rec(){ if(cur.length===arr.length){ out.push(cur.slice()); return; } for(let i=0;i<arr.length;i++){ if(used[i]) continue; used[i]=true; cur.push(arr[i]); rec(); cur.pop(); used[i]=false; } })(); return out; }
-function arraysEqual(a,b){ if(a.length!==b.length) return false; for(let i=0;i<a.length;i++) if(a[i]!==b[i]) return false; return true; }
-function seqEqOrInv(a,b,invert){ if(!invert) return arraysEqual(a,b); const inv=b.slice().reverse().map(t=>OPP[t]||t); return arraysEqual(a,inv); }
-function multisetEq(A,B){ if(A.length!==B.length) return false; const m=new Map(); for(const x of A) m.set(x,(m.get(x)||0)+1); for(const y of B){ if(!m.has(y)) return false; const v=m.get(y)-1; if(v===0) m.delete(y); else m.set(y,v); } return m.size===0; }
-function typedIsoEqual(A,B){
-  if(!A||!B) return false;
-  if(A.players.length!==B.players.length || A.points.length!==B.points.length || A.cats.length!==B.cats.length) return false;
-  const pPerms=perms(B.players), xPerms=perms(B.points), cPerms=perms(B.cats);
-  function findDyad(bDyads,Lx,Rx,toks,vec,ordered){
-    for(const d of bDyads){
-      if(d._used) continue;
-      if(d.L.X===Lx && d.R.X===Rx){ if(ordered? arraysEqual(toks,d.tokens): vEq(vec,d.vec)){ d._used=true; return true; } }
-      if(d.L.X===Rx && d.R.X===Lx){ if(ordered? seqEqOrInv(toks,d.tokens,true): vEq(vec,vInv(d.vec))){ d._used=true; return true; } }
-    }
-    return false;
-  }
-  for(const pMap of pPerms){
-    const pBij=new Map(A.players.map((p,i)=>[p,pMap[i]]));
-    for(const xMap of xPerms){
-      const xBij=new Map(A.points.map((x,i)=>[x,xMap[i]]));
-      for(const cMap of cPerms){
-        const cBij=new Map(A.cats.map((c,i)=>[c,cMap[i]]));
-        let ok=true;
-        for(const p of A.players){ const xa=A.bind[p]; const pb=pBij.get(p), xb=xBij.get(xa); if(B.bind[pb]!==xb){ ok=false; break; } }
-        if(!ok) continue;
-        for(const x of A.points){ const ca=A.inCat[x]||null; const xb=xBij.get(x); const cb=(xb in B.inCat)? B.inCat[xb]: null; const want=ca? cBij.get(ca): null; if(cb!==want){ ok=false; break; } }
-        if(!ok) continue;
-        const aPairs=A.outrank.map(([u,v])=>`${cBij.get(u)}>${cBij.get(v)}`).sort();
-        const bPairs=B.outrank.map(([u,v])=>`${u}>${v}`).sort();
-        if(!multisetEq(aPairs,bPairs)) continue;
-        if(A.cross || B.cross){
-          if(!A.cross || !B.cross) ok=false;
-          else{
-            const ax=xBij.get(A.cross.X1), ay=xBij.get(A.cross.X2);
-            if(B.cross.tok!==A.cross.tok || B.cross.X1!==ax || B.cross.X2!==ay) ok=false;
-          }
-          if(!ok) continue;
-        }
-        const bDyads=B.dyads.map(d=>({L:{X:d.L.X},R:{X:d.R.X},tokens:d.tokens.slice(),vec:{...d.vec}}));
-        for(const d of bDyads) d._used=false;
-        for(const d of A.dyads){ const Lm=xBij.get(d.L.X), Rm=xBij.get(d.R.X); if(!findDyad(bDyads,Lm,Rm,d.tokens,d.vec,A.order)){ ok=false; break; } }
-        if(ok) return true;
-      }
-    }
-  }
-  return false;
-}
-
-/* CACHE POLICY */
-const SEEN_SURF=new Set(); const SEEN_LOGIC=new Set();
-function rememberSurface(s){ if(SEEN_SURF.size>500) SEEN_SURF.clear(); SEEN_SURF.add(s); }
-function seenSurface(s){ return SEEN_SURF.has(s); }
-function logicSig(S){
-  const dy=S.dyads.map(d=>`DX:${d.vec.x},${d.vec.y},${d.vec.z},${d.vec.w},${d.vec.u},${d.vec.v}`).sort().join('|');
-  const or=S.outrank.map(([a,b])=>`C:${a}>${b}`).sort().join('|');
-  const cr=S.cross?`X:${S.cross.tok}`:'';
-  return `${S.order?'ORD':'VEC'}|${dy}|${or}|${cr}|D${S.dyads.length}|Cats${S.cats.length}`;
-}
-function rememberLogic(S){ const sig=logicSig(S); if(SEEN_LOGIC.size>800) SEEN_LOGIC.clear(); SEEN_LOGIC.add(sig); }
-function seenLogic(S){ return SEEN_LOGIC.has(logicSig(S)); }
-
-/* MATCH TRANSFORM */
-function invertTokens(seq){ return seq.slice().reverse().map(t=>OPP[t]||t); }
-function synthSentenceFromStruct(base,pBij,xBij,cBij,swapMask,cfg){
-  function dyadText(d,swap){
-    const L=swap? d.R : d.L, R=swap? d.L : d.R;
-    const seq = cfg.ORDER_MODE ? (swap? invertTokens(d.tokens) : d.tokens.slice())
-                               : (swap? invertTokens(d.tokens) : d.tokens.slice());
-    const core=buildCore(seq,cfg);
-    const PL=pBij.get(L.P), XL=xBij.get(L.X), CL=L.C? cBij.get(L.C): null;
-    const PR=pBij.get(R.P), XR=xBij.get(R.X), CR=R.C? cBij.get(R.C): null;
-    return `${PL} at ${XL}${cfg.CATS_MODE?` in ${CL}`:''} is ${core} of ${PR} at ${XR}${cfg.CATS_MODE?` in ${CR}`:''}`;
-  }
-  let s=dyadText(base.dyads[0], !!swapMask[0]);
-  if(base.dyads.length===2) s+=`, while ${dyadText(base.dyads[1], !!swapMask[1])}`;
+  const tokens=[]; for(let i=0;i<NUM_SYMBOLS;i++) tokens.push(freshToken());
   const clauses=[];
-  if(base.outrank.length){ for(const [cA,cB] of base.outrank) clauses.push(`${cBij.get(cA)} over ${cBij.get(cB)}`); }
-  if(base.cross){ clauses.push(`${xBij.get(base.cross.X1)} ${base.cross.tok} of ${xBij.get(base.cross.X2)}`); }
-  if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.';
-  return s;
-}
-function buildMatchFromBase(base,cfg){
-  for(let attempt=0;attempt<20;attempt++){
-    const names=pickNames(base.players.length);
-    const points=Array.from({length:base.points.length}, ()=>sym());
-    const cats=pickCats(base.cats.length);
-    const pBij=new Map(base.players.map((p,i)=>[p,names[i]]));
-    const xBij=new Map(base.points.map((x,i)=>[x,points[i]]));
-    const cBij=new Map(base.cats.map((c,i)=>[c,cats[i]]));
-    const swapMask=Array(base.dyads.length).fill(false).map(()=>Math.random()<0.5);
-    const text=synthSentenceFromStruct(base,pBij,xBij,cBij,swapMask,cfg);
-    if(seenSurface(text)) continue;
-    const cand=parseSentence(text,cfg); if(!cand) continue;
-    if(typedIsoEqual(base,cand)) return {text,struct:cand};
+  let attempts=0;
+  for(let i=0;i<REL_COUNT;i++){
+    let u,v;
+    do{
+      u=tokens[Math.floor(Math.random()*tokens.length)];
+      v=tokens[Math.floor(Math.random()*tokens.length)];
+    }while(u===v && attempts++<10);
+    clauses.push(clauseString(u, randomCompositeRel(), v));
   }
-  // fallback: direct relabel without swaps
-  const names=pickNames(base.players.length);
-  const points=Array.from({length:base.points.length}, ()=>sym());
-  const cats=pickCats(base.cats.length);
-  const pBij=new Map(base.players.map((p,i)=>[p,names[i]]));
-  const xBij=new Map(base.points.map((x,i)=>[x,points[i]]));
-  const cBij=new Map(base.cats.map((c,i)=>[c,cats[i]]));
-  const text=synthSentenceFromStruct(base,pBij,xBij,cBij,[false,false],cfg);
-  const cand=parseSentence(text,cfg);
-  return {text,struct:cand};
+  if(SCRAMBLE) shuffle(clauses);
+  return clauses.join(' and ');
+}
+function sayToken(tok){
+  const m=tok.match(/^([A-Z])(\d+)$/);
+  if(!m) return tok;
+  const digits={'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine'};
+  return `${m[1]} ${m[2].split('').map(d=>digits[d]||d).join(' ')}`;
+}
+function verbalizeClause(clause){
+  return clause.replace(/([A-Z])(\d+)/g,(m,letter,digits)=>{
+    return `${letter} ${digits.split('').map(d=>({'0':'zero','1':'one','2':'two','3':'three','4':'four','5':'five','6':'six','7':'seven','8':'eight','9':'nine'}[d]||d)).join(' ')}`;
+  });
+}
+function verbalizeSentence(s){
+  if(/^if\b/i.test(s)){
+    let withoutIf=s.replace(/^if\s+/i,'');
+    const [antecedent,consequent] = withoutIf.split(/\s+then\s+/i);
+    const antecedentClauses=antecedent.split(/\s+and\s+/i).map(p=>verbalizeClause(p.trim()));
+    const consequentClause=verbalizeClause(consequent.trim());
+    return [ ...antecedentClauses.map(c=>c), `Then ${consequentClause}` ];
+  }
+  const parts=s.split(/\s+and\s+/i).map(p=>p.trim());
+  return parts.map(p=>verbalizeClause(p));
 }
 
-/* NONMATCH EDIT */
-function buildNonMatchAgainst(base,cfg){
-  function mutateOne(b){
-    const options=[]; if(b.dyads.length&&cfg.TOKEN_POOL.length>1) options.push('token'); if(b.outrank.length) options.push('flip'); if(Object.keys(b.inCat).length) options.push('recat');
-    const choice=options[(Math.random()*options.length)|0]||'token';
-    if(choice==='token'){
-      const dIdx=(Math.random()*b.dyads.length)|0, dx=b.dyads[dIdx];
-      const idx=(Math.random()*dx.tokens.length)|0, cur=dx.tokens[idx];
-      const alt=cfg.TOKEN_POOL.filter(t=>t!==cur && OPP[t]!==cur);
-      if(alt.length){
-        const curAx=axisOf(cur); const diff=alt.filter(t=>axisOf(t)!==curAx);
-        const pick=(diff.length?diff:alt)[(Math.random()*(diff.length?diff.length:alt.length))|0];
-        const seq=dx.tokens.slice(); seq[idx]=pick;
-        const parts=b.dyads.map((d,i)=>`${d.L.P} at ${d.L.X}${cfg.CATS_MODE?` in ${d.L.C}`:''} is ${buildCore(i===dIdx?seq:d.tokens,cfg)} of ${d.R.P} at ${d.R.X}${cfg.CATS_MODE?` in ${d.R.C}`:''}`);
-        let s=parts[0]; if(parts.length===2) s+=`, while ${parts[1]}`;
-        const clauses=[]; for(const [ca,cb] of b.outrank) clauses.push(`${ca} over ${cb}`); if(b.cross) clauses.push(`${b.cross.X1} ${b.cross.tok} of ${b.cross.X2}`);
-        if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.'; return s;
-      }
-    }else if(choice==='flip'){
-      const pairs=b.outrank.slice(); const k=(Math.random()*pairs.length)|0; const [a,c]=pairs[k]; pairs[k]=[c,a];
-      const parts=b.dyads.map(d=>`${d.L.P} at ${d.L.X}${cfg.CATS_MODE?` in ${d.L.C}`:''} is ${buildCore(d.tokens,cfg)} of ${d.R.P} at ${d.R.X}${cfg.CATS_MODE?` in ${d.R.C}`:''}`);
-      let s=parts[0]; if(parts.length===2) s+=`, while ${parts[1]}`;
-      const clauses=[]; for(const [ca,cb] of pairs) clauses.push(`${ca} over ${cb}`); if(b.cross) clauses.push(`${b.cross.X1} ${b.cross.tok} of ${b.cross.X2}`);
-      if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.'; return s;
-    }else if(choice==='recat'){
-      const pts=b.points.slice(); const X=pts[(Math.random()*pts.length)|0]; const cur=b.inCat[X]||null; const pool=CATS.filter(c=>c!==cur);
-      const newC=pool[(Math.random()*pool.length)|0]||cur;
-      const parts=b.dyads.map(d=>{
-        const Lc=d.L.C? (d.L.X===X? newC: d.L.C): null;
-        const Rc=d.R.C? (d.R.X===X? newC: d.R.C): null;
-        return `${d.L.P} at ${d.L.X}${cfg.CATS_MODE?` in ${Lc}`:''} is ${buildCore(d.tokens,cfg)} of ${d.R.P} at ${d.R.X}${cfg.CATS_MODE?` in ${Rc}`:''}`;
+/* Timing variables */
+let N=1, MAX=40, PAUSE_SEC=1.0, PREMISE_INTERVAL_SEC=1.0, RATE=25;
+let idx=0, running=false, paused=false;
+let waitTimer=null;
+const history=[], planned=[];
+let correct=0, errors=0;
+let spokenParts=null, clauseIdx=0;
+
+function planSequence(){
+  planned.length=0;
+  for(let i=0;i<MAX;i++) planned.push(false);
+  const eligible=[]; for(let i=N;i<MAX;i++) eligible.push(i);
+  const k=Math.round((RATE/100)*eligible.length);
+  shuffle(eligible);
+  for(let i=0;i<k;i++) planned[eligible[i]]=true;
+}
+function isActualMatch(i){ return i>=N && sentencesRelMatch(history[i-N], history[i]); }
+function buildPremiseVisual(raw){
+  const parts=raw.split(/\s+and\s+/i).map(p=>p.trim());
+  const el=$('premiseText'); el.innerHTML='';
+  parts.forEach((part,i)=>{
+    const sp=document.createElement('span');
+    sp.className='rel';
+    sp.textContent=part;
+    el.appendChild(sp);
+    if(i<parts.length-1){
+      const sep=document.createElement('span');
+      sep.className='sep';
+      sep.textContent=' and ';
+      el.appendChild(sep);
+    }
+  });
+  return parts;
+}
+function setActivePart(i){
+  [...$('premiseText').querySelectorAll('.rel')].forEach((n,idx)=>{
+    n.classList.toggle('active', idx===i);
+  });
+}
+async function speakPremise(){
+  if(!spokenParts) return;
+  for(; running && !paused && clauseIdx<spokenParts.length; clauseIdx++){
+    setActivePart(clauseIdx);
+    await speak(spokenParts[clauseIdx]+'.');
+    if(!running || paused) return;
+    if(clauseIdx<spokenParts.length-1){
+      await new Promise(res=>{
+        waitTimer=setTimeout(()=>{
+          waitTimer=null;
+          res();
+        }, PAUSE_SEC*1000);
       });
-      let s=parts[0]; if(parts.length===2) s+=`, while ${parts[1]}`;
-      const clauses=[]; for(const [ca,cb] of base.outrank) clauses.push(`${ca} over ${cb}`); if(base.cross) clauses.push(`${base.cross.X1} ${base.cross.tok} of ${base.cross.X2}`);
-      if(clauses.length) s+=`, where ${clauses.join(' and ')}`; s+='.'; return s;
+      if(!running || paused) return;
     }
-    return null;
   }
-  for(let t=0;t<200;t++){
-    const text=mutateOne(base); if(!text || seenSurface(text)) continue;
-    const cand=parseSentence(text,cfg); if(!cand) continue;
-    if(typedIsoEqual(base,cand)) continue;
-    if(seenLogic(cand)) continue;
-    return {text,struct:cand};
+  setActivePart(-1);
+  if(running && !paused){
+    await new Promise(res=>{
+      waitTimer=setTimeout(()=>{
+        waitTimer=null;
+        res();
+      }, PREMISE_INTERVAL_SEC*1000);
+    });
   }
-  return null;
 }
-
-/* Surface shuffle (unordered only) */
-function surfaceShuffleHyphens(text,cfg){ if(cfg.ORDER_MODE) return text; return text.replace(/\bis\s+([a-z\-]+)\s+of\b/gi, (m,g)=>{ const t=g.split('-'); const canon=sortTokensCanonical(t); return 'is '+canon.join('-')+' of'; }); }
-
-/* Trial engine & acceptance sim (unchanged except solve-window variable) */
-let idx=0, correct=0, errors=0, planned=[], history=[], SESSION={running:false, paused:false};
-let currentTruth=false, responded=false, solveTimer=null, countdownTimer=null, countdownLeft=0;
-
-function planSequence(){ planned.length=MAX; for(let i=0;i<MAX;i++) planned[i]=false; const elig=[]; for(let i=N;i<MAX;i++) elig.push(i); const k=Math.round((RATE/100)*elig.length); shuffle(elig); for(let i=0;i<k;i++) planned[elig[i]]=true; }
-function showPremise(text){ $('premiseText').textContent=text; }
-function updateUI(){ setText('idx', idx); setText('max', MAX); setText('ptype', (idx<MAX && idx>=N && planned[idx])?'MATCH':'NON-match'); setText('corr', correct); setText('err', errors); setText('isMatch','—'); }
-
-async function speak(text){
-  if(!SPEAK) return Promise.resolve();
-  if(typeof window==='undefined'||!('speechSynthesis' in window)) return Promise.resolve();
-  return new Promise(res=>{ try{ const u=new SpeechSynthesisUtterance(text); u.lang='en-GB'; u.rate=1.0; u.pitch=1.0; u.volume=1.0; u.onend=()=>res(); u.onerror=()=>res(); if(window.speechSynthesis.speaking) window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); }catch{ res(); } });
-}
-function scheduleCountdown(sec){ countdownLeft=sec; setText('countdown', countdownLeft.toFixed(1)+'s'); if(countdownTimer) clearInterval(countdownTimer); countdownTimer=setInterval(()=>{ countdownLeft=Math.max(0,countdownLeft-0.1); setText('countdown', countdownLeft.toFixed(1)+'s'); if(countdownLeft<=0){ clearInterval(countdownTimer); countdownTimer=null; } },100); }
-function evaluateAndAdvance(){ const resp=responded, truth=currentTruth; if(resp===truth) correct++; else errors++; setText('corr',correct); setText('err',errors); setText('isMatch', String(truth).toUpperCase()); idx++; if(idx>=MAX){ stop(); return; } runTrial(); }
-
-function runTrial(){
-  if(!SESSION.running || SESSION.paused) return;
-  const cfg=SESSION_CFG; let premise; const mustMatch=(idx>=N)&&planned[idx];
-
-  if(idx===0){
-    let tries=0; while(tries++<200){ const cand=buildSentenceByDifficulty(cfg); if(seenSurface(cand.text)) continue; const S=parseSentence(cand.text,cfg); if(!S) continue; if(seenLogic(S)) continue; premise={text:cand.text,struct:S}; break; }
-    if(!premise){ const rnd=buildSentenceByDifficulty(cfg); premise={text:rnd.text,struct:parseSentence(rnd.text,cfg)}; }
-  }else if(mustMatch){
-    const base=history[idx-N].struct;
-    let cand=buildMatchFromBase(base,cfg);
-    if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){
-      cand=buildMatchFromBase(base,{...cfg});
-      if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){
-        const prev=history[idx-N].text; const altered=surfaceShuffleHyphens(prev,cfg); const parsed=parseSentence(altered,cfg) || base; cand={text:altered,struct:parsed};
-      }
-    }
-    if(seenSurface(cand.text)){ const altered=surfaceShuffleHyphens(cand.text,cfg); const parsed=parseSentence(altered,cfg) || cand.struct; premise={text:altered,struct:parsed}; }
-    else premise=cand;
-  }else{
-    const base=idx>=N? history[idx-N].struct: null;
-    let cand= base? buildNonMatchAgainst(base,cfg) : null;
-    if(!cand){ for(let t=0;t<400;t++){ const rnd=buildSentenceByDifficulty(cfg); if(seenSurface(rnd.text)) continue; const S=parseSentence(rnd.text,cfg); if(!S) continue; if(base && typedIsoEqual(base,S)) continue; if(seenLogic(S)) continue; cand={text:rnd.text,struct:S}; break; } }
-    premise=cand || ( ()=>{ const rnd=buildSentenceByDifficulty(cfg); return {text:rnd.text,struct:parseSentence(rnd.text,cfg)}; } )();
+function nextPremiseString(){
+  if(idx>=N){
+    if(planned[idx]) return buildMatching(history[idx-N]);
+    return buildNonMatching(history[idx-N]);
   }
-
-  rememberSurface(premise.text); rememberLogic(premise.struct); history[idx]=premise;
-  showPremise(premise.text); responded=false; currentTruth=(idx>=N)? typedIsoEqual(history[idx-N].struct, premise.struct): false;
-  setText('isMatch','—'); setText('ptype', (idx<MAX && idx>=N && planned[idx])?'MATCH':'NON-match');
-
-  speak(premise.text).then(()=>{ scheduleCountdown(SOLVE_WINDOW); if(solveTimer) clearTimeout(solveTimer); solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, SOLVE_WINDOW*1000); });
+  return randomPremise();
 }
-
-/* Acceptance test simulation (unchanged logic) */
-function simulateBlockMetrics(cfg,Nsim,rate){
-  const planned=[], historySim=[]; const total=100; for(let i=0;i<total;i++) planned[i]=false;
-  const elig=[]; for(let i=Nsim;i<total;i++) elig.push(i); shuffle(elig); const k=Math.round((rate/100)*elig.length); for(let i=0;i<k;i++) planned[elig[i]]=true;
-
-  let constructedMatches=0, failures=0, okPairs=0, totalPairs=0;
-  for(let i=0;i<total;i++){
-    let prem;
-    if(i===0){
-      let seed=null; for(let t=0;t<100;t++){ const r=buildSentenceByDifficulty(cfg); const ps=parseSentence(r.text,cfg); if(ps){ seed={text:r.text,struct:ps}; break; } }
-      prem = seed || {text:'Ava at A1 is north of Ben at A2.', struct:parseSentence('Ava at A1 is north of Ben at A2.',cfg)};
-    }else if(planned[i] && i>=Nsim){
-      const base=historySim[i-Nsim].struct;
-      const cand=buildMatchFromBase(base,cfg);
-      if(!cand || !cand.struct || !typedIsoEqual(base,cand.struct)){ failures++; prem=historySim[i-1]; }
-      else {
-        constructedMatches++; prem=cand;
-        for(let d=0; d<base.dyads.length; d++){
-          totalPairs++;
-          if(cfg.ORDER_MODE){
-            const b=base.dyads[d], c=cand.struct.dyads[d];
-            if(arraysEqual(b.tokens,c.tokens) || seqEqOrInv(b.tokens,c.tokens,true)) okPairs++;
-          }else{
-            const b=base.dyads[d], c=cand.struct.dyads[d];
-            if(vEq(b.vec,c.vec) || vEq(b.vec,vInv(c.vec))) okPairs++;
-          }
-        }
-      }
-    }else{
-      const base = (i>=Nsim)? historySim[i-Nsim].struct : null;
-      let cand = base? buildNonMatchAgainst(base,cfg) : null;
-      if(!cand){ for(let t=0;t<100;t++){ const r=buildSentenceByDifficulty(cfg); const ps=parseSentence(r.text,cfg); if(ps && (!base || !typedIsoEqual(base,ps))){ cand={text:r.text,struct:ps}; break; } } }
-      prem=cand || historySim[i-1];
-    }
-    historySim[i]=prem;
+async function runTrial(){
+  if(!running || paused) return;
+  if(idx>=MAX){
+    stop();
+    return;
   }
-  const plannedMatches=planned.filter(Boolean).length;
-  const ratio = plannedMatches? (constructedMatches/plannedMatches).toFixed(2) : 'n/a';
-  const okPct = totalPairs? (okPairs/totalPairs*100).toFixed(1)+'%' : 'n/a';
-  return { plannedMatches, constructedMatches, failures, ratio, okPct };
-}
-
-/* Controls */
-function start(){
-  applyDifficulty(+$('difficulty').value);
-  MAX=+$('trials').value||200; RATE=+$('rate').value||25; N=+$('nback').value||1; SPEAK=!!$('speakEnabled').checked;
-  SOLVE_WINDOW=+($('solveWindow').value||5); setText('solveLabel', SOLVE_WINDOW.toFixed(1)); setText('solveVal', SOLVE_WINDOW.toFixed(1)+'s');
-
-  SESSION_CFG={ ORDER_MODE, STEP_LEN, DYADS, CATS_MODE, ORDERED_AXES:ORDERED_AXES.slice(), TOKEN_POOL:TOKEN_POOL.slice() };
-
-  const m=simulateBlockMetrics(SESSION_CFG,N,RATE);
-  const logEl=$('log'); logEl.textContent=(logEl.textContent==='—'?'':'')+`[block] planned=${m.plannedMatches} constructed=${m.constructedMatches} failures=${m.failures} ratio=${m.ratio} seq/vecOK=${m.okPct}\n`;
-
-  const axesLabel=SESSION_CFG.ORDERED_AXES.map(ax=>({plane:'plane',level:'level',embed:'in/out',time:'time',rot:'rotation'}[ax])).join('+')||'—';
-  $('modeLine').textContent=`Axes: ${axesLabel} • Steps: ${SESSION_CFG.STEP_LEN} • Ordered: ${SESSION_CFG.ORDER_MODE?'ON':'OFF'} • Dyads: ${SESSION_CFG.DYADS} • Cats: ${SESSION_CFG.CATS_MODE} • N=${N}`;
-
-  idx=0; correct=0; errors=0; planned=[]; history=[]; SEEN_SURF.clear(); SEEN_LOGIC.clear();
-  planSequence(); updateUI();
-  SESSION.running=true; SESSION.paused=false;
-  $('pause').disabled=false; $('reset').disabled=false; $('hit').disabled=false; $('skip').disabled=false;
+  const s=nextPremiseString();
+  history[idx]=s;
+  buildPremiseVisual(s);
+  spokenParts=verbalizeSentence(s);
+  clauseIdx=0;
+  await speakPremise();
+  if(!running || paused) return;
+  idx++;
+  updateUI();
   runTrial();
 }
-function stop(){ SESSION.running=false; SESSION.paused=false; if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); setText('countdown','—'); try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch{} }
+function start(){
+  if(running) return;
+  running=true;
+  paused=false;
+  try{ speechSynthesis.cancel(); }catch(_){}
+  planSequence();
+  idx=0;
+  correct=0;
+  errors=0;
+  updateUI();
+  $('pause').disabled=false;
+  $('reset').disabled=false;
+  $('hit').disabled=false;
+  $('skip').disabled=false;
+  runTrial();
+}
+function stop(){
+  running=false;
+  paused=false;
+  clearTimeout(waitTimer);
+  waitTimer=null;
+  spokenParts=null;
+  clauseIdx=0;
+  try{ speechSynthesis.cancel(); }catch(_){}
+  $('pause').disabled=true;
+  $('skip').disabled=true;
+}
 function togglePause(){
-  if(!SESSION.running) return;
-  SESSION.paused=!SESSION.paused; $('pause').textContent=SESSION.paused?'▶ Resume':'⏸ Pause';
-  if(SESSION.paused){ if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); try{ if(window.speechSynthesis) window.speechSynthesis.cancel(); }catch{} }
-  else{
-    scheduleCountdown(countdownLeft>0?countdownLeft:SOLVE_WINDOW);
-    if(solveTimer) clearTimeout(solveTimer);
-    solveTimer=setTimeout(()=>{ evaluateAndAdvance(); }, (countdownLeft>0?countdownLeft:SOLVE_WINDOW)*1000);
+  if(!running && !paused) return;
+  if(!paused){
+    paused=true;
+    clearTimeout(waitTimer);
+    waitTimer=null;
+    try{ speechSynthesis.cancel(); }catch(_){}
+    $('pause').textContent='▶ Resume';
+  } else {
+    paused=false;
+    $('pause').textContent='⏸ Pause';
+    if(spokenParts && clauseIdx<spokenParts.length){
+      speakPremise().then(()=>{
+        if(running && !paused){
+          idx++;
+          updateUI();
+          runTrial();
+        }
+      });
+    } else {
+      idx++;
+      updateUI();
+      runTrial();
+    }
   }
 }
-function reset(){ stop(); $('premiseText').textContent='—'; setText('idx',0); setText('corr',0); setText('err',0); setText('ptype','—'); setText('isMatch','—'); }
-function registerHit(){ if(!SESSION.running || SESSION.paused) return; responded=true; }
-function skip(){ if(!SESSION.running || SESSION.paused) return; if(solveTimer) clearTimeout(solveTimer); if(countdownTimer) clearInterval(countdownTimer); setText('countdown','—'); evaluateAndAdvance(); }
-
-/* Bindings */
-document.addEventListener('DOMContentLoaded', ()=>{
-  applyDifficulty(+$('difficulty').value);
-  const sw=$('solveWindow'); const updateSW=()=>{ const v=+sw.value; setText('solveVal', v.toFixed(1)+'s'); setText('solveLabel', v.toFixed(1)); };
-  updateSW(); sw.oninput=e=>{ if(!SESSION.running){ updateSW(); } };
-
-  $('difficulty').oninput=e=>{ if(!SESSION.running){ applyDifficulty(+e.target.value); } };
-  $('nback').oninput=e=>{ if(!SESSION.running){ N=+e.target.value; setText('nVal',N); $('modeLine').textContent=$('modeLine').textContent.replace(/N=\d+$/,`N=${N}`); } };
-  $('trials').oninput=e=>{ if(!SESSION.running){ MAX=+e.target.value; setText('tVal',MAX); setText('max',MAX); } };
-  $('rate').oninput=e=>{ if(!SESSION.running){ RATE=+e.target.value; setText('rVal',RATE+'%'); } };
-  $('speakEnabled').onchange=e=>{ SPEAK=!!e.target.checked; };
-
-  $('start').onclick=start; $('pause').onclick=togglePause; $('reset').onclick=reset; $('hit').onclick=registerHit; $('skip').onclick=skip;
-  window.addEventListener('keydown', e=>{ if(!SESSION.running) return; if(e.code==='Space'){ registerHit(); e.preventDefault(); } });
-
-  setText('nVal',N); setText('tVal',MAX); setText('rVal',RATE+'%');
+function reset(){
+  stop();
+  $('start').disabled=false;
+  $('pause').textContent='⏸ Pause';
+  idx=0;
+  correct=0;
+  errors=0;
+  $('premiseText').textContent='—';
   updateUI();
+}
+function registerHit(){
+  if(!running) return;
+  if(isActualMatch(idx)) correct++;
+  else errors++;
+  updateUI();
+}
+function skip(){
+  if(!running) return;
+  clearTimeout(waitTimer);
+  try{ speechSynthesis.cancel(); }catch(_){}
+  idx++;
+  updateUI();
+  runTrial();
+}
+function updateUI(){
+  $('idx').textContent=idx;
+  $('max').textContent=MAX;
+  $('ptype').textContent = planned[idx] && idx>=N ? 'planned MATCH' : 'planned NON-match';
+  $('isMatch').textContent = idx>=N ? String(isActualMatch(idx)).toUpperCase() : '—';
+  $('corr').textContent=correct;
+  $('err').textContent=errors;
+  $('nVal').textContent = N;
+  $('tVal').textContent = MAX;
+  $('pVal').textContent = PAUSE_SEC.toFixed(1) + ' s';
+  $('premiseIntervalVal').textContent = PREMISE_INTERVAL_SEC.toFixed(1) + ' s';
+  $('rVal').textContent = RATE + '%';
+  $('symVal').textContent = NUM_SYMBOLS;
+  $('relCountVal').textContent = REL_COUNT;
+  $('compVal').textContent = COMP_COUNT;
+}
+
+/* Bind controls */
+$('start').onclick = async()=>{
+  if(!VOICE){
+    populateMenusFast();
+    const raw=voicesNow();
+    if(raw.length){
+      VOICE=chooseBestVoice(raw);
+      try{ localStorage.setItem(LAST_KEY,vKey(VOICE)); }catch(_){}
+    }
+  }
+  await speak('Ready.');
+  start();
+};
+$('pause').onclick=togglePause;
+$('reset').onclick=reset;
+$('hit').onclick=registerHit;
+$('skip').onclick=skip;
+window.addEventListener('keydown', e=>{
+  if(!running) return;
+  const key=e.key;
+  if(key===' ' || key==='Space' || key==='Spacebar'){
+    registerHit();
+    e.preventDefault();
+  }
+});
+$('n').oninput=e=>{
+  N=+e.target.value;
+  $('nVal').textContent=N;
+};
+$('trials').oninput=e=>{
+  MAX=+e.target.value;
+  $('tVal').textContent=MAX;
+  $('max').textContent=MAX;
+};
+$('pauseTime').oninput=e=>{
+  PAUSE_SEC=+e.target.value;
+  $('pVal').textContent=PAUSE_SEC.toFixed(1)+' s';
+};
+$('rate').oninput=e=>{
+  RATE=+e.target.value;
+  $('rVal').textContent=RATE+'%';
+};
+$('premiseInterval').oninput = e => {
+  PREMISE_INTERVAL_SEC = +e.target.value;
+  $('premiseIntervalVal').textContent = PREMISE_INTERVAL_SEC.toFixed(1) + ' s';
+};
+$('symbols').oninput=e=>{
+  NUM_SYMBOLS=+e.target.value;
+  $('symVal').textContent=NUM_SYMBOLS;
+  const relSlider=$('relCount');
+  const maxRel=Math.min(15, NUM_SYMBOLS * (NUM_SYMBOLS - 1));
+  relSlider.max=maxRel;
+  if(REL_COUNT>maxRel){
+    REL_COUNT=maxRel;
+    relSlider.value=maxRel;
+    $('relCountVal').textContent=REL_COUNT;
+  }
+};
+$('relCount').oninput=e=>{
+  REL_COUNT=+e.target.value;
+  $('relCountVal').textContent=REL_COUNT;
+};
+$('compCount').oninput=e=>{
+  COMP_COUNT=+e.target.value;
+  $('compVal').textContent=COMP_COUNT;
+};
+$('scramble').onchange=e=>{
+  SCRAMBLE=e.target.checked;
+};
+$('condMode').onchange=e=>{
+  COND_MODE=e.target.checked;
+};
+$('refreshVoices').onclick=()=>populateMenusFast();
+$('testVoice').onclick=async()=>{
+  if(!VOICE) populateMenusFast();
+  await speak('Voice check. Example: C three is north east of H seven.');
+};
+document.addEventListener('DOMContentLoaded', ()=>{
+  populateMenusFast();
+  applyVoiceDefaults();
+  $('voiceStatus').textContent='Ready';
+  $('symVal').textContent=NUM_SYMBOLS;
+  $('relCountVal').textContent=REL_COUNT;
+  $('compVal').textContent=COMP_COUNT;
+  $('premiseIntervalVal').textContent = PREMISE_INTERVAL_SEC.toFixed(1) + ' s';
 });
 </script>
 </body>
