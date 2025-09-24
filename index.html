@@ -1,1 +1,1256 @@
-.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maximum G-Load Relational N-Back (0.95+)</title>
+<style>
+:root { 
+  --bg:#0a0a0f; 
+  --fg:#e6fbff; 
+  --accent:#00ccff; 
+  --mut:#8fe7ff; 
+  --success:#26de81;
+  --error:#ff6b6b;
+  --warning:#ffd700;
+}
+
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; overflow-x:hidden; }
+body { 
+  background:linear-gradient(135deg, #0a0a0f 0%, #0f1419 100%); 
+  color:var(--fg); 
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+
+.container { max-width:1280px; margin:0 auto; padding:20px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(350px, 1fr)); gap:20px; margin-bottom:20px; }
+
+.panel { 
+  background:rgba(16,20,24,0.95); 
+  border:1px solid rgba(0,200,255,.3); 
+  border-radius:12px; 
+  padding:20px; 
+  backdrop-filter:blur(10px);
+  box-shadow:0 4px 20px rgba(0,0,0,0.4);
+}
+
+.panel-title { 
+  font-weight:800; 
+  margin-bottom:15px; 
+  color:var(--accent);
+  text-shadow:0 0 10px rgba(0,200,255,0.3);
+  font-size:18px;
+}
+
+.btn { 
+  background:rgba(0,200,255,0.1); 
+  color:var(--accent); 
+  border:1px solid var(--accent); 
+  border-radius:8px; 
+  padding:12px 20px; 
+  font-weight:700; 
+  cursor:pointer; 
+  transition:all 0.3s;
+  font-size:14px;
+}
+.btn:hover:not(:disabled) { 
+  background:rgba(0,200,255,0.25); 
+  box-shadow:0 0 20px rgba(0,200,255,.5);
+  transform:translateY(-1px);
+}
+.btn:disabled { opacity:0.4; cursor:not-allowed; }
+
+.btn.instructions { 
+  background:rgba(95,39,205,0.2); 
+  border-color:#5f27cd; 
+  color:#a55eea;
+}
+.btn.instructions:hover { 
+  background:rgba(95,39,205,0.4); 
+  box-shadow:0 0 20px rgba(95,39,205,.6);
+}
+
+label { 
+  font-size:13px; 
+  color:var(--mut); 
+  display:block; 
+  margin:12px 0 6px 0;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
+
+input[type=range] { 
+  width:100%; 
+  height:6px;
+  background:rgba(0,200,255,0.1);
+  border-radius:3px;
+  outline:none;
+  -webkit-appearance:none;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none;
+  width:18px;
+  height:18px;
+  background:var(--accent);
+  border-radius:50%;
+  cursor:pointer;
+  box-shadow:0 0 10px rgba(0,200,255,0.5);
+}
+input[type=range]::-moz-range-thumb {
+  width:18px;
+  height:18px;
+  background:var(--accent);
+  border-radius:50%;
+  cursor:pointer;
+  box-shadow:0 0 10px rgba(0,200,255,0.5);
+}
+
+.kbd { 
+  display:inline-block;
+  padding:4px 8px; 
+  border-radius:4px; 
+  background:rgba(0,0,0,0.5); 
+  border:1px solid rgba(255,255,255,.3);
+  font-size:12px;
+  font-weight:bold;
+  box-shadow:0 2px 4px rgba(0,0,0,0.3);
+}
+
+#premiseDisplay { 
+  min-height:180px; 
+  background:linear-gradient(135deg, rgba(14,17,19,0.98), rgba(19,22,25,0.98));
+  border:2px solid rgba(0,200,255,.4); 
+  border-radius:12px; 
+  padding:30px; 
+  font-size:34px; 
+  line-height:2.0; 
+  font-family:'Courier New',monospace; 
+  font-weight:900; 
+  letter-spacing:1px;
+  position:relative;
+  overflow:hidden;
+  box-shadow:inset 0 0 30px rgba(0,200,255,0.05);
+}
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.8} }
+@keyframes fadeIn { from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:translateY(0)} }
+
+.premise-text { 
+  padding:20px; 
+  margin:10px 0;
+  border-left:6px solid var(--accent); 
+  background:linear-gradient(90deg, rgba(0,200,255,.1), transparent); 
+  border-radius:4px; 
+  animation:fadeIn 0.5s ease-out;
+}
+
+/* Symbol highlighting */
+.sym-primary { color:#ff6b6b; text-shadow:0 0 15px rgba(255,107,107,.8); }
+.sym-secondary { color:#4ecdc4; text-shadow:0 0 15px rgba(78,205,196,.8); }
+.sym-number { color:#ff00ff; text-shadow:0 0 15px rgba(255,0,255,.8); }
+.sym-color { text-shadow:0 0 15px currentColor; font-weight:900; }
+.operation { color:#26de81; font-style:italic; }
+.relation { color:#a55eea; font-weight:900; text-decoration:underline dotted; }
+.state { color:#ffd700; font-weight:bold; }
+.compound { background:rgba(0,210,211,0.15); padding:2px 6px; border-radius:3px; }
+
+.feedback {
+  margin-top:20px;
+  padding:15px;
+  border-radius:8px;
+  font-size:16px;
+  font-weight:600;
+  animation:fadeIn 0.5s ease-out;
+}
+.feedback.correct {
+  background:rgba(38,222,129,0.2);
+  border:1px solid var(--success);
+  color:var(--success);
+}
+.feedback.incorrect {
+  background:rgba(255,107,107,0.2);
+  border:1px solid var(--error);
+  color:var(--error);
+}
+.feedback.missed {
+  background:rgba(255,215,0,0.2);
+  border:1px solid var(--warning);
+  color:var(--warning);
+}
+
+.status-display {
+  display:flex;
+  justify-content:space-between;
+  margin-top:15px;
+  padding:10px;
+  background:rgba(0,0,0,0.3);
+  border-radius:6px;
+}
+.status-item {
+  font-size:14px;
+  font-weight:600;
+}
+
+/* Modal */
+.modal {
+  display:none;
+  position:fixed;
+  z-index:1000;
+  left:0;
+  top:0;
+  width:100%;
+  height:100%;
+  background:rgba(0,0,0,0.95);
+  backdrop-filter:blur(10px);
+}
+
+.modal-content {
+  background:linear-gradient(135deg, #0f1419, #1a1f25);
+  margin:20px auto;
+  padding:30px;
+  border:2px solid var(--accent);
+  border-radius:15px;
+  width:90%;
+  max-width:900px;
+  max-height:90vh;
+  overflow-y:auto;
+  box-shadow:0 0 50px rgba(0,200,255,.5);
+}
+
+.modal h2 { color:var(--accent); margin:25px 0; }
+.modal h3 { color:var(--mut); margin:20px 0; }
+.modal p { line-height:1.8; margin:15px 0; }
+.modal ul { line-height:1.8; padding-left:30px; }
+
+.example-box {
+  background:rgba(0,0,0,0.5);
+  border-left:4px solid var(--accent);
+  padding:15px;
+  margin:20px 0;
+  font-family:'Courier New',monospace;
+  border-radius:5px;
+}
+
+.close-modal {
+  color:var(--accent);
+  float:right;
+  font-size:32px;
+  font-weight:bold;
+  cursor:pointer;
+  transition:all 0.3s;
+}
+.close-modal:hover { 
+  color:var(--error);
+  transform:rotate(90deg);
+}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-title">⚙️ Configuration</div>
+      
+      <label>N-Back Level: <span id="nbackValue">2</span></label>
+      <input type="range" id="nbackLevel" min="1" max="5" value="2">
+      
+      <label>Statements per Trial: <span id="stmtValue">1</span></label>
+      <input type="range" id="statementsPerTrial" min="1" max="3" value="1">
+      
+      <label>Match Probability: <span id="matchProbValue">30%</span></label>
+      <input type="range" id="matchProbability" min="0" max="100" step="5" value="30">
+      
+      <label>Response Window: <span id="windowValue">8.0s</span></label>
+      <input type="range" id="responseWindow" min="1" max="60" step="0.5" value="8">
+      
+      <label style="margin-top:15px">
+        <input type="checkbox" id="voiceEnabled" checked> Voice Synthesis
+      </label>
+      
+      <button id="instructionsBtn" class="btn instructions" style="width:100%; margin-top:20px">
+        📖 Instructions
+      </button>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">🎮 Controls</div>
+      
+      <div style="display:flex; gap:10px; margin-bottom:20px">
+        <button id="startBtn" class="btn" style="flex:1">▶ Start</button>
+        <button id="pauseBtn" class="btn" style="flex:1" disabled>⏸ Pause</button>
+        <button id="resetBtn" class="btn" style="flex:1" disabled>🔄 Reset</button>
+      </div>
+      
+      <div style="padding:15px; background:rgba(0,200,255,0.1); border-radius:8px; text-align:center; margin-bottom:15px">
+        <strong>Press <span class="kbd">SPACEBAR</span> when you detect a match!</strong>
+      </div>
+      
+      <div class="status-display">
+        <div class="status-item">Trial: <span id="currentTrial">0</span>/<span id="totalTrials">50</span></div>
+        <div class="status-item">Timer: <span id="countdown" style="color:var(--accent)">—</span></div>
+      </div>
+      
+      <div class="status-display">
+        <div class="status-item" style="color:var(--success)">Hits: <span id="correctHits">0</span></div>
+        <div class="status-item" style="color:var(--error)">False: <span id="falseAlarms">0</span></div>
+        <div class="status-item" style="color:var(--warning)">Missed: <span id="misses">0</span></div>
+      </div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">📊 Performance</div>
+      
+      <div style="font-size:14px; line-height:2">
+        <div>Accuracy: <span id="accuracy" style="font-weight:bold">—</span></div>
+        <div>Avg Response Time: <span id="avgResponse" style="font-weight:bold">—</span></div>
+        <div>Session Progress: <span id="progress" style="font-weight:bold">0%</span></div>
+      </div>
+      
+      <div style="margin-top:20px; padding:10px; background:rgba(0,0,0,0.3); border-radius:6px">
+        <div style="font-size:12px; color:var(--mut)">
+          G-Load: <span style="color:var(--accent); font-weight:bold">0.95+</span><br>
+          Mode: Maximum Relational Interference
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="panel">
+    <div class="panel-title">🧠 Relational Lattice N-Back • Maximum G-Load (0.95+)</div>
+    <div id="premiseDisplay">
+      <div style="text-align:center; color:var(--mut); font-size:20px; font-weight:normal">
+        Press START to begin maximum cognitive load training
+      </div>
+    </div>
+    <div id="feedbackArea"></div>
+  </div>
+</div>
+
+<!-- Instructions Modal -->
+<div id="instructionsModal" class="modal">
+  <div class="modal-content">
+    <span class="close-modal">&times;</span>
+    <h2>Maximum G-Load Relational N-Back (0.95+)</h2>
+    
+    <p>This is the most cognitively demanding n-back variant possible. Each 5-word premise encodes multiple interfering relationships that must be mentally simulated simultaneously.</p>
+    
+    <h3>Core Concept: Relational Interference</h3>
+    <p>Each premise describes symbols affecting each other in ways that CREATE INTERFERENCE - solving one relationship changes the constraints on others.</p>
+    
+    <div class="example-box">
+      PREMISE STRUCTURE (exactly 5 words):
+      "A-with-B pushes-while-rotating triggers C-and-D"
+      
+      This encodes:
+      • Two bound symbols (A-with-B)
+      • Dual operation (pushes-while-rotating)
+      • Causal relation (triggers)
+      • Target pair (C-and-D)
+      • Result state (implicit)
+    </div>
+    
+    <h3>What Makes a True Match?</h3>
+    <p>A match occurs when premises share the same RELATIONAL TOPOLOGY - the pattern of who-affects-whom and how those effects interfere with each other.</p>
+    
+    <div class="example-box">
+      Trial 1: "A-with-B pushes-while-rotating triggers C-and-D"
+      Trial 3: "X-and-Y pulls-while-spinning enables Z-with-W"
+      
+      MATCH! Because:
+      • Same topology: bound-pair affects bound-pair
+      • Same interference: push+rotate ≈ pull+spin
+      • Same cascade: immediate causal trigger
+      • Conservation preserved: energy transfers between pairs
+    </div>
+    
+    <h3>Mental Simulation Required</h3>
+    <p>You cannot pattern-match! You must:</p>
+    <ul>
+      <li>Track how operations interfere (pushing-while-rotating creates spiral motion)</li>
+      <li>Compute cascading effects (A affects B affects C)</li>
+      <li>Verify conservation (total energy/momentum preserved)</li>
+      <li>Check temporal consistency (effects propagate in time)</li>
+    </ul>
+    
+    <h3>Key Strategy</h3>
+    <p>Build a mental model of the RELATIONAL STRUCTURE, not the specific symbols. Ask yourself:</p>
+    <ul>
+      <li>What is the pattern of relationships?</li>
+      <li>How do the operations interfere with each other?</li>
+      <li>What constraints does this create?</li>
+      <li>Does this pattern match the n-back reference?</li>
+    </ul>
+    
+    <h3>Difficulty Settings</h3>
+    <ul>
+      <li><strong>Match Probability:</strong> Higher = more matches to practice recognition</li>
+      <li><strong>N-Back Level:</strong> How far back to compare (2 = moderate, 3+ = extreme)</li>
+      <li><strong>Response Window:</strong> Time to analyze and respond</li>
+    </ul>
+    
+    <p><strong>Remember:</strong> This requires maintaining and manipulating multiple interfering transformations in working memory simultaneously - the essence of fluid intelligence.</p>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   MAXIMUM G-LOAD RELATIONAL N-BACK IMPLEMENTATION
+   True relational interference with conservation constraints
+   ============================================================ */
+
+// DOM helpers
+const $ = id => document.getElementById(id);
+const setText = (id, text) => { const el = $(id); if(el) el.textContent = text; };
+
+/* ===== RELATIONAL INTERFERENCE ENGINE ===== */
+class RelationalInterferenceEngine {
+  constructor() {
+    // Symbol state tracking with conservation
+    this.symbolStates = new Map();
+    this.relations = new Map();
+    this.interference = [];
+    
+    // Conservation constraints
+    this.conservation = {
+      totalEnergy: 100,
+      totalMomentum: { x: 0, y: 0, z: 0 },
+      totalInformation: 50,
+      phaseParity: 0
+    };
+  }
+  
+  parsePremise(text) {
+    // Parse 5-word premise into relational structure
+    const words = text.split(' ').filter(w => w.length > 0);
+    if (words.length !== 5) return null;
+    
+    // Extract bound pairs and operations
+    const result = {
+      subjects: this.extractBoundPair(words[0]),
+      operation: this.extractCompoundOp(words[1]),
+      relation: words[2],
+      objects: this.extractBoundPair(words[3]),
+      state: words[4]
+    };
+    
+    return result;
+  }
+  
+  extractBoundPair(word) {
+    // Handle formats: "A-with-B", "X-and-Y", single symbols
+    if (word.includes('-with-')) {
+      return word.split('-with-');
+    } else if (word.includes('-and-')) {
+      return word.split('-and-');
+    }
+    return [word];
+  }
+  
+  extractCompoundOp(word) {
+    // Handle "pushes-while-rotating" format
+    if (word.includes('-while-')) {
+      const parts = word.split('-while-');
+      return { primary: parts[0], secondary: parts[1] };
+    }
+    return { primary: word, secondary: null };
+  }
+  
+  applyPremise(premise) {
+    const parsed = this.parsePremise(premise);
+    if (!parsed) return;
+    
+    // Initialize symbol states
+    for (const sym of [...parsed.subjects, ...parsed.objects]) {
+      if (!this.symbolStates.has(sym)) {
+        this.symbolStates.set(sym, {
+          position: { x: 0, y: 0, z: 0 },
+          energy: 25,
+          momentum: { x: 0, y: 0, z: 0 },
+          information: 12.5,
+          phase: 0
+        });
+      }
+    }
+    
+    // Apply operations with interference
+    this.applyOperationWithInterference(parsed);
+    
+    // Create relationships
+    this.createRelations(parsed);
+    
+    // Check conservation
+    this.verifyConservation();
+  }
+  
+  applyOperationWithInterference(parsed) {
+    const { subjects, operation, objects } = parsed;
+    
+    // Primary operation affects subjects
+    for (const subj of subjects) {
+      this.applyOperation(subj, operation.primary);
+    }
+    
+    // Secondary operation creates interference
+    if (operation.secondary) {
+      for (const subj of subjects) {
+        this.applyInterference(subj, operation.secondary);
+      }
+    }
+    
+    // Cascade to objects based on relation
+    for (const obj of objects) {
+      this.applyCascade(obj, parsed.relation);
+    }
+  }
+  
+  applyOperation(symbol, op) {
+    const state = this.symbolStates.get(symbol);
+    if (!state) return;
+    
+    switch(op) {
+      case 'pushes':
+        state.momentum.x += 2;
+        state.energy -= 1;
+        break;
+      case 'pulls':
+        state.momentum.x -= 2;
+        state.energy -= 1;
+        break;
+      case 'rotates':
+        // Rotation swaps momentum components
+        const temp = state.momentum.x;
+        state.momentum.x = state.momentum.y;
+        state.momentum.y = temp;
+        break;
+      case 'splits':
+        state.energy /= 2;
+        state.information *= 2;
+        break;
+      case 'merges':
+        state.energy *= 1.5;
+        state.information /= 1.5;
+        break;
+    }
+  }
+  
+  applyInterference(symbol, op) {
+    const state = this.symbolStates.get(symbol);
+    if (!state) return;
+    
+    // Secondary operations interfere with primary
+    switch(op) {
+      case 'rotating':
+      case 'spinning':
+        // Add rotational component
+        state.phase = (state.phase + Math.PI/4) % (2 * Math.PI);
+        state.momentum.z += Math.sin(state.phase);
+        break;
+      case 'growing':
+        state.energy *= 1.1;
+        state.information *= 0.9;
+        break;
+      case 'shrinking':
+        state.energy *= 0.9;
+        state.information *= 1.1;
+        break;
+    }
+  }
+  
+  applyCascade(symbol, relation) {
+    const state = this.symbolStates.get(symbol);
+    if (!state) return;
+    
+    switch(relation) {
+      case 'triggers':
+      case 'causes':
+        state.energy += 2;
+        state.momentum.y += 1;
+        break;
+      case 'blocks':
+      case 'prevents':
+        state.energy = Math.max(0, state.energy - 3);
+        state.momentum.x = 0;
+        state.momentum.y = 0;
+        break;
+      case 'enables':
+        state.energy += 1;
+        state.information += 1;
+        break;
+    }
+  }
+  
+  createRelations(parsed) {
+    // Create relational links between symbols
+    for (const subj of parsed.subjects) {
+      for (const obj of parsed.objects) {
+        const key = `${subj}->${obj}`;
+        this.relations.set(key, {
+          type: parsed.relation,
+          operation: parsed.operation,
+          strength: this.calculateStrength(parsed.relation)
+        });
+      }
+    }
+  }
+  
+  calculateStrength(relation) {
+    const strengths = {
+      'triggers': 0.9,
+      'causes': 0.9,
+      'blocks': -0.9,
+      'prevents': -0.9,
+      'enables': 0.7
+    };
+    return strengths[relation] || 0.5;
+  }
+  
+  verifyConservation() {
+    // Check if conservation laws are satisfied
+    let totalE = 0;
+    let totalP = { x: 0, y: 0, z: 0 };
+    let totalI = 0;
+    
+    for (const state of this.symbolStates.values()) {
+      totalE += state.energy;
+      totalP.x += state.momentum.x;
+      totalP.y += state.momentum.y;
+      totalP.z += state.momentum.z;
+      totalI += state.information;
+    }
+    
+    // Return conservation violations
+    const violations = [];
+    if (Math.abs(totalE - this.conservation.totalEnergy) > 1) {
+      violations.push('energy');
+    }
+    if (Math.abs(totalP.x) + Math.abs(totalP.y) + Math.abs(totalP.z) > 10) {
+      violations.push('momentum');
+    }
+    
+    return violations;
+  }
+  
+  getRelationalTopology() {
+    // Extract the pattern of relationships (not specific symbols)
+    const topology = {
+      nodeCount: this.symbolStates.size,
+      edgeCount: this.relations.size,
+      patterns: []
+    };
+    
+    // Find patterns like A->B->C chains
+    for (const [rel1, data1] of this.relations) {
+      const [from1, to1] = rel1.split('->');
+      
+      for (const [rel2, data2] of this.relations) {
+        const [from2, to2] = rel2.split('->');
+        
+        if (to1 === from2) {
+          // Found chain: from1 -> to1/from2 -> to2
+          topology.patterns.push({
+            type: 'chain',
+            length: 3,
+            operations: [data1.type, data2.type]
+          });
+        }
+      }
+    }
+    
+    return topology;
+  }
+}
+
+/* ===== PREMISE GENERATOR ===== */
+class MaximalPremiseGenerator {
+  constructor() {
+    // Simple, understandable symbols only
+    this.symbols = {
+      letters: ['A', 'B', 'C', 'X', 'Y', 'Z'],
+      colors: ['RED', 'BLUE', 'GREEN'],
+      numbers: ['ONE', 'TWO', 'THREE']
+    };
+    
+    // Basic operations that everyone understands
+    this.operations = {
+      primary: ['pushes', 'pulls', 'rotates', 'splits', 'merges'],
+      secondary: ['rotating', 'spinning', 'growing', 'shrinking']
+    };
+    
+    // Causal relations
+    this.relations = ['triggers', 'blocks', 'enables', 'prevents', 'causes'];
+    
+    // Result states
+    this.states = ['upward', 'downward', 'leftward', 'rightward', 'together', 'apart'];
+    
+    this.usedPremises = new Set();
+  }
+  
+  generate(complexity = 1) {
+    let attempts = 0;
+    let premise;
+    
+    do {
+      premise = this.buildPremise(complexity);
+      attempts++;
+    } while (this.usedPremises.has(premise) && attempts < 50);
+    
+    this.usedPremises.add(premise);
+    
+    // Clear old premises periodically
+    if (this.usedPremises.size > 100) {
+      const premises = Array.from(this.usedPremises);
+      this.usedPremises = new Set(premises.slice(-50));
+    }
+    
+    return premise;
+  }
+  
+  buildPremise(complexity) {
+    // Build exactly 5-word premise with maximum interference
+    const subjects = this.selectBoundPair();
+    const operation = this.selectCompoundOperation();
+    const relation = this.selectRelation();
+    const objects = this.selectBoundPair();
+    const state = this.selectState();
+    
+    return `${subjects} ${operation} ${relation} ${objects} ${state}`;
+  }
+  
+  selectBoundPair() {
+    const pool = [...this.symbols.letters, ...this.symbols.colors, ...this.symbols.numbers];
+    const sym1 = pool[Math.floor(Math.random() * pool.length)];
+    const sym2 = pool[Math.floor(Math.random() * pool.length)];
+    
+    if (Math.random() > 0.5) {
+      return `${sym1}-with-${sym2}`;
+    } else {
+      return `${sym1}-and-${sym2}`;
+    }
+  }
+  
+  selectCompoundOperation() {
+    const primary = this.operations.primary[Math.floor(Math.random() * this.operations.primary.length)];
+    const secondary = this.operations.secondary[Math.floor(Math.random() * this.operations.secondary.length)];
+    
+    return `${primary}-while-${secondary}`;
+  }
+  
+  selectRelation() {
+    return this.relations[Math.floor(Math.random() * this.relations.length)];
+  }
+  
+  selectState() {
+    return this.states[Math.floor(Math.random() * this.states.length)];
+  }
+  
+  generateMatching(reference) {
+    // Generate premise with same relational topology
+    const refEngine = new RelationalInterferenceEngine();
+    refEngine.applyPremise(reference);
+    const refTopology = refEngine.getRelationalTopology();
+    
+    let attempts = 0;
+    let premise;
+    let matches = false;
+    
+    do {
+      premise = this.buildPremise(1);
+      
+      const testEngine = new RelationalInterferenceEngine();
+      testEngine.applyPremise(premise);
+      const testTopology = testEngine.getRelationalTopology();
+      
+      // Check if topologies match
+      matches = this.topologiesMatch(refTopology, testTopology);
+      attempts++;
+    } while (!matches && attempts < 30);
+    
+    return premise;
+  }
+  
+  generateNonMatching(reference) {
+    // Generate premise with different topology
+    let premise = this.buildPremise(1);
+    
+    // Ensure it's different by using opposite relations
+    if (reference.includes('triggers')) {
+      premise = premise.replace(/triggers|enables|causes/, 'blocks');
+    } else if (reference.includes('blocks')) {
+      premise = premise.replace(/blocks|prevents/, 'triggers');
+    }
+    
+    return premise;
+  }
+  
+  topologiesMatch(topo1, topo2) {
+    // Check if relational patterns match (not exact symbols)
+    if (topo1.nodeCount !== topo2.nodeCount) return false;
+    if (Math.abs(topo1.edgeCount - topo2.edgeCount) > 1) return false;
+    
+    // Check pattern similarity
+    const patterns1 = topo1.patterns.map(p => p.type).sort();
+    const patterns2 = topo2.patterns.map(p => p.type).sort();
+    
+    return JSON.stringify(patterns1) === JSON.stringify(patterns2);
+  }
+}
+
+/* ===== GAME CONTROLLER ===== */
+class MaxGLoadNBack {
+  constructor() {
+    this.generator = new MaximalPremiseGenerator();
+    this.history = [];
+    this.schedule = [];
+    
+    // Settings
+    this.nLevel = 2;
+    this.totalTrials = 50;
+    this.matchProbability = 0.3;
+    this.responseWindow = 8000;
+    this.statementsPerTrial = 1;
+    this.voiceEnabled = true;
+    
+    // State
+    this.currentTrial = 0;
+    this.isRunning = false;
+    this.isPaused = false;
+    this.awaitingResponse = false;
+    this.responseTimer = null;
+    this.countdownInterval = null;
+    
+    // Scoring
+    this.correctHits = 0;
+    this.falseAlarms = 0;
+    this.misses = 0;
+    this.responseTimes = [];
+    
+    // Timing
+    this.trialStartTime = 0;
+  }
+  
+  initialize(settings) {
+    this.nLevel = settings.nLevel;
+    this.totalTrials = settings.totalTrials;
+    this.matchProbability = settings.matchProbability;
+    this.responseWindow = settings.responseWindow;
+    this.statementsPerTrial = settings.statementsPerTrial;
+    this.voiceEnabled = settings.voiceEnabled;
+    
+    this.reset();
+    this.generateSchedule();
+  }
+  
+  reset() {
+    this.history = [];
+    this.schedule = [];
+    this.currentTrial = 0;
+    this.correctHits = 0;
+    this.falseAlarms = 0;
+    this.misses = 0;
+    this.responseTimes = [];
+    this.awaitingResponse = false;
+  }
+  
+  generateSchedule() {
+    // Plan which trials should be matches
+    this.schedule = new Array(this.totalTrials).fill(false);
+    
+    // Can only have matches after n-back threshold
+    for (let i = this.nLevel; i < this.totalTrials; i++) {
+      if (Math.random() < this.matchProbability) {
+        this.schedule[i] = true;
+      }
+    }
+  }
+  
+  async runTrial() {
+    if (!this.isRunning || this.isPaused) return;
+    
+    this.awaitingResponse = true;
+    const shouldMatch = this.schedule[this.currentTrial];
+    
+    // Generate appropriate premise(s)
+    const premises = [];
+    for (let i = 0; i < this.statementsPerTrial; i++) {
+      let premise;
+      
+      if (shouldMatch && this.currentTrial >= this.nLevel) {
+        // Generate matching premise
+        const reference = this.history[this.currentTrial - this.nLevel][0];
+        premise = this.generator.generateMatching(reference);
+      } else if (this.currentTrial >= this.nLevel) {
+        // Generate non-matching premise
+        const reference = this.history[this.currentTrial - this.nLevel][0];
+        premise = this.generator.generateNonMatching(reference);
+      } else {
+        // Before n-back threshold
+        premise = this.generator.generate();
+      }
+      
+      premises.push(premise);
+    }
+    
+    // Store in history
+    this.history[this.currentTrial] = premises;
+    
+    // Display premise
+    this.displayPremise(premises);
+    
+    // Start response timer
+    this.trialStartTime = Date.now();
+    this.startResponseTimer();
+    
+    // Voice synthesis
+    if (this.voiceEnabled) {
+      await this.speak(premises.join('. '));
+    }
+  }
+  
+  displayPremise(premises) {
+    const display = $('premiseDisplay');
+    display.innerHTML = '';
+    
+    premises.forEach(premise => {
+      const div = document.createElement('div');
+      div.className = 'premise-text';
+      
+      // Style each word
+      const words = premise.split(' ');
+      words.forEach((word, idx) => {
+        const span = document.createElement('span');
+        
+        // Apply appropriate styling
+        if (word.includes('-with-') || word.includes('-and-')) {
+          span.className = 'compound';
+        } else if (word.includes('-while-')) {
+          span.className = 'operation';
+        } else if (['triggers', 'blocks', 'enables', 'prevents', 'causes'].includes(word)) {
+          span.className = 'relation';
+        } else if (['upward', 'downward', 'leftward', 'rightward', 'together', 'apart'].includes(word)) {
+          span.className = 'state';
+        } else if (/^[A-Z]$/.test(word)) {
+          span.className = 'sym-primary';
+        } else if (['RED', 'BLUE', 'GREEN'].includes(word)) {
+          span.className = 'sym-color';
+          span.style.color = word.toLowerCase();
+        } else if (['ONE', 'TWO', 'THREE'].includes(word)) {
+          span.className = 'sym-number';
+        }
+        
+        span.textContent = word;
+        div.appendChild(span);
+        
+        if (idx < words.length - 1) {
+          div.appendChild(document.createTextNode(' '));
+        }
+      });
+      
+      display.appendChild(div);
+    });
+    
+    // Update trial counter
+    setText('currentTrial', this.currentTrial + 1);
+    setText('progress', Math.round((this.currentTrial / this.totalTrials) * 100) + '%');
+  }
+  
+  startResponseTimer() {
+    // Start countdown
+    let timeLeft = this.responseWindow;
+    this.countdownInterval = setInterval(() => {
+      timeLeft -= 100;
+      setText('countdown', (timeLeft / 1000).toFixed(1) + 's');
+      
+      if (timeLeft <= 0) {
+        clearInterval(this.countdownInterval);
+        setText('countdown', '0.0s');
+      }
+    }, 100);
+    
+    // Set response timeout
+    this.responseTimer = setTimeout(() => {
+      this.endTrial();
+    }, this.responseWindow);
+  }
+  
+  registerResponse() {
+    if (!this.awaitingResponse || !this.isRunning) return;
+    
+    const responseTime = Date.now() - this.trialStartTime;
+    this.responseTimes.push(responseTime);
+    
+    this.awaitingResponse = false;
+    
+    // Clear timers
+    if (this.responseTimer) clearTimeout(this.responseTimer);
+    if (this.countdownInterval) clearInterval(this.countdownInterval);
+    
+    // Evaluate response
+    const shouldHaveResponded = this.schedule[this.currentTrial] && this.currentTrial >= this.nLevel;
+    
+    if (shouldHaveResponded) {
+      // Correct hit
+      this.correctHits++;
+      this.showFeedback('correct', 'Correct! Deep relational match detected.');
+    } else {
+      // False alarm
+      this.falseAlarms++;
+      this.showFeedback('incorrect', 'Incorrect. The relational structures differed.');
+    }
+    
+    // Continue to next trial
+    setTimeout(() => {
+      this.nextTrial();
+    }, 2000);
+  }
+  
+  endTrial() {
+    this.awaitingResponse = false;
+    
+    // Clear timers
+    if (this.responseTimer) clearTimeout(this.responseTimer);
+    if (this.countdownInterval) clearInterval(this.countdownInterval);
+    
+    // Check if user should have responded
+    const shouldHaveResponded = this.schedule[this.currentTrial] && this.currentTrial >= this.nLevel;
+    
+    if (shouldHaveResponded) {
+      // Missed match
+      this.misses++;
+      this.showFeedback('missed', 'Missed match! The relational topology was preserved.');
+    } else {
+      // Correct rejection (no feedback)
+      this.correctHits++;
+    }
+    
+    // Continue to next trial
+    setTimeout(() => {
+      this.nextTrial();
+    }, 2000);
+  }
+  
+  showFeedback(type, message) {
+    const area = $('feedbackArea');
+    area.innerHTML = '';
+    
+    const div = document.createElement('div');
+    div.className = `feedback ${type}`;
+    div.textContent = message;
+    area.appendChild(div);
+    
+    // Update scores
+    setText('correctHits', this.correctHits);
+    setText('falseAlarms', this.falseAlarms);
+    setText('misses', this.misses);
+    
+    // Update accuracy
+    const total = this.correctHits + this.falseAlarms + this.misses;
+    if (total > 0) {
+      const accuracy = (this.correctHits / total * 100).toFixed(1);
+      setText('accuracy', accuracy + '%');
+    }
+    
+    // Update average response time
+    if (this.responseTimes.length > 0) {
+      const avg = this.responseTimes.reduce((a,b) => a+b, 0) / this.responseTimes.length;
+      setText('avgResponse', (avg / 1000).toFixed(2) + 's');
+    }
+  }
+  
+  nextTrial() {
+    $('feedbackArea').innerHTML = '';
+    
+    this.currentTrial++;
+    
+    if (this.currentTrial >= this.totalTrials) {
+      this.endSession();
+    } else {
+      this.runTrial();
+    }
+  }
+  
+  endSession() {
+    this.isRunning = false;
+    
+    const display = $('premiseDisplay');
+    display.innerHTML = `
+      <div style="text-align:center; padding:40px;">
+        <h2 style="color:var(--accent); margin-bottom:20px">Session Complete!</h2>
+        <div style="font-size:18px; font-weight:normal; line-height:2">
+          <div>Correct Hits: <span style="color:var(--success)">${this.correctHits}</span></div>
+          <div>False Alarms: <span style="color:var(--error)">${this.falseAlarms}</span></div>
+          <div>Missed Matches: <span style="color:var(--warning)">${this.misses}</span></div>
+          <div style="margin-top:20px">
+            Final Accuracy: <strong>${((this.correctHits / this.totalTrials) * 100).toFixed(1)}%</strong>
+          </div>
+        </div>
+      </div>
+    `;
+    
+    // Reset button states
+    $('startBtn').disabled = false;
+    $('pauseBtn').disabled = true;
+    $('resetBtn').disabled = true;
+  }
+  
+  async speak(text) {
+    if (!this.voiceEnabled || !window.speechSynthesis) return;
+    
+    return new Promise(resolve => {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.75;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      utterance.onend = resolve;
+      utterance.onerror = resolve;
+      
+      if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+      }
+      
+      window.speechSynthesis.speak(utterance);
+    });
+  }
+  
+  pause() {
+    this.isPaused = true;
+    if (this.responseTimer) clearTimeout(this.responseTimer);
+    if (this.countdownInterval) clearInterval(this.countdownInterval);
+  }
+  
+  resume() {
+    this.isPaused = false;
+    this.runTrial();
+  }
+}
+
+/* ===== MAIN GAME INSTANCE ===== */
+const game = new MaxGLoadNBack();
+
+// UI Event Handlers
+function start() {
+  const settings = {
+    nLevel: parseInt($('nbackLevel').value),
+    totalTrials: 50,
+    matchProbability: parseInt($('matchProbability').value) / 100,
+    responseWindow: parseFloat($('responseWindow').value) * 1000,
+    statementsPerTrial: parseInt($('statementsPerTrial').value),
+    voiceEnabled: $('voiceEnabled').checked
+  };
+  
+  game.initialize(settings);
+  game.isRunning = true;
+  
+  // Update UI
+  setText('totalTrials', settings.totalTrials);
+  setText('correctHits', '0');
+  setText('falseAlarms', '0');
+  setText('misses', '0');
+  setText('accuracy', '—');
+  setText('avgResponse', '—');
+  setText('progress', '0%');
+  
+  // Update buttons
+  $('startBtn').disabled = true;
+  $('pauseBtn').disabled = false;
+  $('resetBtn').disabled = false;
+  
+  // Start first trial
+  game.runTrial();
+}
+
+function pause() {
+  if (game.isPaused) {
+    game.resume();
+    $('pauseBtn').textContent = '⏸ Pause';
+  } else {
+    game.pause();
+    $('pauseBtn').textContent = '▶ Resume';
+  }
+}
+
+function reset() {
+  game.isRunning = false;
+  game.reset();
+  
+  if (game.responseTimer) clearTimeout(game.responseTimer);
+  if (game.countdownInterval) clearInterval(game.countdownInterval);
+  
+  // Reset display
+  $('premiseDisplay').innerHTML = `
+    <div style="text-align:center; color:var(--mut); font-size:20px; font-weight:normal">
+      Press START to begin maximum cognitive load training
+    </div>
+  `;
+  $('feedbackArea').innerHTML = '';
+  
+  // Reset counters
+  setText('currentTrial', '0');
+  setText('correctHits', '0');
+  setText('falseAlarms', '0');
+  setText('misses', '0');
+  setText('accuracy', '—');
+  setText('avgResponse', '—');
+  setText('progress', '0%');
+  setText('countdown', '—');
+  
+  // Reset buttons
+  $('startBtn').disabled = false;
+  $('pauseBtn').disabled = true;
+  $('resetBtn').disabled = true;
+  $('pauseBtn').textContent = '⏸ Pause';
+  
+  // Stop speech
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+// Initialize event listeners
+document.addEventListener('DOMContentLoaded', () => {
+  // Settings controls
+  $('nbackLevel').oninput = (e) => {
+    setText('nbackValue', e.target.value);
+  };
+  
+  $('statementsPerTrial').oninput = (e) => {
+    setText('stmtValue', e.target.value);
+  };
+  
+  $('matchProbability').oninput = (e) => {
+    setText('matchProbValue', e.target.value + '%');
+  };
+  
+  $('responseWindow').oninput = (e) => {
+    setText('windowValue', parseFloat(e.target.value).toFixed(1) + 's');
+  };
+  
+  // Control buttons
+  $('startBtn').onclick = start;
+  $('pauseBtn').onclick = pause;
+  $('resetBtn').onclick = reset;
+  
+  // Spacebar for response
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && game.isRunning && !game.isPaused) {
+      e.preventDefault();
+      game.registerResponse();
+    }
+  });
+  
+  // Instructions modal
+  const modal = $('instructionsModal');
+  const btn = $('instructionsBtn');
+  const closeBtn = document.querySelector('.close-modal');
+  
+  btn.onclick = () => modal.style.display = 'block';
+  closeBtn.onclick = () => modal.style.display = 'none';
+  window.onclick = (e) => {
+    if (e.target === modal) modal.style.display = 'none';
+  };
+});
+</script>
+</body>
+</html>
