@@ -1,1 +1,1911 @@
-.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Maximal G-Load Relational N-Back v3.0 — True 0.95+ Cognitive Load</title>
+<style>
+:root { 
+  --bg:#050507; 
+  --fg:#e8f4ff; 
+  --accent:#00d4ff; 
+  --mut:#7fb8ff; 
+  --glow:#00d4ff30;
+  --success:#00ff88;
+  --error:#ff3366;
+  --warning:#ffaa00;
+  --deep:#0a0a0f;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+html,body{ height:100%; overflow-x:hidden; }
+body{ 
+  background:linear-gradient(135deg, var(--deep) 0%, #0d1117 50%, var(--deep) 100%); 
+  color:var(--fg); 
+  font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen,sans-serif;
+  animation:bgPulse 30s ease-in-out infinite;
+}
+
+@keyframes bgPulse { 
+  0%,100%{filter:brightness(1)} 
+  50%{filter:brightness(1.05)}
+}
+
+.wrap{ max-width:1320px; margin:0 auto; padding:20px; }
+.row{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:16px; }
+.col{ flex:1 1 380px; }
+
+.box{ 
+  background:linear-gradient(135deg, rgba(13,17,23,0.95), rgba(20,27,37,0.95)); 
+  border:1px solid rgba(0,212,255,.2); 
+  border-radius:16px; 
+  padding:18px; 
+  backdrop-filter:blur(12px);
+  box-shadow:0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+  position:relative;
+  overflow:hidden;
+}
+
+.box::before{
+  content:'';
+  position:absolute;
+  top:-2px; left:-2px; right:-2px; bottom:-2px;
+  background:linear-gradient(45deg, var(--accent), transparent, var(--accent));
+  opacity:0;
+  border-radius:16px;
+  transition:opacity 0.3s;
+  z-index:-1;
+}
+
+.box:hover::before{ opacity:0.1; }
+
+.title{ 
+  font-weight:700; 
+  margin-bottom:12px; 
+  font-size:14px;
+  text-transform:uppercase;
+  letter-spacing:1.2px;
+  color:var(--accent);
+  text-shadow:0 0 20px rgba(0,212,255,0.5);
+}
+
+.btn{ 
+  background:linear-gradient(135deg, rgba(0,212,255,0.1), rgba(0,212,255,0.05)); 
+  color:var(--accent); 
+  border:1px solid var(--accent); 
+  border-radius:10px; 
+  padding:12px 18px; 
+  font-weight:600; 
+  cursor:pointer; 
+  transition:all 0.3s;
+  font-size:14px;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+  position:relative;
+  overflow:hidden;
+}
+
+.btn::after{
+  content:'';
+  position:absolute;
+  top:50%; left:50%;
+  width:0; height:0;
+  border-radius:50%;
+  background:rgba(0,212,255,0.3);
+  transform:translate(-50%, -50%);
+  transition:width 0.6s, height 0.6s;
+}
+
+.btn:hover:not(:disabled)::after{
+  width:300px; height:300px;
+}
+
+.btn:hover:not(:disabled){ 
+  background:linear-gradient(135deg, rgba(0,212,255,0.2), rgba(0,212,255,0.1)); 
+  box-shadow:0 0 30px rgba(0,212,255,.4);
+  transform:translateY(-2px);
+}
+
+.btn:active:not(:disabled){ transform:translateY(0); }
+.btn:disabled{ opacity:.3; cursor:not-allowed; }
+
+.btn.instructions{ 
+  background:linear-gradient(135deg, rgba(138,43,226,0.2), rgba(138,43,226,0.1)); 
+  border-color:#8a2be2; 
+  color:#b19cd9;
+}
+
+label{ 
+  font-size:11px; 
+  color:var(--mut); 
+  display:block; 
+  margin:10px 0 6px 0;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.8px;
+}
+
+input[type=range]{ 
+  width:100%; 
+  height:4px;
+  background:rgba(0,212,255,0.1);
+  border-radius:2px;
+  outline:none;
+  -webkit-appearance:none;
+  margin:8px 0;
+}
+
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  width:18px; height:18px;
+  background:radial-gradient(circle, var(--accent), rgba(0,212,255,0.7));
+  border:2px solid rgba(0,212,255,0.3);
+  border-radius:50%;
+  cursor:pointer;
+  box-shadow:0 0 20px rgba(0,212,255,0.6);
+  transition:all 0.3s;
+}
+
+input[type=range]::-webkit-slider-thumb:hover{
+  transform:scale(1.2);
+  box-shadow:0 0 30px rgba(0,212,255,0.8);
+}
+
+.kbd{ 
+  display:inline-block;
+  padding:3px 8px; 
+  border-radius:6px; 
+  background:rgba(0,0,0,0.6); 
+  border:1px solid rgba(255,255,255,.2);
+  font-size:12px;
+  font-weight:bold;
+  font-family:monospace;
+  box-shadow:0 2px 0 rgba(0,0,0,0.5);
+}
+
+.mut{ color:var(--mut); font-size:11px; margin-top:6px; opacity:0.9; }
+hr.hr{ border:none; border-top:1px solid rgba(0,212,255,.15); margin:14px 0; }
+
+#premiseContainer{ 
+  margin-top:16px; 
+  min-height:180px; 
+  background:radial-gradient(ellipse at center, rgba(0,212,255,0.02), transparent),
+              linear-gradient(135deg, rgba(10,10,15,0.98), rgba(15,20,28,0.98));
+  border:2px solid rgba(0,212,255,.25); 
+  border-radius:16px; 
+  padding:24px; 
+  font-size:28px; 
+  line-height:2.4; 
+  font-family:'SF Mono','Monaco','Inconsolata','Fira Code',monospace; 
+  font-weight:700; 
+  letter-spacing:1.5px;
+  position:relative;
+  overflow:hidden;
+  box-shadow:inset 0 0 50px rgba(0,212,255,0.03), 0 0 40px rgba(0,212,255,0.1);
+}
+
+#premiseContainer::before{
+  content:'';
+  position:absolute;
+  top:-100%; left:-100%;
+  width:300%; height:300%;
+  background:conic-gradient(from 0deg, transparent, rgba(0,212,255,0.05), transparent);
+  animation:spin 60s linear infinite;
+  pointer-events:none;
+}
+
+@keyframes spin{ to{transform:rotate(360deg)} }
+@keyframes fadeInUp{ 
+  from{opacity:0; transform:translateY(20px)} 
+  to{opacity:1; transform:translateY(0)}
+}
+@keyframes pulse{ 
+  0%,100%{transform:scale(1)} 
+  50%{transform:scale(1.02)}
+}
+
+.premise-line{ 
+  margin:20px 0; 
+  padding:24px; 
+  border-left:6px solid var(--accent); 
+  background:linear-gradient(90deg, rgba(0,212,255,.08), transparent); 
+  border-radius:8px; 
+  position:relative;
+  animation:fadeInUp 0.6s ease-out;
+}
+
+.premise-line::after{
+  content:'';
+  position:absolute;
+  left:0; top:0; bottom:0;
+  width:6px;
+  background:linear-gradient(to bottom, var(--accent), transparent);
+  animation:pulse 2s ease-in-out infinite;
+}
+
+.premise-number{ 
+  position:absolute; 
+  left:-60px; 
+  top:50%; 
+  transform:translateY(-50%); 
+  color:var(--accent); 
+  font-size:28px; 
+  font-weight:300;
+  text-shadow:0 0 20px rgba(0,212,255,0.6);
+}
+
+.badge{ 
+  display:inline-block; 
+  padding:4px 12px; 
+  border:1px solid rgba(0,212,255,.3); 
+  border-radius:20px; 
+  font-size:10px; 
+  color:var(--mut); 
+  margin-left:10px;
+  font-weight:700;
+  background:rgba(0,212,255,0.05);
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
+
+/* Enhanced symbol styling for multi-anchor visibility */
+.symbol-anchor { 
+  color:#ff4757; 
+  text-shadow:0 0 20px rgba(255,71,87,.8); 
+  font-weight:900;
+  animation:glow 2s ease-in-out infinite;
+}
+
+@keyframes glow{
+  0%,100%{text-shadow:0 0 20px rgba(255,71,87,.8)}
+  50%{text-shadow:0 0 30px rgba(255,71,87,1)}
+}
+
+.symbol-secondary { 
+  color:#00d2d3; 
+  text-shadow:0 0 18px rgba(0,210,211,.8); 
+  font-weight:900;
+}
+
+.temporal-marker {
+  color:#ffd700;
+  font-size:0.8em;
+  vertical-align:super;
+  font-weight:600;
+  text-shadow:0 0 15px rgba(255,215,0,.8);
+}
+
+.operation-compound { 
+  color:#26de81; 
+  text-shadow:0 0 15px rgba(38,222,129,.8);
+  background:rgba(38,222,129,0.1);
+  padding:2px 6px;
+  border-radius:4px;
+  font-style:italic;
+}
+
+.relation-causal { 
+  color:#a55eea; 
+  font-weight:900; 
+  text-shadow:0 0 18px rgba(165,94,234,.9);
+  text-decoration:underline;
+  text-decoration-style:wavy;
+  text-decoration-color:rgba(165,94,234,0.5);
+}
+
+.axis-state { 
+  color:#ffaa00; 
+  font-weight:bold; 
+  text-shadow:0 0 15px rgba(255,170,0,.9);
+}
+
+.energy-delta {
+  color:#ff00ff;
+  font-weight:bold;
+  text-shadow:0 0 15px rgba(255,0,255,.8);
+}
+
+/* Feedback styling */
+.feedback {
+  margin-top:20px;
+  padding:16px;
+  border-radius:12px;
+  font-size:15px;
+  font-weight:600;
+  letter-spacing:0.5px;
+  animation:fadeInUp 0.5s ease-out;
+  text-align:center;
+  text-transform:uppercase;
+}
+
+.feedback.correct {
+  background:linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,255,136,0.05));
+  border:2px solid var(--success);
+  color:var(--success);
+  box-shadow:0 0 30px rgba(0,255,136,0.3);
+}
+
+.feedback.incorrect {
+  background:linear-gradient(135deg, rgba(255,51,102,0.15), rgba(255,51,102,0.05));
+  border:2px solid var(--error);
+  color:var(--error);
+  box-shadow:0 0 30px rgba(255,51,102,0.3);
+}
+
+.feedback.missed {
+  background:linear-gradient(135deg, rgba(255,170,0,0.15), rgba(255,170,0,0.05));
+  border:2px solid var(--warning);
+  color:var(--warning);
+  box-shadow:0 0 30px rgba(255,170,0,0.3);
+}
+
+.g-load-indicator {
+  margin-top:12px;
+  padding:8px;
+  background:rgba(0,0,0,0.4);
+  border:1px solid rgba(0,212,255,0.2);
+  border-radius:8px;
+  font-size:10px;
+  font-family:monospace;
+  color:var(--mut);
+  display:flex;
+  justify-content:space-between;
+}
+
+/* Modal styling */
+.modal{
+  display:none;
+  position:fixed;
+  z-index:9999;
+  left:0; top:0;
+  width:100%; height:100%;
+  background:rgba(0,0,0,0.95);
+  backdrop-filter:blur(10px);
+  animation:fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn{ from{opacity:0} to{opacity:1} }
+
+.modal-content{
+  background:linear-gradient(135deg, #0d1117, #161b22);
+  margin:1% auto;
+  padding:32px;
+  border:2px solid var(--accent);
+  border-radius:20px;
+  width:94%;
+  max-width:980px;
+  max-height:94vh;
+  overflow-y:auto;
+  box-shadow:0 0 60px rgba(0,212,255,.4);
+  animation:slideIn 0.4s ease-out;
+}
+
+@keyframes slideIn{
+  from{transform:translateY(-50px); opacity:0}
+  to{transform:translateY(0); opacity:1}
+}
+
+.modal-content::-webkit-scrollbar{ width:8px; }
+.modal-content::-webkit-scrollbar-track{ background:rgba(0,0,0,0.3); }
+.modal-content::-webkit-scrollbar-thumb{ 
+  background:var(--accent); 
+  border-radius:4px;
+}
+
+.modal h2{ 
+  color:var(--accent); 
+  margin:24px 0; 
+  text-shadow:0 0 30px rgba(0,212,255,0.5);
+  font-size:28px;
+}
+
+.modal h3{ 
+  color:var(--mut); 
+  margin:20px 0 12px 0;
+  font-size:20px;
+}
+
+.modal h4{ 
+  color:#b19cd9; 
+  margin:16px 0 8px 0;
+  font-size:16px;
+}
+
+.modal p{ 
+  line-height:1.8; 
+  color:var(--fg); 
+  margin:12px 0;
+  opacity:0.95;
+}
+
+.modal ul{ 
+  line-height:2; 
+  margin:12px 0; 
+  padding-left:28px;
+}
+
+.modal li{ 
+  margin:8px 0;
+  color:var(--fg);
+  opacity:0.9;
+}
+
+.example{
+  background:rgba(0,0,0,0.6);
+  border-left:4px solid var(--accent);
+  padding:16px;
+  margin:20px 0;
+  font-family:monospace;
+  font-size:13px;
+  border-radius:8px;
+  box-shadow:inset 0 0 20px rgba(0,0,0,0.3);
+}
+
+.explanation{
+  color:var(--mut);
+  font-style:italic;
+  margin-top:12px;
+  padding:12px;
+  background:rgba(0,212,255,0.05);
+  border-radius:8px;
+  border:1px solid rgba(0,212,255,0.15);
+}
+
+.close{
+  color:var(--accent);
+  float:right;
+  font-size:36px;
+  font-weight:300;
+  cursor:pointer;
+  transition:all 0.3s;
+  line-height:0.7;
+}
+
+.close:hover{ 
+  color:var(--error);
+  transform:rotate(90deg);
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <div class="col">
+      <div class="box">
+        <div class="title">⚡ Advanced Configuration</div>
+        <label>N-Back Level: <span id="nVal">2</span></label>
+        <input id="nback" type="range" min="1" max="5" step="1" value="2">
+        
+        <label>Statements per Trial: <span id="stmtVal">1</span></label>
+        <input id="statements" type="range" min="1" max="3" step="1" value="1">
+        
+        <label>Match Probability: <span id="matchVal">30%</span></label>
+        <input id="matchProb" type="range" min="10" max="70" step="5" value="30">
+        <div class="mut">Higher = more matches for practice</div>
+        
+        <label>G-Load Target: <span id="gloadVal">0.95</span></label>
+        <input id="gload" type="range" min="0.7" max="1.0" step="0.05" value="0.95">
+        <div class="mut">Adjusts premise complexity</div>
+        
+        <hr class="hr">
+        <button id="instructionsBtn" class="btn instructions" style="width:100%">
+          📖 How to Play
+        </button>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="box">
+        <div class="title">⏱️ Timing Parameters</div>
+        <label>Response Window: <span id="solveVal">8.0s</span></label>
+        <input id="solveWindow" type="range" min="3" max="20" step="0.5" value="8">
+        <div class="mut">Time to detect match</div>
+        
+        <label>Trials per Block: <span id="tVal">50</span></label>
+        <input id="trials" type="range" min="20" max="100" step="10" value="50">
+        
+        <label><input id="speakEnabled" type="checkbox" checked> Voice Synthesis</label>
+        <div class="mut">Speaks premises aloud</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="box">
+        <div class="title">🎮 Game Controls</div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px">
+          <button id="start" class="btn" style="flex:1">▶ Start</button>
+          <button id="pause" class="btn" style="flex:1" disabled>⏸ Pause</button>
+          <button id="reset" class="btn" style="flex:1" disabled>🔄 Reset</button>
+        </div>
+        <hr class="hr">
+        <div class="mut" style="text-align:center; margin:12px 0">
+          <strong>Press <span class="kbd">SPACE</span> when you detect a match!</strong>
+        </div>
+        <div class="mut">
+          Trial: <span id="idx" style="color:var(--accent); font-weight:bold">0</span>/<span id="max">50</span>
+          <span class="badge">Timer: <span id="countdown">—</span></span>
+        </div>
+        <div class="mut" style="margin-top:8px">
+          <span style="color:var(--success)">Hits: <strong id="corr">0</strong></span> • 
+          <span style="color:var(--error)">False: <strong id="err">0</strong></span> • 
+          <span style="color:var(--warning)">Missed: <strong id="miss">0</strong></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="title">
+      🧠 Maximal G-Load Relational N-Back 
+      <span class="badge">5 words</span>
+      <span class="badge">3+ anchors</span>
+      <span class="badge">G=<span id="currentGLoad">0.95</span></span>
+      <span class="badge">N=<span id="nDisplay">2</span></span>
+    </div>
+    <div id="premiseContainer">
+      <div style="text-align:center; color:var(--mut); font-size:18px; font-weight:normal; letter-spacing:0.5px;">
+        Press START to begin maximum cognitive load training
+      </div>
+    </div>
+    <div id="feedbackArea"></div>
+    <div id="gLoadInfo"></div>
+  </div>
+</div>
+
+<!-- Instructions Modal -->
+<div id="instructionsModal" class="modal">
+  <div class="modal-content">
+    <span class="close">&times;</span>
+    <h2>🧠 Maximal G-Load Relational N-Back v3.0</h2>
+    
+    <p><strong>This implements true maximum cognitive load (0.95+ g-factor).</strong> Each 5-word premise encodes multiple interdependent symbols with temporal propagation, conservation constraints, and cascading relationships.</p>
+    
+    <h3>Critical: How This N-Back Works</h3>
+    <ul>
+      <li>Premise appears → You have X seconds to decide</li>
+      <li>Press SPACE if it matches the premise N trials back</li>
+      <li>Don't press anything if it doesn't match</li>
+      <li><strong>You only get feedback for hits, misses, and false alarms</strong></li>
+      <li>No feedback for correct non-responses (this is normal)</li>
+    </ul>
+    
+    <h3>Premise Structure (Exactly 5 Words)</h3>
+    <div class="example">
+      Pattern: [MULTI-SYMBOL] [COMPOUND-OP] [RELATION] [MULTI-SYMBOL] [AXIS-STATE]
+      
+      Example: "ABC rot-inv-UP(t+1) cascading XYZ DOWN-COLD"
+               ↓        ↓           ↓       ↓      ↓
+          3 symbols  3 operations  causal  3 more  state+axis
+    </div>
+    
+    <h3>What Makes a MATCH?</h3>
+    <p>A match requires ALL of these conditions:</p>
+    <ol>
+      <li><strong>3+ shared anchor symbols</strong> between premises</li>
+      <li><strong>Compatible temporal propagation</strong> (delays must align)</li>
+      <li><strong>Conservation maintained</strong> (energy/phase/capacity)</li>
+      <li><strong>Relational topology preserved</strong> (same cascade structure)</li>
+      <li><strong>No cascading contradictions</strong> after full simulation</li>
+      <li><strong>NEVER identical premises</strong> (must be relationally compatible but different)</li>
+    </ol>
+    
+    <h3>Multi-Anchor Example</h3>
+    <div class="example">
+      Trial 1: "ABC rot-inv-UP(t) cascading XYZ DOWN(t+2)"
+      Trial 2: "DEF spl-mer-IN(t+1) blocking ABC OUT-COLD"
+      
+      N-back 1 MATCH? Must check:
+      • 3 shared anchors: A, B, C ✓
+      • ABC's state after rot-inv compatible with blocking? 
+      • Temporal alignment: t+2 vs t+1 propagation?
+      • Energy conservation across operations?
+      • Cascade structure maintained?
+      
+      This requires 15+ seconds of mental simulation!
+    </div>
+    
+    <h3>Temporal Propagation</h3>
+    <div class="example">
+      (t) = immediate
+      (t+1) = 1 time step delay
+      (t+2) = 2 time step delay
+      
+      Operations propagate through time:
+      t=0: ABC rotates
+      t=1: Inversion occurs
+      t=2: Cascade reaches XYZ
+      
+      You must mentally simulate the full timeline!
+    </div>
+    
+    <h3>Compound Operations</h3>
+    <p>Each compound encodes 3+ operations:</p>
+    <ul>
+      <li><strong>rot-inv-frag</strong> = rotate + invert + fragment</li>
+      <li><strong>spl-mer-osc</strong> = split + merge + oscillate</li>
+      <li><strong>acc-dec-pul</strong> = accelerate + decelerate + pulse</li>
+      <li><strong>cry-dis-ref</strong> = crystallize + dissolve + reform</li>
+    </ul>
+    
+    <h3>Conservation Constraints</h3>
+    <div class="example">
+      Energy must be conserved:
+      • Operations consume/produce energy (Δ values)
+      • Total energy across all symbols must balance
+      • Violations = automatic non-match
+      
+      Example: "ABC grows(Δ=+3)" requires energy source
+               "XYZ shrinks(Δ=-3)" provides that energy
+    </div>
+    
+    <h3>G-Load Calculation</h3>
+    <div class="example">
+      G = symbols × branching^depth × (1 + mutability + ambiguity) × energy_tightness
+      
+      Where:
+      • symbols = number of tracked entities (3-7)
+      • branching = interactions per symbol (2-4)
+      • depth = propagation steps (1-3)
+      • mutability = axis change probability
+      • ambiguity = operator aliasing level
+      • energy = conservation strictness
+    </div>
+    
+    <h3>Why This Is Maximum Difficulty</h3>
+    <ul>
+      <li>Cannot pattern-match (different words, same relationships)</li>
+      <li>Must track 3+ symbols simultaneously</li>
+      <li>Must simulate temporal propagation</li>
+      <li>Must verify conservation laws</li>
+      <li>Must detect cascading contradictions</li>
+      <li>Must maintain full relational topology in working memory</li>
+    </ul>
+    
+    <h3>Strategy</h3>
+    <ol>
+      <li>Parse all symbols (usually 3-6 per premise)</li>
+      <li>Identify temporal markers (t, t+1, t+2)</li>
+      <li>Simulate operations in sequence</li>
+      <li>Track energy/phase changes</li>
+      <li>Compare with n-back reference</li>
+      <li>Check all compatibility criteria</li>
+      <li>Press SPACE only if ALL checks pass</li>
+    </ol>
+    
+    <p><strong>This is cognitive training at the absolute limit of human capacity.</strong></p>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   MAXIMAL G-LOAD RELATIONAL N-BACK v3.0
+   True Implementation with Multi-Anchor, Temporal Propagation,
+   Conservation Constraints, and Deep Match Validation
+   ============================================================ */
+
+const $ = id => document.getElementById(id);
+function setText(id, v) { const el = $(id); if(el) el.textContent = v; }
+function shuffle(arr) { 
+  const a = [...arr];
+  for(let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* ===== MULTI-ANCHOR RELATIONAL LATTICE ===== */
+class MultiAnchorLattice {
+  constructor() {
+    this.symbols = new Map(); // symbol -> {pos:{x,y,z}, energy:n, phase:s, time:t}
+    this.relations = new Map(); // "A->B" -> {type, strength, delay, cascade:[]}
+    this.timeline = []; // [{t:0, events:[]}, {t:1, events:[]}, ...]
+    this.constraints = {
+      totalEnergy: 100,
+      maxCapacity: 10,
+      allowedPhases: ['SOLID', 'LIQUID', 'GAS', 'PLASMA']
+    };
+  }
+  
+  parsePremise(text) {
+    // Pattern: "ABC rot-inv-UP(t+1) cascading XYZ DOWN-COLD"
+    const words = text.split(' ').filter(w => w.length > 0);
+    if (words.length !== 5) return null;
+    
+    const result = {
+      primarySymbols: [],
+      secondarySymbols: [],
+      operations: [],
+      relation: null,
+      primaryAxis: null,
+      secondaryAxis: null,
+      primaryTime: 0,
+      secondaryTime: 0,
+      energyDelta: 0,
+      phase: null
+    };
+    
+    // Extract multi-symbol groups (ABC, XYZ)
+    result.primarySymbols = this.extractSymbols(words[0]);
+    result.secondarySymbols = this.extractSymbols(words[3]);
+    
+    // Extract compound operation with temporal marker
+    const compound = words[1];
+    const opMatch = compound.match(/^([\w-]+)\(t([+\d]*)\)$/);
+    if (opMatch) {
+      result.operations = opMatch[1].split('-');
+      result.primaryTime = opMatch[2] ? parseInt(opMatch[2].replace('+','')) : 0;
+    } else {
+      result.operations = compound.split('-');
+    }
+    
+    // Extract relation
+    result.relation = words[2];
+    
+    // Extract secondary axis/state
+    const secondary = words[4];
+    if (secondary.includes('(')) {
+      const secMatch = secondary.match(/^([\w-]+)\(t([+\d]*)\)$/);
+      if (secMatch) {
+        result.secondaryAxis = secMatch[1];
+        result.secondaryTime = secMatch[2] ? parseInt(secMatch[2].replace('+','')) : 0;
+      }
+    } else if (secondary.includes('-')) {
+      const parts = secondary.split('-');
+      result.secondaryAxis = parts[0];
+      result.phase = parts[1];
+    } else if (secondary.includes('Δ')) {
+      result.energyDelta = parseInt(secondary.replace('Δ=',''));
+    } else {
+      result.secondaryAxis = secondary;
+    }
+    
+    return result;
+  }
+  
+  extractSymbols(word) {
+    // Handle multi-symbol formats: ABC, A|B|C, A/B/C
+    if (word.includes('|')) {
+      return word.split('|');
+    } else if (word.includes('/')) {
+      return word.split('/');
+    } else if (word.length <= 3 && /^[A-Z]+$/.test(word)) {
+      return word.split('');
+    } else {
+      return [word];
+    }
+  }
+  
+  applyPremise(premiseText) {
+    const parsed = this.parsePremise(premiseText);
+    if (!parsed) return null;
+    
+    // Initialize all symbols
+    [...parsed.primarySymbols, ...parsed.secondarySymbols].forEach(sym => {
+      if (!this.symbols.has(sym)) {
+        this.symbols.set(sym, {
+          pos: {x: 0, y: 0, z: 0},
+          energy: 10,
+          phase: 'NEUTRAL',
+          time: 0
+        });
+      }
+    });
+    
+    // Apply operations to primary symbols at specified time
+    this.scheduleOperations(parsed.primarySymbols, parsed.operations, parsed.primaryTime);
+    
+    // Create relationships with cascading effects
+    parsed.primarySymbols.forEach(p => {
+      parsed.secondarySymbols.forEach(s => {
+        const relKey = `${p}->${s}`;
+        this.relations.set(relKey, {
+          type: parsed.relation,
+          delay: parsed.secondaryTime - parsed.primaryTime,
+          cascade: this.computeCascade(parsed.relation)
+        });
+      });
+    });
+    
+    // Apply secondary effects
+    this.scheduleCascades(parsed.secondarySymbols, parsed.relation, 
+                          parsed.secondaryAxis, parsed.secondaryTime);
+    
+    return parsed;
+  }
+  
+  scheduleOperations(symbols, operations, time) {
+    if (!this.timeline[time]) {
+      this.timeline[time] = {t: time, events: []};
+    }
+    
+    this.timeline[time].events.push({
+      type: 'operation',
+      symbols: symbols,
+      operations: operations,
+      execute: () => {
+        symbols.forEach(sym => {
+          const state = this.symbols.get(sym);
+          operations.forEach(op => {
+            this.applyOperation(state, op);
+          });
+        });
+      }
+    });
+  }
+  
+  scheduleCascades(symbols, relation, axis, time) {
+    if (!this.timeline[time]) {
+      this.timeline[time] = {t: time, events: []};
+    }
+    
+    this.timeline[time].events.push({
+      type: 'cascade',
+      symbols: symbols,
+      relation: relation,
+      axis: axis,
+      execute: () => {
+        symbols.forEach(sym => {
+          const state = this.symbols.get(sym);
+          this.applyCascadeEffect(state, relation, axis);
+        });
+      }
+    });
+  }
+  
+  applyOperation(state, op) {
+    const operations = {
+      'rot': () => { [state.pos.x, state.pos.y] = [state.pos.y, -state.pos.x]; },
+      'inv': () => { state.pos.x = -state.pos.x; state.pos.y = -state.pos.y; },
+      'frag': () => { state.energy *= 0.3; state.phase = 'FRAGMENTED'; },
+      'spl': () => { state.energy *= 0.5; },
+      'mer': () => { state.energy *= 1.5; state.phase = 'MERGED'; },
+      'osc': () => { state.energy = state.energy * Math.sin(Date.now() / 1000); },
+      'acc': () => { state.energy += 2; },
+      'dec': () => { state.energy = Math.max(0, state.energy - 2); },
+      'pul': () => { state.energy = state.energy * (1 + Math.random()); },
+      'cry': () => { state.phase = 'SOLID'; state.energy += 1; },
+      'dis': () => { state.phase = 'LIQUID'; state.energy -= 1; },
+      'ref': () => { state.phase = 'REFORMED'; }
+    };
+    
+    if (operations[op]) operations[op]();
+  }
+  
+  applyCascadeEffect(state, relation, axis) {
+    const effects = {
+      'cascading': () => {
+        this.applyAxisMovement(state, axis, 1.5);
+        state.energy *= 0.9;
+      },
+      'blocking': () => {
+        this.applyAxisMovement(state, this.getOppositeAxis(axis), 0.5);
+        state.energy = Math.max(0, state.energy - 3);
+      },
+      'enabling': () => {
+        this.applyAxisMovement(state, axis, 1.0);
+        state.energy += 1;
+      },
+      'triggering': () => {
+        this.applyAxisMovement(state, axis, 2.0);
+        state.phase = 'TRIGGERED';
+      },
+      'preventing': () => {
+        state.energy = 0;
+        state.phase = 'PREVENTED';
+      },
+      'modulating': () => {
+        this.applyAxisMovement(state, axis, Math.sin(Date.now() / 1000));
+        state.energy *= (0.5 + Math.random());
+      },
+      'inverting': () => {
+        this.applyAxisMovement(state, this.getOppositeAxis(axis), -1.0);
+        state.pos.x = -state.pos.x;
+        state.pos.y = -state.pos.y;
+      },
+      'amplifying': () => {
+        this.applyAxisMovement(state, axis, 3.0);
+        state.energy *= 2;
+      }
+    };
+    
+    if (effects[relation]) effects[relation]();
+  }
+  
+  applyAxisMovement(state, axis, magnitude) {
+    const movements = {
+      'UP': {y: magnitude}, 'DOWN': {y: -magnitude},
+      'LEFT': {x: -magnitude}, 'RIGHT': {x: magnitude},
+      'IN': {z: -magnitude}, 'OUT': {z: magnitude}
+    };
+    
+    if (movements[axis]) {
+      state.pos.x += movements[axis].x || 0;
+      state.pos.y += movements[axis].y || 0;
+      state.pos.z += movements[axis].z || 0;
+    }
+  }
+  
+  getOppositeAxis(axis) {
+    const opposites = {
+      'UP': 'DOWN', 'DOWN': 'UP',
+      'LEFT': 'RIGHT', 'RIGHT': 'LEFT',
+      'IN': 'OUT', 'OUT': 'IN',
+      'HOT': 'COLD', 'COLD': 'HOT',
+      'FAST': 'SLOW', 'SLOW': 'FAST'
+    };
+    return opposites[axis] || axis;
+  }
+  
+  computeCascade(relation) {
+    const cascades = {
+      'cascading': ['propagate', 'spread', 'amplify'],
+      'blocking': ['stop', 'prevent', 'inhibit'],
+      'enabling': ['allow', 'facilitate', 'support'],
+      'triggering': ['activate', 'initiate', 'start'],
+      'preventing': ['halt', 'block', 'terminate']
+    };
+    return cascades[relation] || [];
+  }
+  
+  simulateTimeline() {
+    // Execute all scheduled events in temporal order
+    for (let t = 0; t < this.timeline.length; t++) {
+      if (this.timeline[t]) {
+        this.timeline[t].events.forEach(event => event.execute());
+      }
+    }
+    
+    // Check conservation constraints
+    return this.validateConservation();
+  }
+  
+  validateConservation() {
+    let totalEnergy = 0;
+    for (const [sym, state] of this.symbols) {
+      totalEnergy += state.energy;
+    }
+    
+    // Energy should be approximately conserved
+    const energyValid = Math.abs(totalEnergy - this.constraints.totalEnergy) < 20;
+    
+    // Check phase validity
+    let phaseValid = true;
+    for (const [sym, state] of this.symbols) {
+      if (state.phase && !this.constraints.allowedPhases.includes(state.phase) &&
+          state.phase !== 'NEUTRAL' && state.phase !== 'FRAGMENTED' && 
+          state.phase !== 'MERGED' && state.phase !== 'TRIGGERED' &&
+          state.phase !== 'PREVENTED' && state.phase !== 'REFORMED') {
+        phaseValid = false;
+      }
+    }
+    
+    return {energyValid, phaseValid};
+  }
+}
+
+/* ===== SOPHISTICATED MAXIMAL-G PREMISE GENERATOR ===== */
+class MaximalGPremiseGenerator {
+  constructor() {
+    // Multi-symbol groups
+    this.symbolGroups = {
+      primary: ['ABC', 'DEF', 'XYZ', 'PQR', 'STU', 'VWX'],
+      secondary: ['GHI', 'JKL', 'MNO', 'RST', 'UVW', 'YZ'],
+      tertiary: ['ALPHA', 'BETA', 'GAMMA', 'DELTA', 'OMEGA']
+    };
+    
+    // Compound operations (3+ operations each)
+    this.compoundOps = [
+      'rot-inv-frag',    // rotate, invert, fragment
+      'spl-mer-osc',     // split, merge, oscillate  
+      'acc-dec-pul',     // accelerate, decelerate, pulse
+      'cry-dis-ref',     // crystallize, dissolve, reform
+      'exp-con-inv',     // expand, contract, invert
+      'fol-unf-cas'      // fold, unfold, cascade
+    ];
+    
+    // Relations with different cascade patterns
+    this.relations = [
+      'cascading', 'blocking', 'enabling', 'triggering', 
+      'preventing', 'modulating', 'inverting', 'amplifying'
+    ];
+    
+    // Axes and states
+    this.axes = ['UP', 'DOWN', 'LEFT', 'RIGHT', 'IN', 'OUT'];
+    this.states = ['HOT', 'COLD', 'FAST', 'SLOW', 'STABLE', 'CHAOS'];
+    
+    this.premiseHistory = [];
+    this.usedHashes = new Set();
+  }
+  
+  generatePremise(targetGLoad = 0.95) {
+    let attempts = 0;
+    let premise;
+    
+    do {
+      const seed = this.generateTrulyRandomSeed();
+      premise = this.buildMaximalPremise(seed, targetGLoad);
+      attempts++;
+    } while (this.isDuplicate(premise) && attempts < 100);
+    
+    this.recordPremise(premise);
+    return premise;
+  }
+  
+  generateTrulyRandomSeed() {
+    const sources = [
+      Date.now(),
+      Math.random() * 1e10,
+      performance.now() * Math.random(),
+      Math.sin(Date.now() * Math.random()) * 1e9
+    ];
+    
+    if (window.crypto?.getRandomValues) {
+      const arr = new Uint32Array(2);
+      window.crypto.getRandomValues(arr);
+      sources.push(...arr);
+    }
+    
+    let hash = 0;
+    for (const source of sources) {
+      hash = ((hash << 5) - hash) + Math.floor(source);
+      hash = (hash * 0x19660d) ^ (hash >>> 15);
+    }
+    
+    return Math.abs(hash);
+  }
+  
+  buildMaximalPremise(seed, targetGLoad) {
+    const pattern = seed % 4;
+    let text;
+    
+    switch(pattern) {
+      case 0: // Multi-anchor cascade with temporal delay
+        text = this.buildTemporalCascade(seed);
+        break;
+      case 1: // Energy conservation with phase transitions
+        text = this.buildEnergyConserved(seed);
+        break;
+      case 2: // Complex modulation with interference
+        text = this.buildInterference(seed);
+        break;
+      case 3: // Recursive amplification
+        text = this.buildRecursiveAmplification(seed);
+        break;
+    }
+    
+    // Calculate actual g-load
+    const gLoad = this.calculateGLoad(text);
+    
+    return {
+      text: text,
+      gLoad: gLoad,
+      pattern: pattern,
+      hash: this.hashPremise(text)
+    };
+  }
+  
+  buildTemporalCascade(seed) {
+    const syms1 = this.symbolGroups.primary[seed % 6];
+    const op = this.compoundOps[seed % 6];
+    const time1 = seed % 3; // t, t+1, or t+2
+    const rel = this.relations[seed % 8];
+    const syms2 = this.symbolGroups.secondary[(seed + 1) % 6];
+    const axis = this.axes[seed % 6];
+    const time2 = (time1 + 1 + (seed % 2)) % 3;
+    
+    return `${syms1} ${op}(t+${time1}) ${rel} ${syms2} ${axis}(t+${time2})`;
+  }
+  
+  buildEnergyConserved(seed) {
+    const syms1 = this.symbolGroups.primary[(seed + 1) % 6];
+    const op = this.compoundOps[(seed + 1) % 6];
+    const axis1 = this.axes[(seed + 1) % 6];
+    const rel = this.relations[(seed + 2) % 8];
+    const syms2 = this.symbolGroups.secondary[(seed + 2) % 6];
+    const energyDelta = ((seed % 7) - 3); // -3 to +3
+    
+    return `${syms1} ${op}-${axis1} ${rel} ${syms2} Δ=${energyDelta > 0 ? '+' : ''}${energyDelta}`;
+  }
+  
+  buildInterference(seed) {
+    const syms1 = this.symbolGroups.tertiary[seed % 5];
+    const op = this.compoundOps[(seed + 2) % 6];
+    const axis = this.axes[(seed + 2) % 6];
+    const rel = this.relations[(seed + 3) % 8];
+    const syms2 = this.symbolGroups.primary[(seed + 3) % 6];
+    const state = this.states[seed % 6];
+    
+    return `${syms1} ${op}-${axis} ${rel} ${syms2} ${axis}-${state}`;
+  }
+  
+  buildRecursiveAmplification(seed) {
+    const syms1 = this.symbolGroups.primary[(seed + 4) % 6];
+    const syms2 = this.symbolGroups.secondary[(seed + 4) % 6];
+    const combined = `${syms1}/${syms2}`;
+    const op = this.compoundOps[(seed + 3) % 6];
+    const rel = 'amplifying';
+    const syms3 = this.symbolGroups.tertiary[(seed + 1) % 5];
+    const axis = this.axes[(seed + 3) % 6];
+    
+    return `${combined} ${op} ${rel} ${syms3} ${axis}`;
+  }
+  
+  calculateGLoad(text) {
+    // Parse premise
+    const symbols = (text.match(/[A-Z]+/g) || []).length;
+    const operations = (text.match(/-/g) || []).length + 1;
+    const temporal = (text.match(/t[+\d]/g) || []).length;
+    const energy = text.includes('Δ=') ? 1 : 0;
+    const compound = (text.match(/\//g) || []).length;
+    
+    // G-load formula
+    const branching = operations;
+    const depth = temporal + 1;
+    const mutability = compound * 0.2;
+    const ambiguity = operations > 3 ? 0.3 : 0.1;
+    const energyTightness = energy * 0.2;
+    
+    const gLoad = (symbols / 10) * Math.pow(branching / 3, depth) * 
+                  (1 + mutability + ambiguity) * (1 + energyTightness);
+    
+    return Math.min(1.0, Math.max(0.7, gLoad));
+  }
+  
+  hashPremise(text) {
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    return hash;
+  }
+  
+  isDuplicate(premise) {
+    const hash = premise.hash || this.hashPremise(premise.text || premise);
+    if (this.usedHashes.has(hash)) return true;
+    
+    // Also check for near-duplicates
+    const text = premise.text || premise;
+    for (const prev of this.premiseHistory.slice(-20)) {
+      const prevText = prev.text || prev;
+      if (this.areTooSimilar(text, prevText)) return true;
+    }
+    
+    return false;
+  }
+  
+  areTooSimilar(text1, text2) {
+    if (text1 === text2) return true;
+    
+    const words1 = text1.split(' ');
+    const words2 = text2.split(' ');
+    
+    if (words1.length !== words2.length) return false;
+    
+    let matches = 0;
+    for (let i = 0; i < words1.length; i++) {
+      if (words1[i] === words2[i]) matches++;
+    }
+    
+    // Too similar if >60% words match
+    return matches > words1.length * 0.6;
+  }
+  
+  recordPremise(premise) {
+    this.premiseHistory.push(premise);
+    this.usedHashes.add(premise.hash);
+    
+    // Limit history size
+    if (this.premiseHistory.length > 100) {
+      this.premiseHistory.shift();
+    }
+    
+    if (this.usedHashes.size > 500) {
+      const hashes = Array.from(this.usedHashes);
+      this.usedHashes = new Set(hashes.slice(-250));
+    }
+  }
+}
+
+/* ===== DEEP MATCH VALIDATOR ===== */
+class DeepMatchValidator {
+  validateMatch(current, reference) {
+    // Parse both premises
+    const currentLattice = new MultiAnchorLattice();
+    const currentParsed = currentLattice.applyPremise(current.text || current);
+    
+    const refLattice = new MultiAnchorLattice();
+    const refParsed = refLattice.applyPremise(reference.text || reference);
+    
+    if (!currentParsed || !refParsed) return false;
+    
+    // Check all match criteria
+    const checks = {
+      notIdentical: this.checkNotIdentical(current, reference),
+      anchorCount: this.checkAnchorCount(currentParsed, refParsed),
+      temporalConsistent: this.checkTemporalConsistency(currentParsed, refParsed),
+      conservationValid: this.checkConservation(currentLattice, refLattice),
+      topologyPreserved: this.checkTopology(currentLattice, refLattice),
+      noCascadeConflicts: this.checkCascades(currentLattice, refLattice)
+    };
+    
+    // ALL checks must pass
+    return Object.values(checks).every(v => v === true);
+  }
+  
+  checkNotIdentical(current, reference) {
+    const text1 = current.text || current;
+    const text2 = reference.text || reference;
+    return text1 !== text2;
+  }
+  
+  checkAnchorCount(parsed1, parsed2) {
+    const syms1 = new Set([...parsed1.primarySymbols, ...parsed1.secondarySymbols]);
+    const syms2 = new Set([...parsed2.primarySymbols, ...parsed2.secondarySymbols]);
+    
+    // Count shared anchors
+    let shared = 0;
+    for (const sym of syms1) {
+      if (syms2.has(sym)) shared++;
+    }
+    
+    // Need at least 3 shared anchors
+    return shared >= 3;
+  }
+  
+  checkTemporalConsistency(parsed1, parsed2) {
+    // Temporal delays should be compatible
+    const delay1 = parsed1.secondaryTime - parsed1.primaryTime;
+    const delay2 = parsed2.secondaryTime - parsed2.primaryTime;
+    
+    // Compatible if delays are similar or inverted
+    return Math.abs(delay1 - delay2) <= 1 || 
+           Math.abs(delay1 + delay2) <= 1;
+  }
+  
+  checkConservation(lattice1, lattice2) {
+    // Simulate both timelines
+    const conservation1 = lattice1.simulateTimeline();
+    const conservation2 = lattice2.simulateTimeline();
+    
+    // Both should maintain conservation
+    return conservation1.energyValid && conservation2.energyValid &&
+           conservation1.phaseValid && conservation2.phaseValid;
+  }
+  
+  checkTopology(lattice1, lattice2) {
+    // Check if relationship structure is preserved
+    const rels1 = Array.from(lattice1.relations.keys()).sort();
+    const rels2 = Array.from(lattice2.relations.keys()).sort();
+    
+    // Should have similar relationship patterns
+    let matches = 0;
+    for (const rel of rels1) {
+      if (rels2.some(r => this.areRelationsCompatible(rel, r))) {
+        matches++;
+      }
+    }
+    
+    return matches >= Math.min(rels1.length, rels2.length) * 0.5;
+  }
+  
+  checkCascades(lattice1, lattice2) {
+    // Check for cascade conflicts
+    for (const [rel1, data1] of lattice1.relations) {
+      for (const [rel2, data2] of lattice2.relations) {
+        // Blocking and enabling are incompatible
+        if (data1.type === 'blocking' && data2.type === 'enabling') {
+          const [from1, to1] = rel1.split('->');
+          const [from2, to2] = rel2.split('->');
+          
+          if (from1 === from2 && to1 === to2) {
+            return false; // Direct conflict
+          }
+        }
+      }
+    }
+    
+    return true;
+  }
+  
+  areRelationsCompatible(rel1, rel2) {
+    const [from1, to1] = rel1.split('->');
+    const [from2, to2] = rel2.split('->');
+    
+    // Compatible if same symbols or inverted
+    return (from1 === from2 && to1 === to2) ||
+           (from1 === to2 && to1 === from2);
+  }
+}
+
+/* ===== MAIN GAME CONTROLLER ===== */
+class MaximalGNBackGame {
+  constructor() {
+    this.generator = new MaximalGPremiseGenerator();
+    this.validator = new DeepMatchValidator();
+    
+    // Game parameters
+    this.nLevel = 2;
+    this.maxTrials = 50;
+    this.matchProbability = 0.3;
+    this.responseWindow = 8000;
+    this.statementsPerTrial = 1;
+    this.targetGLoad = 0.95;
+    
+    // Game state
+    this.currentTrial = 0;
+    this.history = [];
+    this.matchSchedule = [];
+    
+    // Scoring - ONLY track hits, false alarms, and misses
+    this.hits = 0;
+    this.falseAlarms = 0;
+    this.misses = 0;
+    
+    // Timing
+    this.trialStartTime = 0;
+    this.responseTimer = null;
+    this.countdownTimer = null;
+    this.hasResponded = false;
+    
+    // Session
+    this.isRunning = false;
+    this.isPaused = false;
+  }
+  
+  initialize(config) {
+    this.nLevel = config.nLevel;
+    this.maxTrials = config.maxTrials;
+    this.matchProbability = config.matchProbability;
+    this.responseWindow = config.responseWindow;
+    this.statementsPerTrial = config.statementsPerTrial;
+    this.targetGLoad = config.targetGLoad;
+    
+    this.reset();
+    this.planMatchSchedule();
+  }
+  
+  reset() {
+    this.currentTrial = 0;
+    this.history = [];
+    this.matchSchedule = [];
+    this.hits = 0;
+    this.falseAlarms = 0;
+    this.misses = 0;
+    this.hasResponded = false;
+  }
+  
+  planMatchSchedule() {
+    this.matchSchedule = new Array(this.maxTrials).fill(false);
+    
+    // Only trials after n-back threshold can be matches
+    const eligibleTrials = [];
+    for (let i = this.nLevel; i < this.maxTrials; i++) {
+      eligibleTrials.push(i);
+    }
+    
+    // Randomly assign matches
+    const shuffled = shuffle(eligibleTrials);
+    const numMatches = Math.floor(shuffled.length * this.matchProbability);
+    
+    for (let i = 0; i < numMatches; i++) {
+      this.matchSchedule[shuffled[i]] = true;
+    }
+  }
+  
+  async runTrial() {
+    if (!this.isRunning || this.isPaused) return;
+    
+    this.hasResponded = false;
+    const shouldMatch = this.matchSchedule[this.currentTrial];
+    
+    // Generate premises
+    const premises = [];
+    for (let i = 0; i < this.statementsPerTrial; i++) {
+      let premise;
+      
+      if (shouldMatch && this.currentTrial >= this.nLevel) {
+        premise = this.generateMatchingPremise();
+      } else {
+        premise = this.generateNonMatchingPremise();
+      }
+      
+      premises.push(premise);
+    }
+    
+    // Store in history
+    this.history[this.currentTrial] = {
+      premises: premises,
+      shouldMatch: shouldMatch && this.currentTrial >= this.nLevel
+    };
+    
+    // Display premise
+    this.displayPremises(premises);
+    
+    // Start response window
+    this.trialStartTime = Date.now();
+    this.startResponseTimer();
+  }
+  
+  generateMatchingPremise() {
+    const referenceIdx = this.currentTrial - this.nLevel;
+    const reference = this.history[referenceIdx]?.premises[0];
+    
+    if (!reference) {
+      return this.generator.generatePremise(this.targetGLoad);
+    }
+    
+    // Generate relationally compatible (but not identical) premise
+    let attempts = 0;
+    let premise;
+    let isValid = false;
+    
+    do {
+      premise = this.generator.generatePremise(this.targetGLoad);
+      
+      // Must be different but compatible
+      isValid = this.validator.validateMatch(premise, reference) &&
+                premise.text !== reference.text;
+      
+      attempts++;
+    } while (!isValid && attempts < 50);
+    
+    return premise;
+  }
+  
+  generateNonMatchingPremise() {
+    if (this.currentTrial < this.nLevel) {
+      return this.generator.generatePremise(this.targetGLoad);
+    }
+    
+    const referenceIdx = this.currentTrial - this.nLevel;
+    const reference = this.history[referenceIdx]?.premises[0];
+    
+    if (!reference) {
+      return this.generator.generatePremise(this.targetGLoad);
+    }
+    
+    // Generate incompatible premise
+    let attempts = 0;
+    let premise;
+    let isIncompatible = false;
+    
+    do {
+      premise = this.generator.generatePremise(this.targetGLoad);
+      isIncompatible = !this.validator.validateMatch(premise, reference);
+      attempts++;
+    } while (!isIncompatible && attempts < 50);
+    
+    return premise;
+  }
+  
+  displayPremises(premises) {
+    const container = $('premiseContainer');
+    container.innerHTML = '';
+    
+    premises.forEach((premise, idx) => {
+      const div = document.createElement('div');
+      div.className = 'premise-line';
+      
+      if (premises.length > 1) {
+        const num = document.createElement('span');
+        num.className = 'premise-number';
+        num.textContent = (idx + 1).toString();
+        div.appendChild(num);
+      }
+      
+      // Parse and style premise
+      this.stylePremise(div, premise.text || premise);
+      
+      container.appendChild(div);
+    });
+    
+    // Update trial counter
+    setText('idx', this.currentTrial + 1);
+    
+    // Clear previous feedback
+    $('feedbackArea').innerHTML = '';
+    
+    // Update g-load display
+    const gLoad = premises[0].gLoad || this.targetGLoad;
+    setText('currentGLoad', gLoad.toFixed(2));
+    
+    // Show g-load info
+    const info = $('gLoadInfo');
+    if (info) {
+      info.innerHTML = `
+        <div class="g-load-indicator">
+          <span>Symbols: ${(premises[0].text.match(/[A-Z]+/g) || []).length}</span>
+          <span>Operations: ${(premises[0].text.match(/-/g) || []).length + 1}</span>
+          <span>G-Load: ${gLoad.toFixed(2)}</span>
+        </div>
+      `;
+    }
+  }
+  
+  stylePremise(container, text) {
+    const words = text.split(' ');
+    
+    words.forEach((word, idx) => {
+      const span = document.createElement('span');
+      
+      // Multi-symbol groups (3+ capitals)
+      if (/^[A-Z]{3,}$/.test(word)) {
+        span.className = 'symbol-anchor';
+      }
+      // Temporal markers
+      else if (word.includes('(t')) {
+        const parts = word.split('(');
+        const main = document.createElement('span');
+        main.className = 'operation-compound';
+        main.textContent = parts[0];
+        container.appendChild(main);
+        
+        const time = document.createElement('span');
+        time.className = 'temporal-marker';
+        time.textContent = '(' + parts[1];
+        container.appendChild(time);
+        
+        if (idx < words.length - 1) {
+          container.appendChild(document.createTextNode(' '));
+        }
+        return;
+      }
+      // Compound operations
+      else if (word.includes('-') && !word.includes('Δ')) {
+        span.className = 'operation-compound';
+      }
+      // Relations
+      else if (['cascading','blocking','enabling','triggering',
+                'preventing','modulating','inverting','amplifying'].includes(word)) {
+        span.className = 'relation-causal';
+      }
+      // Axes and states
+      else if (['UP','DOWN','LEFT','RIGHT','IN','OUT',
+                'HOT','COLD','FAST','SLOW'].includes(word)) {
+        span.className = 'axis-state';
+      }
+      // Energy delta
+      else if (word.includes('Δ')) {
+        span.className = 'energy-delta';
+      }
+      // Other
+      else {
+        span.className = 'symbol-secondary';
+      }
+      
+      span.textContent = word;
+      container.appendChild(span);
+      
+      if (idx < words.length - 1) {
+        container.appendChild(document.createTextNode(' '));
+      }
+    });
+  }
+  
+  startResponseTimer() {
+    // Countdown timer
+    let timeLeft = this.responseWindow;
+    this.countdownTimer = setInterval(() => {
+      timeLeft -= 100;
+      setText('countdown', Math.max(0, timeLeft / 1000).toFixed(1) + 's');
+      
+      if (timeLeft <= 0) {
+        clearInterval(this.countdownTimer);
+      }
+    }, 100);
+    
+    // Response window timeout
+    this.responseTimer = setTimeout(() => {
+      this.endTrial();
+    }, this.responseWindow);
+  }
+  
+  registerResponse() {
+    if (this.hasResponded || !this.isRunning || this.isPaused) return;
+    
+    this.hasResponded = true;
+    
+    // Clear timers
+    if (this.responseTimer) clearTimeout(this.responseTimer);
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+    
+    this.endTrial();
+  }
+  
+  endTrial() {
+    // Clear timers
+    if (this.responseTimer) clearTimeout(this.responseTimer);
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+    
+    const trial = this.history[this.currentTrial];
+    if (!trial) return;
+    
+    const shouldHaveResponded = trial.shouldMatch;
+    const didRespond = this.hasResponded;
+    
+    // CRITICAL: Only give feedback for hits, misses, and false alarms
+    // NO feedback for correct non-responses
+    
+    let feedback = null;
+    
+    if (shouldHaveResponded && didRespond) {
+      // Hit
+      this.hits++;
+      feedback = {
+        type: 'correct',
+        message: '✓ Correct! Match detected'
+      };
+    } else if (shouldHaveResponded && !didRespond) {
+      // Miss
+      this.misses++;
+      feedback = {
+        type: 'missed',
+        message: '✗ Missed match! Should have pressed SPACE'
+      };
+    } else if (!shouldHaveResponded && didRespond) {
+      // False alarm
+      this.falseAlarms++;
+      feedback = {
+        type: 'incorrect',
+        message: '✗ False alarm! Not a match'
+      };
+    }
+    // else: Correct non-response - NO FEEDBACK
+    
+    // Show feedback only for hits/misses/false alarms
+    if (feedback) {
+      this.showFeedback(feedback);
+    }
+    
+    // Update scores
+    setText('corr', this.hits);
+    setText('err', this.falseAlarms);
+    setText('miss', this.misses);
+    
+    // Next trial
+    this.currentTrial++;
+    
+    if (this.currentTrial >= this.maxTrials) {
+      this.endGame();
+    } else {
+      setTimeout(() => this.runTrial(), 2000);
+    }
+  }
+  
+  showFeedback(feedback) {
+    const area = $('feedbackArea');
+    area.innerHTML = '';
+    
+    const div = document.createElement('div');
+    div.className = `feedback ${feedback.type}`;
+    div.textContent = feedback.message;
+    area.appendChild(div);
+  }
+  
+  endGame() {
+    this.isRunning = false;
+    
+    const total = this.hits + this.falseAlarms + this.misses;
+    const accuracy = total > 0 ? (this.hits / total * 100).toFixed(1) : 0;
+    
+    const container = $('premiseContainer');
+    container.innerHTML = `
+      <div style="text-align:center; padding:40px; font-size:20px; font-weight:normal;">
+        <h2 style="color:var(--accent); margin-bottom:24px;">Session Complete!</h2>
+        <p>Hits: <span style="color:var(--success)">${this.hits}</span></p>
+        <p>False Alarms: <span style="color:var(--error)">${this.falseAlarms}</span></p>
+        <p>Misses: <span style="color:var(--warning)">${this.misses}</span></p>
+        <p style="margin-top:20px">Accuracy: ${accuracy}%</p>
+      </div>
+    `;
+    
+    $('feedbackArea').innerHTML = '';
+    $('gLoadInfo').innerHTML = '';
+  }
+  
+  pause() {
+    this.isPaused = true;
+    if (this.responseTimer) clearTimeout(this.responseTimer);
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+  }
+  
+  resume() {
+    this.isPaused = false;
+    this.runTrial();
+  }
+}
+
+/* ===== GAME INSTANCE & CONTROLS ===== */
+const game = new MaximalGNBackGame();
+let speakEnabled = true;
+
+async function speak(text) {
+  if (!speakEnabled || !window.speechSynthesis) return;
+  
+  return new Promise(resolve => {
+    try {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.75;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      utterance.onend = resolve;
+      utterance.onerror = resolve;
+      
+      if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+      }
+      
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      resolve();
+    }
+  });
+}
+
+function start() {
+  const config = {
+    nLevel: parseInt($('nback').value),
+    maxTrials: parseInt($('trials').value),
+    matchProbability: parseInt($('matchProb').value) / 100,
+    responseWindow: parseFloat($('solveWindow').value) * 1000,
+    statementsPerTrial: parseInt($('statements').value),
+    targetGLoad: parseFloat($('gload').value)
+  };
+  
+  speakEnabled = $('speakEnabled').checked;
+  
+  game.initialize(config);
+  game.isRunning = true;
+  
+  // Update UI
+  setText('max', config.maxTrials);
+  setText('nDisplay', config.nLevel);
+  setText('currentGLoad', config.targetGLoad.toFixed(2));
+  setText('corr', 0);
+  setText('err', 0);
+  setText('miss', 0);
+  setText('countdown', '—');
+  
+  // Update buttons
+  $('start').disabled = true;
+  $('pause').disabled = false;
+  $('reset').disabled = false;
+  
+  // Disable settings
+  $('nback').disabled = true;
+  $('trials').disabled = true;
+  $('matchProb').disabled = true;
+  $('solveWindow').disabled = true;
+  $('statements').disabled = true;
+  $('gload').disabled = true;
+  
+  // Start game
+  game.runTrial();
+}
+
+function pause() {
+  if (game.isPaused) {
+    game.resume();
+    $('pause').textContent = '⏸ Pause';
+  } else {
+    game.pause();
+    $('pause').textContent = '▶ Resume';
+  }
+}
+
+function reset() {
+  game.isRunning = false;
+  game.reset();
+  
+  // Clear timers
+  if (game.responseTimer) clearTimeout(game.responseTimer);
+  if (game.countdownTimer) clearInterval(game.countdownTimer);
+  
+  // Reset display
+  $('premiseContainer').innerHTML = `
+    <div style="text-align:center; color:var(--mut); font-size:18px; font-weight:normal; letter-spacing:0.5px;">
+      Press START to begin maximum cognitive load training
+    </div>
+  `;
+  
+  $('feedbackArea').innerHTML = '';
+  $('gLoadInfo').innerHTML = '';
+  
+  setText('idx', 0);
+  setText('corr', 0);
+  setText('err', 0);
+  setText('miss', 0);
+  setText('countdown', '—');
+  
+  // Update buttons
+  $('start').disabled = false;
+  $('pause').disabled = true;
+  $('reset').disabled = true;
+  $('pause').textContent = '⏸ Pause';
+  
+  // Re-enable settings
+  $('nback').disabled = false;
+  $('trials').disabled = false;
+  $('matchProb').disabled = false;
+  $('solveWindow').disabled = false;
+  $('statements').disabled = false;
+  $('gload').disabled = false;
+  
+  // Stop speech
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', () => {
+  // Instructions modal
+  const modal = $('instructionsModal');
+  const btn = $('instructionsBtn');
+  const span = document.querySelector('.close');
+  
+  btn.onclick = () => modal.style.display = 'block';
+  span.onclick = () => modal.style.display = 'none';
+  window.onclick = (e) => {
+    if (e.target === modal) modal.style.display = 'none';
+  };
+  
+  // Settings
+  $('nback').oninput = (e) => {
+    setText('nVal', e.target.value);
+    setText('nDisplay', e.target.value);
+  };
+  
+  $('statements').oninput = (e) => {
+    setText('stmtVal', e.target.value);
+  };
+  
+  $('matchProb').oninput = (e) => {
+    setText('matchVal', e.target.value + '%');
+  };
+  
+  $('solveWindow').oninput = (e) => {
+    setText('solveVal', parseFloat(e.target.value).toFixed(1) + 's');
+  };
+  
+  $('trials').oninput = (e) => {
+    setText('tVal', e.target.value);
+    setText('max', e.target.value);
+  };
+  
+  $('gload').oninput = (e) => {
+    setText('gloadVal', parseFloat(e.target.value).toFixed(2));
+    setText('currentGLoad', parseFloat(e.target.value).toFixed(2));
+  };
+  
+  // Control buttons
+  $('start').onclick = start;
+  $('pause').onclick = pause;
+  $('reset').onclick = reset;
+  
+  // Spacebar for response
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && game.isRunning && !game.isPaused) {
+      e.preventDefault();
+      game.registerResponse();
+    }
+  });
+  
+  // Initialize displays
+  setText('nVal', $('nback').value);
+  setText('nDisplay', $('nback').value);
+  setText('stmtVal', $('statements').value);
+  setText('matchVal', $('matchProb').value + '%');
+  setText('solveVal', parseFloat($('solveWindow').value).toFixed(1) + 's');
+  setText('tVal', $('trials').value);
+  setText('max', $('trials').value);
+  setText('gloadVal', parseFloat($('gload').value).toFixed(2));
+  setText('currentGLoad', parseFloat($('gload').value).toFixed(2));
+});
+</script>
+</body>
+</html>
