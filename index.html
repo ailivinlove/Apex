@@ -1,1 +1,1662 @@
-.
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Relational Lattice N-Back — Infinity Version (Max G-Load 0.95+)</title>
+<style>
+:root { 
+  --bg:#0a0a0f; 
+  --fg:#e6fbff; 
+  --accent:#00ccff; 
+  --mut:#8fe7ff; 
+  --glow:#00ffff40;
+  --success:#26de81;
+  --error:#ff6b6b;
+  --warning:#ffd700;
+}
+
+*{ box-sizing:border-box; margin:0; padding:0; }
+html,body{ height:100%; overflow-x:hidden }
+body{ 
+  background:linear-gradient(135deg, #0a0a0f 0%, #0f1419 100%); 
+  color:var(--fg); 
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+
+.wrap{ max-width:1280px; margin:0 auto; padding:16px }
+.row{ display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+.col{ flex:1 1 360px }
+
+.box{ 
+  background:rgba(16,20,24,0.9); 
+  border:1px solid rgba(0,200,255,.25); 
+  border-radius:14px; 
+  padding:14px; 
+  backdrop-filter:blur(10px);
+  box-shadow:0 4px 20px rgba(0,0,0,0.3);
+}
+
+.title{ 
+  font-weight:800; 
+  margin-bottom:10px; 
+  letter-spacing:.5px;
+  color:var(--accent);
+  text-shadow:0 0 10px rgba(0,200,255,0.3);
+}
+
+.btn{ 
+  background:rgba(0,200,255,0.1); 
+  color:var(--accent); 
+  border:1px solid var(--accent); 
+  border-radius:8px; 
+  padding:10px 14px; 
+  font-weight:700; 
+  cursor:pointer; 
+  transition:all 0.3s;
+  font-size:14px;
+}
+.btn:hover:not(:disabled){ 
+  background:rgba(0,200,255,0.25); 
+  box-shadow:0 0 20px rgba(0,200,255,.5);
+  transform:translateY(-1px);
+}
+.btn:disabled{ opacity:.4; cursor:not-allowed }
+
+.btn.instructions{ 
+  background:rgba(95,39,205,0.2); 
+  border-color:#5f27cd; 
+  color:#a55eea;
+}
+.btn.instructions:hover{ 
+  background:rgba(95,39,205,0.4); 
+  box-shadow:0 0 20px rgba(95,39,205,.6) 
+}
+
+label{ 
+  font-size:12px; 
+  color:var(--mut); 
+  display:block; 
+  margin:8px 0 4px 0;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
+}
+
+input[type=range]{ 
+  width:100%; 
+  height:6px;
+  background:rgba(0,200,255,0.1);
+  border-radius:3px;
+  outline:none;
+  -webkit-appearance:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;
+  appearance:none;
+  width:16px;
+  height:16px;
+  background:var(--accent);
+  border-radius:50%;
+  cursor:pointer;
+  box-shadow:0 0 10px rgba(0,200,255,0.5);
+}
+input[type=range]::-moz-range-thumb{
+  width:16px;
+  height:16px;
+  background:var(--accent);
+  border-radius:50%;
+  cursor:pointer;
+  box-shadow:0 0 10px rgba(0,200,255,0.5);
+}
+
+.kbd{ 
+  border:1px solid rgba(255,255,255,.25); 
+  padding:2px 6px; 
+  border-radius:4px; 
+  background:rgba(0,0,0,0.5); 
+  font-size:11px;
+  font-weight:bold;
+}
+
+.mut{ color:var(--mut); font-size:12px; margin-top:4px; }
+hr.hr{ border:none; border-top:1px solid rgba(0,200,255,.25); margin:10px 0 }
+
+#premiseContainer{ 
+  margin-top:12px; 
+  min-height:160px; 
+  background:linear-gradient(135deg, rgba(14,17,19,0.95), rgba(19,22,25,0.95));
+  border:2px solid rgba(0,200,255,.3); 
+  border-radius:12px; 
+  padding:20px; 
+  font-size:32px; 
+  line-height:2.2; 
+  font-family:'Courier New',monospace; 
+  font-weight:900; 
+  letter-spacing:2px;
+  position:relative;
+  overflow:hidden;
+  box-shadow:inset 0 0 30px rgba(0,200,255,0.05);
+}
+
+#premiseContainer::before{
+  content:'';
+  position:absolute;
+  top:-50%;
+  left:-50%;
+  width:200%;
+  height:200%;
+  background:radial-gradient(circle, rgba(0,200,255,0.03) 0%, transparent 70%);
+  animation:rotate 30s linear infinite;
+  pointer-events:none;
+}
+
+@keyframes rotate{ from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+@keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:0.7} }
+@keyframes fadeIn{ from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:translateY(0)} }
+
+.premise-line{ 
+  margin:16px 0; 
+  padding:20px; 
+  border-left:8px solid rgba(0,200,255,.7); 
+  background:linear-gradient(90deg, rgba(0,200,255,.15), rgba(0,200,255,.02)); 
+  border-radius:6px; 
+  position:relative;
+  animation:fadeIn 0.5s ease-out;
+}
+
+.premise-number{ 
+  position:absolute; 
+  left:-50px; 
+  top:50%; 
+  transform:translateY(-50%); 
+  color:var(--accent); 
+  font-size:24px; 
+  font-weight:bold;
+  text-shadow:0 0 15px rgba(0,200,255,0.5);
+}
+
+.badge{ 
+  display:inline-block; 
+  padding:3px 10px; 
+  border:1px solid rgba(0,200,255,.35); 
+  border-radius:999px; 
+  font-size:11px; 
+  color:var(--mut); 
+  margin-left:8px;
+  font-weight:600;
+  background:rgba(0,200,255,0.05);
+}
+
+#countdown{ 
+  font-weight:800; 
+  color:var(--accent);
+  text-shadow:0 0 10px rgba(0,200,255,0.5);
+}
+
+/* Symbol styling */
+.symbol-A, .symbol-B, .symbol-C { 
+  color:#ff6b6b; 
+  text-shadow:0 0 15px rgba(255,107,107,.8); 
+  font-weight:900;
+}
+.symbol-X, .symbol-Y, .symbol-Z { 
+  color:#4ecdc4; 
+  text-shadow:0 0 15px rgba(78,205,196,.8); 
+  font-weight:900;
+}
+.symbol-color { 
+  font-weight:900;
+  text-shadow:0 0 15px currentColor;
+}
+.symbol-number { 
+  color:#ff00ff; 
+  text-shadow:0 0 15px rgba(255,0,255,.8); 
+  font-weight:900;
+}
+.operation { 
+  color:#26de81; 
+  text-shadow:0 0 12px rgba(38,222,129,.8);
+  font-style:italic;
+}
+.axis { 
+  color:#ffd700; 
+  font-weight:bold; 
+  text-shadow:0 0 15px rgba(255,215,0,.9);
+}
+.relation { 
+  color:#a55eea; 
+  font-weight:900; 
+  text-shadow:0 0 16px rgba(165,94,234,.9);
+  text-decoration:underline;
+  text-decoration-style:dotted;
+}
+.compound { 
+  color:#00d2d3; 
+  text-shadow:0 0 12px rgba(0,210,211,.7);
+  background:rgba(0,210,211,0.1);
+  padding:2px 4px;
+  border-radius:3px;
+}
+
+.feedback {
+  margin-top:15px;
+  padding:12px;
+  border-radius:8px;
+  font-size:14px;
+  font-weight:600;
+  animation:fadeIn 0.5s ease-out;
+}
+.feedback.correct {
+  background:rgba(38,222,129,0.2);
+  border:1px solid var(--success);
+  color:var(--success);
+}
+.feedback.incorrect {
+  background:rgba(255,107,107,0.2);
+  border:1px solid var(--error);
+  color:var(--error);
+}
+.feedback.missed {
+  background:rgba(255,215,0,0.2);
+  border:1px solid var(--warning);
+  color:var(--warning);
+}
+
+.lattice-viz {
+  margin-top:10px;
+  padding:8px;
+  background:rgba(0,0,0,0.3);
+  border:1px solid rgba(0,200,255,0.2);
+  border-radius:5px;
+  font-size:11px;
+  font-family:monospace;
+  color:var(--mut);
+}
+
+/* Modal */
+.modal{
+  display:none;
+  position:fixed;
+  z-index:1000;
+  left:0;
+  top:0;
+  width:100%;
+  height:100%;
+  background:rgba(0,0,0,0.9);
+  backdrop-filter:blur(8px);
+}
+
+.modal-content{
+  background:linear-gradient(135deg, #0f1419, #1a1f25);
+  margin:1% auto;
+  padding:25px;
+  border:2px solid var(--accent);
+  border-radius:15px;
+  width:92%;
+  max-width:920px;
+  max-height:92vh;
+  overflow-y:auto;
+  box-shadow:0 0 40px rgba(0,200,255,.5);
+}
+
+.modal-content h2{ color:var(--accent); margin:20px 0; text-shadow:0 0 20px rgba(0,200,255,0.3); }
+.modal-content h3{ color:var(--mut); margin:15px 0; }
+.modal-content h4{ color:#a55eea; margin:10px 0; }
+.modal-content p{ line-height:1.7; color:var(--fg); margin:10px 0; }
+.modal-content ul{ line-height:1.8; margin:10px 0; padding-left:25px; }
+.modal-content li{ margin:5px 0; }
+
+.example{
+  background:rgba(0,0,0,0.5);
+  border-left:4px solid var(--accent);
+  padding:12px;
+  margin:15px 0;
+  font-family:'Courier New',monospace;
+  font-size:14px;
+  border-radius:5px;
+}
+
+.explanation{
+  color:var(--mut);
+  font-style:italic;
+  margin-top:8px;
+  padding:10px;
+  background:rgba(0,200,255,0.05);
+  border-radius:5px;
+  border:1px solid rgba(0,200,255,0.2);
+}
+
+.diagram {
+  background:rgba(0,0,0,0.7);
+  padding:20px;
+  margin:15px 0;
+  border:2px solid var(--accent);
+  border-radius:8px;
+  text-align:center;
+  font-family:monospace;
+  font-size:13px;
+  color:var(--accent);
+}
+
+.close{
+  color:var(--accent);
+  float:right;
+  font-size:32px;
+  font-weight:bold;
+  cursor:pointer;
+  transition:all 0.3s;
+}
+.close:hover{ 
+  color:var(--error);
+  transform:rotate(90deg);
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row">
+    <div class="col">
+      <div class="box">
+        <div class="title">⚡ Relational Configuration</div>
+        <label>N-Back level: <span id="nVal">1</span></label>
+        <input id="nback" type="range" min="1" max="5" step="1" value="1">
+        
+        <label>Statements per trial: <span id="stmtVal">1</span></label>
+        <input id="statements" type="range" min="1" max="5" step="1" value="1">
+        
+        <label>Match probability: <span id="matchVal">25%</span></label>
+        <input id="matchProb" type="range" min="0" max="100" step="5" value="25">
+        <div class="mut">Higher = more matches to practice recognition</div>
+        
+        <hr class="hr">
+        <button id="instructionsBtn" class="btn instructions" style="width:100%; margin-top:10px">
+          📖 How to Play
+        </button>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="box">
+        <div class="title">⏱️ Timing & Trials</div>
+        <label>Response window: <span id="solveVal">5.0s</span></label>
+        <input id="solveWindow" type="range" min="2" max="15" step="0.5" value="5">
+        
+        <label>Trials per block: <span id="tVal">100</span></label>
+        <input id="trials" type="range" min="20" max="200" step="10" value="100">
+        
+        <label><input id="speakEnabled" type="checkbox" checked> Voice synthesis</label>
+        <div class="mut">Speaks premises aloud</div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="box">
+        <div class="title">🎮 Controls</div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px">
+          <button id="start" class="btn">▶ Start</button>
+          <button id="pause" class="btn" disabled>⏸ Pause</button>
+          <button id="reset" class="btn" disabled>🔄 Reset</button>
+        </div>
+        <div class="mut" style="margin-top:12px">
+          <strong>Press <span class="kbd">SPACE</span> when you detect a match!</strong>
+        </div>
+        <hr class="hr">
+        <div class="mut">
+          Trial: <span id="idx">0</span>/<span id="max">100</span>
+          <span class="badge">Timer: <span id="countdown">—</span></span>
+        </div>
+        <div class="mut" style="margin-top:5px">
+          Score: <span style="color:var(--success)" id="corr">0</span> correct • 
+          <span style="color:var(--error)" id="err">0</span> errors • 
+          <span style="color:var(--warning)" id="miss">0</span> missed
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="title">
+      🧠 Relational Lattice N-Back 
+      <span class="badge">5 words</span>
+      <span class="badge">G-Load: 0.95+</span>
+      <span class="badge">N=<span id="nDisplay">1</span></span>
+    </div>
+    <div id="premiseContainer" aria-live="polite">
+      <div style="text-align:center; color:var(--mut); font-size:20px; font-weight:normal;">
+        Press START to begin
+      </div>
+    </div>
+    <div id="feedbackArea"></div>
+  </div>
+</div>
+
+<!-- Instructions Modal -->
+<div id="instructionsModal" class="modal">
+  <div class="modal-content">
+    <span class="close">&times;</span>
+    <h2>🧠 Relational Lattice N-Back — Maximum Cognitive Load</h2>
+    
+    <p><strong>This is the most demanding n-back variant ever created.</strong> Each 5-word premise encodes multiple symbols in a relational lattice. You must track positions, transformations, and cascading relationships across time.</p>
+    
+    <h3>⚡ How It Works</h3>
+    <p>Each premise describes symbols (A, B, C, etc.) undergoing transformations that affect other symbols. These create chains of relationships that cascade and interfere.</p>
+    
+    <div class="diagram">
+      PREMISE STRUCTURE (exactly 5 words):
+      [SYMBOL₁] [OPERATION-AXIS] [RELATION] [SYMBOL₂] [AXIS₂]
+      
+      Example: "A moves-UP affecting B DOWN"
+           ↓        ↓         ↓      ↓     ↓
+        Symbol  Operation  Causal Symbol Direction
+    </div>
+    
+    <h3>🎯 Your Task</h3>
+    <ol>
+      <li><strong>Listen/Read</strong> each premise</li>
+      <li><strong>Mentally simulate</strong> the transformations and relationships</li>
+      <li><strong>Compare</strong> with the premise N trials back</li>
+      <li><strong>Press SPACE</strong> if you detect a relational match</li>
+      <li><strong>Do nothing</strong> if no match exists</li>
+    </ol>
+    
+    <h3>🔍 What Makes a MATCH?</h3>
+    <p>A match occurs when the current premise is <strong>relationally compatible</strong> with the N-back premise:</p>
+    
+    <div class="example">
+      <strong>N-back 1 Example:</strong>
+      Trial 1: "A moves-UP affecting B DOWN"
+      Trial 2: "A shifts-DOWN affecting B UP"
+      
+      MATCH! Why? The A→B relationship is preserved with inverted spatial axes.
+    </div>
+    
+    <div class="example">
+      <strong>Multi-Symbol Cascade:</strong>
+      Trial 1: "A triggers B which-affects C"
+      Trial 2: "X blocks Y preventing Z"
+      Trial 3: "A enables B which-triggers C"
+      
+      Trial 3 matches Trial 1 (2-back): Similar cascade pattern A→B→C
+    </div>
+    
+    <h3>🧩 Key Concepts</h3>
+    
+    <h4>Symbols</h4>
+    <ul>
+      <li><strong>Letters:</strong> A, B, C, X, Y, Z (abstract entities)</li>
+      <li><strong>Colors:</strong> RED, BLUE, GREEN (visual entities)</li>
+      <li><strong>Numbers:</strong> ONE, TWO, THREE (quantitative entities)</li>
+    </ul>
+    
+    <h4>Operations</h4>
+    <ul>
+      <li><strong>Movement:</strong> moves, shifts, rotates, spins</li>
+      <li><strong>Transformation:</strong> splits, merges, grows, shrinks</li>
+      <li><strong>Force:</strong> pushes, pulls, drives, flows</li>
+    </ul>
+    
+    <h4>Relations (How symbols affect each other)</h4>
+    <ul>
+      <li><strong>affecting:</strong> Direct influence</li>
+      <li><strong>triggering:</strong> Causes activation</li>
+      <li><strong>blocking:</strong> Prevents action</li>
+      <li><strong>enabling:</strong> Allows action</li>
+      <li><strong>preventing:</strong> Stops entirely</li>
+    </ul>
+    
+    <h4>Axes (Spatial/State dimensions)</h4>
+    <ul>
+      <li><strong>Spatial:</strong> UP, DOWN, LEFT, RIGHT, IN, OUT</li>
+      <li><strong>States:</strong> HOT, COLD, FAST, SLOW</li>
+    </ul>
+    
+    <h3>⚠️ Why This Is So Hard</h3>
+    
+    <div class="explanation">
+      <strong>You cannot pattern-match!</strong> The same words create different relationships based on context. You must:
+      • Track each symbol's state across multiple dimensions
+      • Compute cascading effects through relationship chains
+      • Detect latent conflicts that emerge from interactions
+      • Maintain a mental model of the entire relational lattice
+    </div>
+    
+    <h3>🎮 Match Probability Setting</h3>
+    <p>Adjust the "Match probability" slider to control difficulty:</p>
+    <ul>
+      <li><strong>0-20%:</strong> Few matches (harder - most are non-matches)</li>
+      <li><strong>25-35%:</strong> Optimal challenge</li>
+      <li><strong>40-60%:</strong> Balanced practice</li>
+      <li><strong>70-100%:</strong> Match-heavy (easier - practice recognizing patterns)</li>
+    </ul>
+    
+    <h3>💡 Strategy Tips</h3>
+    <ol>
+      <li><strong>Visualize</strong> the symbols in 3D space</li>
+      <li><strong>Track relationships</strong> not just positions</li>
+      <li><strong>Note cascades:</strong> If A→B and B→C, then A indirectly affects C</li>
+      <li><strong>Check inversions:</strong> UP/DOWN and LEFT/RIGHT often indicate compatible matches</li>
+      <li><strong>Detect conflicts:</strong> "blocking" contradicts "enabling"</li>
+    </ol>
+    
+    <div class="diagram">
+      CASCADING EFFECTS:
+      
+      A affects B, B affects C
+           ↓         ↓
+      A indirectly affects C
+      
+      If later premise breaks B→C link,
+      the entire cascade collapses!
+    </div>
+    
+    <p><strong>Remember:</strong> This tests your working memory's ability to maintain and manipulate complex relational structures. Take your time to mentally simulate before responding!</p>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   RELATIONAL LATTICE N-BACK - INFINITY VERSION
+   True Implementation with Maximum G-Load
+   ============================================================ */
+
+const $ = id => document.getElementById(id);
+function setText(id, v) { const el = $(id); if(el) el.textContent = v; }
+function shuffle(arr) { 
+  for(let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+/* ===== ADVANCED RELATIONAL LATTICE ENGINE ===== */
+class AdvancedRelationalLattice {
+  constructor() {
+    this.symbols = new Map(); // symbol -> {pos: {x,y,z}, energy: n, state: s}
+    this.relations = new Map(); // "A->B" -> {type, strength, cascade}
+    this.cascades = []; // [{from, through, to, strength}]
+    this.conflicts = []; // [{rel1, rel2, type}]
+  }
+  
+  applyPremise(premiseText) {
+    const parsed = this.parsePremise(premiseText);
+    if (!parsed) return null;
+    
+    const {primary, secondary, operation, primaryAxis, relation, secondaryAxis} = parsed;
+    
+    // Initialize symbols if new
+    if (!this.symbols.has(primary)) {
+      this.symbols.set(primary, {
+        pos: {x: 0, y: 0, z: 0},
+        energy: 10,
+        state: 'neutral'
+      });
+    }
+    if (!this.symbols.has(secondary)) {
+      this.symbols.set(secondary, {
+        pos: {x: 0, y: 0, z: 0},
+        energy: 10,
+        state: 'neutral'
+      });
+    }
+    
+    // Apply primary operation
+    this.applyOperation(primary, operation, primaryAxis);
+    
+    // Create relationship
+    const relKey = `${primary}->${secondary}`;
+    this.relations.set(relKey, {
+      type: relation,
+      strength: this.calculateStrength(relation),
+      axis: primaryAxis
+    });
+    
+    // Apply cascade to secondary
+    this.applyCascade(secondary, relation, secondaryAxis);
+    
+    // Compute indirect effects
+    this.computeIndirectCascades(primary, secondary);
+    
+    // Check for conflicts
+    this.detectConflicts();
+    
+    return parsed;
+  }
+  
+  parsePremise(text) {
+    const words = text.split(' ').filter(w => w.length > 0);
+    if (words.length !== 5) return null;
+    
+    // Pattern: "SYMBOL1 operation-axis relation SYMBOL2 axis2"
+    const result = {
+      primary: null,
+      secondary: null,
+      operation: null,
+      primaryAxis: null,
+      relation: null,
+      secondaryAxis: null
+    };
+    
+    // Extract primary symbol (first uppercase word)
+    result.primary = words[0];
+    
+    // Extract compound operation
+    const compound = words[1];
+    if (compound.includes('-')) {
+      const [op, axis] = compound.split('-');
+      result.operation = op;
+      result.primaryAxis = axis;
+    }
+    
+    // Extract relation
+    result.relation = words[2];
+    
+    // Extract secondary symbol
+    result.secondary = words[3];
+    
+    // Extract secondary axis
+    result.secondaryAxis = words[4];
+    
+    return result;
+  }
+  
+  applyOperation(symbol, operation, axis) {
+    const state = this.symbols.get(symbol);
+    if (!state) return;
+    
+    // Apply spatial changes
+    const moves = {
+      'UP': {y: 1}, 'DOWN': {y: -1},
+      'LEFT': {x: -1}, 'RIGHT': {x: 1},
+      'IN': {z: -1}, 'OUT': {z: 1}
+    };
+    
+    if (moves[axis]) {
+      state.pos.x += moves[axis].x || 0;
+      state.pos.y += moves[axis].y || 0;
+      state.pos.z += moves[axis].z || 0;
+    }
+    
+    // Apply operation-specific changes
+    switch(operation) {
+      case 'splits':
+      case 'fragments':
+        state.energy *= 0.5;
+        state.state = 'fragmented';
+        break;
+      case 'merges':
+      case 'combines':
+        state.energy *= 1.5;
+        state.state = 'merged';
+        break;
+      case 'rotates':
+      case 'spins':
+        // Swap coordinates
+        const temp = state.pos.x;
+        state.pos.x = state.pos.y;
+        state.pos.y = temp;
+        break;
+      case 'grows':
+        state.energy += 3;
+        break;
+      case 'shrinks':
+        state.energy = Math.max(1, state.energy - 3);
+        break;
+    }
+  }
+  
+  applyCascade(symbol, relation, axis) {
+    const state = this.symbols.get(symbol);
+    if (!state) return;
+    
+    const moves = {
+      'UP': {y: 1}, 'DOWN': {y: -1},
+      'LEFT': {x: -1}, 'RIGHT': {x: 1},
+      'IN': {z: -1}, 'OUT': {z: 1}
+    };
+    
+    switch(relation) {
+      case 'affecting':
+        if (moves[axis]) {
+          state.pos.x += (moves[axis].x || 0) * 0.8;
+          state.pos.y += (moves[axis].y || 0) * 0.8;
+          state.pos.z += (moves[axis].z || 0) * 0.8;
+        }
+        break;
+        
+      case 'triggering':
+        if (moves[axis]) {
+          state.pos.x += (moves[axis].x || 0) * 1.2;
+          state.pos.y += (moves[axis].y || 0) * 1.2;
+          state.pos.z += (moves[axis].z || 0) * 1.2;
+        }
+        state.state = 'triggered';
+        break;
+        
+      case 'blocking':
+        // Move opposite direction
+        if (moves[axis]) {
+          state.pos.x -= (moves[axis].x || 0);
+          state.pos.y -= (moves[axis].y || 0);
+          state.pos.z -= (moves[axis].z || 0);
+        }
+        state.energy = Math.max(1, state.energy - 2);
+        state.state = 'blocked';
+        break;
+        
+      case 'enabling':
+        if (moves[axis]) {
+          state.pos.x += moves[axis].x || 0;
+          state.pos.y += moves[axis].y || 0;
+          state.pos.z += moves[axis].z || 0;
+        }
+        state.energy += 1;
+        state.state = 'enabled';
+        break;
+        
+      case 'preventing':
+        state.energy = Math.max(0, state.energy - 4);
+        state.state = 'prevented';
+        break;
+    }
+  }
+  
+  calculateStrength(relation) {
+    const strengths = {
+      'affecting': 0.7,
+      'triggering': 0.9,
+      'blocking': -0.8,
+      'enabling': 0.8,
+      'preventing': -0.9
+    };
+    return strengths[relation] || 0.5;
+  }
+  
+  computeIndirectCascades(sym1, sym2) {
+    // Find all symbols affected by sym2
+    for (const [rel, data] of this.relations) {
+      if (rel.startsWith(`${sym2}->`)) {
+        const sym3 = rel.split('->')[1];
+        
+        // Create indirect cascade
+        this.cascades.push({
+          from: sym1,
+          through: sym2,
+          to: sym3,
+          strength: data.strength * 0.6
+        });
+        
+        // Add indirect relation
+        const indirectKey = `${sym1}=>>${sym3}`;
+        if (!this.relations.has(indirectKey)) {
+          this.relations.set(indirectKey, {
+            type: 'indirect',
+            strength: data.strength * 0.6,
+            via: sym2
+          });
+        }
+      }
+    }
+  }
+  
+  detectConflicts() {
+    this.conflicts = [];
+    
+    for (const [rel1, data1] of this.relations) {
+      for (const [rel2, data2] of this.relations) {
+        if (rel1 === rel2) continue;
+        
+        // Check for contradictory relations
+        if (data1.type === 'blocking' && data2.type === 'enabling') {
+          const [from1, to1] = rel1.split('->');
+          const [from2, to2] = rel2.split('->');
+          
+          if (from1 === from2 && to1 === to2) {
+            this.conflicts.push({
+              rel1, rel2, 
+              type: 'contradiction'
+            });
+          }
+        }
+      }
+    }
+  }
+  
+  isCompatibleWith(other) {
+    // Check symbol state compatibility
+    for (const [sym, state] of this.symbols) {
+      if (other.symbols.has(sym)) {
+        const otherState = other.symbols.get(sym);
+        
+        // Check for state conflicts
+        if (state.state === 'fragmented' && otherState.state === 'merged') return false;
+        if (state.state === 'blocked' && otherState.state === 'enabled') return false;
+        
+        // Check energy conservation (with tolerance)
+        if (Math.abs(state.energy - otherState.energy) > 8) return false;
+      }
+    }
+    
+    // Check relationship compatibility
+    for (const [rel, data] of this.relations) {
+      if (other.relations.has(rel)) {
+        const otherData = other.relations.get(rel);
+        
+        // Contradictory relations
+        if (data.type === 'blocking' && otherData.type === 'enabling') return false;
+        if (data.type === 'preventing' && otherData.type === 'triggering') return false;
+      }
+    }
+    
+    // Check cascade preservation
+    for (const cascade of this.cascades) {
+      const directRel = `${cascade.from}->${cascade.through}`;
+      const continuationRel = `${cascade.through}->${cascade.to}`;
+      
+      // If the direct relation exists in other but continuation is broken
+      if (other.relations.has(directRel) && !other.relations.has(continuationRel)) {
+        // Check if there's a blocking relation
+        for (const [rel, data] of other.relations) {
+          if (rel === continuationRel && data.type === 'blocking') {
+            return false; // Cascade is explicitly broken
+          }
+        }
+      }
+    }
+    
+    return true;
+  }
+}
+
+/* ===== SOPHISTICATED PREMISE GENERATOR ===== */
+class SophisticatedPremiseGenerator {
+  constructor() {
+    // Multi-level symbol pools
+    this.symbolPools = {
+      abstract: ['A', 'B', 'C', 'X', 'Y', 'Z'],
+      colors: ['RED', 'BLUE', 'GREEN'],
+      numbers: ['ONE', 'TWO', 'THREE'],
+      advanced: ['ALPHA', 'BETA', 'GAMMA']
+    };
+    
+    // Sophisticated operations
+    this.operations = {
+      movement: ['moves', 'shifts', 'slides', 'glides'],
+      rotation: ['rotates', 'spins', 'turns', 'pivots'],
+      transformation: ['splits', 'merges', 'morphs', 'transforms'],
+      size: ['grows', 'shrinks', 'expands', 'contracts'],
+      force: ['pushes', 'pulls', 'drives', 'propels']
+    };
+    
+    // Complex relations with different cascade patterns
+    this.relations = {
+      positive: ['affecting', 'enabling', 'triggering'],
+      negative: ['blocking', 'preventing', 'opposing'],
+      complex: ['modulating', 'inverting', 'amplifying']
+    };
+    
+    // Multi-dimensional axes
+    this.axes = {
+      spatial: ['UP', 'DOWN', 'LEFT', 'RIGHT', 'IN', 'OUT'],
+      rotational: ['CLOCKWISE', 'COUNTER'],
+      thermal: ['HOT', 'COLD'],
+      speed: ['FAST', 'SLOW']
+    };
+    
+    this.usedPatterns = new Set();
+    this.premiseHistory = [];
+  }
+  
+  generatePremise(trial, complexity = 1) {
+    let attempts = 0;
+    let premise;
+    
+    do {
+      premise = this.buildComplexPremise(trial + attempts, complexity);
+      attempts++;
+    } while (this.usedPatterns.has(premise) && attempts < 50);
+    
+    this.usedPatterns.add(premise);
+    
+    // Maintain history
+    this.premiseHistory.push(premise);
+    if (this.premiseHistory.length > 100) {
+      this.premiseHistory.shift();
+    }
+    
+    return premise;
+  }
+  
+  buildComplexPremise(seed, complexity) {
+    const pattern = seed % 5;
+    
+    switch(pattern) {
+      case 0: // Simple cascade
+        return this.buildSimpleCascade(seed);
+      case 1: // Opposition pattern
+        return this.buildOpposition(seed);
+      case 2: // Complex modulation
+        return this.buildModulation(seed);
+      case 3: // Multi-level cascade
+        return this.buildMultiCascade(seed);
+      case 4: // Interference pattern
+        return this.buildInterference(seed);
+    }
+  }
+  
+  buildSimpleCascade(seed) {
+    const sym1 = this.getSymbol(seed, 'abstract');
+    const op = this.getOperation(seed, 'movement');
+    const axis1 = this.getAxis(seed, 'spatial');
+    const rel = this.getRelation(seed, 'positive');
+    const sym2 = this.getSymbol(seed + 1, 'abstract');
+    const axis2 = this.getAxis(seed + 1, 'spatial');
+    
+    return `${sym1} ${op}-${axis1} ${rel} ${sym2} ${axis2}`;
+  }
+  
+  buildOpposition(seed) {
+    const sym1 = this.getSymbol(seed, 'colors');
+    const op = this.getOperation(seed, 'rotation');
+    const axis1 = this.getAxis(seed, 'spatial');
+    const rel = this.getRelation(seed, 'negative');
+    const sym2 = this.getSymbol(seed + 1, 'colors');
+    const axis2 = this.getOppositeAxis(axis1);
+    
+    return `${sym1} ${op}-${axis1} ${rel} ${sym2} ${axis2}`;
+  }
+  
+  buildModulation(seed) {
+    const sym1 = this.getSymbol(seed, 'numbers');
+    const op = this.getOperation(seed, 'transformation');
+    const axis1 = this.getAxis(seed, 'thermal');
+    const rel = 'modulating';
+    const sym2 = this.getSymbol(seed + 1, 'numbers');
+    const axis2 = this.getAxis(seed + 1, 'speed');
+    
+    return `${sym1} ${op}-${axis1} ${rel} ${sym2} ${axis2}`;
+  }
+  
+  buildMultiCascade(seed) {
+    const sym1 = this.getSymbol(seed, 'abstract');
+    const op = this.getOperation(seed, 'force');
+    const axis1 = this.getAxis(seed, 'spatial');
+    const rel = this.getRelation(seed, 'positive');
+    const sym2 = this.getSymbol(seed + 1, 'abstract');
+    const axis2 = this.getAxis(seed + 2, 'spatial');
+    
+    return `${sym1} ${op}-${axis1} ${rel} ${sym2} ${axis2}`;
+  }
+  
+  buildInterference(seed) {
+    const sym1 = this.getSymbol(seed, 'advanced');
+    const op = this.getOperation(seed, 'size');
+    const axis1 = this.getAxis(seed, 'spatial');
+    const rel = 'inverting';
+    const sym2 = this.getSymbol(seed + 1, 'advanced');
+    const axis2 = this.getAxis(seed + 1, 'spatial');
+    
+    return `${sym1} ${op}-${axis1} ${rel} ${sym2} ${axis2}`;
+  }
+  
+  getSymbol(seed, poolName) {
+    const pool = this.symbolPools[poolName];
+    return pool[seed % pool.length];
+  }
+  
+  getOperation(seed, type) {
+    const ops = this.operations[type];
+    return ops[seed % ops.length];
+  }
+  
+  getRelation(seed, type) {
+    const rels = this.relations[type];
+    return rels[seed % rels.length];
+  }
+  
+  getAxis(seed, type) {
+    const axes = this.axes[type];
+    return axes[seed % axes.length];
+  }
+  
+  getOppositeAxis(axis) {
+    const opposites = {
+      'UP': 'DOWN', 'DOWN': 'UP',
+      'LEFT': 'RIGHT', 'RIGHT': 'LEFT',
+      'IN': 'OUT', 'OUT': 'IN',
+      'HOT': 'COLD', 'COLD': 'HOT',
+      'FAST': 'SLOW', 'SLOW': 'FAST'
+    };
+    return opposites[axis] || axis;
+  }
+}
+
+/* ===== GAME CONTROLLER ===== */
+class RelationalNBackGame {
+  constructor() {
+    this.generator = new SophisticatedPremiseGenerator();
+    this.history = [];
+    this.matchSchedule = [];
+    
+    // Game state
+    this.currentTrial = 0;
+    this.nLevel = 1;
+    this.maxTrials = 100;
+    this.matchProbability = 0.25;
+    this.responseWindow = 5000;
+    this.statementsPerTrial = 1;
+    
+    // Scoring
+    this.correctHits = 0;
+    this.falseAlarms = 0;
+    this.misses = 0;
+    
+    // Timing
+    this.trialStartTime = 0;
+    this.responseTimer = null;
+    this.countdownTimer = null;
+    this.hasResponded = false;
+    
+    // Session state
+    this.isRunning = false;
+    this.isPaused = false;
+    
+    // UI update callbacks
+    this.onPremiseShow = null;
+    this.onFeedback = null;
+    this.onTrialEnd = null;
+  }
+  
+  initialize(config) {
+    this.nLevel = config.nLevel || 1;
+    this.maxTrials = config.maxTrials || 100;
+    this.matchProbability = config.matchProbability || 0.25;
+    this.responseWindow = config.responseWindow || 5000;
+    this.statementsPerTrial = config.statementsPerTrial || 1;
+    
+    this.reset();
+    this.planMatches();
+  }
+  
+  reset() {
+    this.history = [];
+    this.matchSchedule = [];
+    this.currentTrial = 0;
+    this.correctHits = 0;
+    this.falseAlarms = 0;
+    this.misses = 0;
+    this.hasResponded = false;
+  }
+  
+  planMatches() {
+    this.matchSchedule = new Array(this.maxTrials).fill(false);
+    
+    // Determine which trials should be matches (after n-back threshold)
+    const eligibleTrials = [];
+    for (let i = this.nLevel; i < this.maxTrials; i++) {
+      eligibleTrials.push(i);
+    }
+    
+    // Shuffle and select based on match probability
+    shuffle(eligibleTrials);
+    const numMatches = Math.floor(eligibleTrials.length * this.matchProbability);
+    
+    for (let i = 0; i < numMatches; i++) {
+      this.matchSchedule[eligibleTrials[i]] = true;
+    }
+  }
+  
+  async runTrial() {
+    if (!this.isRunning || this.isPaused) return;
+    
+    this.hasResponded = false;
+    const isPlannedMatch = this.matchSchedule[this.currentTrial];
+    
+    // Generate premises for this trial
+    const premises = [];
+    for (let i = 0; i < this.statementsPerTrial; i++) {
+      let premise;
+      
+      if (isPlannedMatch && this.currentTrial >= this.nLevel) {
+        // Generate a matching premise
+        premise = this.generateMatchingPremise();
+      } else {
+        // Generate a non-matching premise
+        premise = this.generateNonMatchingPremise();
+      }
+      
+      premises.push(premise);
+    }
+    
+    // Store in history
+    this.history[this.currentTrial] = {
+      premises: premises,
+      isMatch: isPlannedMatch && this.currentTrial >= this.nLevel,
+      response: null,
+      responseTime: null
+    };
+    
+    // Show premise
+    if (this.onPremiseShow) {
+      this.onPremiseShow(premises, this.currentTrial);
+    }
+    
+    // Start response timer
+    this.trialStartTime = Date.now();
+    this.startResponseTimer();
+  }
+  
+  generateMatchingPremise() {
+    // Get the n-back reference
+    const referenceIdx = this.currentTrial - this.nLevel;
+    const reference = this.history[referenceIdx];
+    
+    if (!reference || !reference.premises[0]) {
+      return this.generator.generatePremise(this.currentTrial);
+    }
+    
+    // Parse reference premise
+    const refLattice = new AdvancedRelationalLattice();
+    refLattice.applyPremise(reference.premises[0]);
+    
+    // Generate compatible premise
+    let attempts = 0;
+    let premise;
+    let compatible = false;
+    
+    do {
+      premise = this.generator.generatePremise(this.currentTrial + attempts);
+      const testLattice = new AdvancedRelationalLattice();
+      testLattice.applyPremise(premise);
+      
+      compatible = this.checkDeepCompatibility(refLattice, testLattice);
+      attempts++;
+    } while (!compatible && attempts < 30);
+    
+    return premise;
+  }
+  
+  generateNonMatchingPremise() {
+    if (this.currentTrial < this.nLevel) {
+      // Before n-back threshold, any premise is fine
+      return this.generator.generatePremise(this.currentTrial);
+    }
+    
+    // Get the n-back reference
+    const referenceIdx = this.currentTrial - this.nLevel;
+    const reference = this.history[referenceIdx];
+    
+    if (!reference || !reference.premises[0]) {
+      return this.generator.generatePremise(this.currentTrial);
+    }
+    
+    // Parse reference premise
+    const refLattice = new AdvancedRelationalLattice();
+    refLattice.applyPremise(reference.premises[0]);
+    
+    // Generate incompatible premise
+    let attempts = 0;
+    let premise;
+    let compatible = true;
+    
+    do {
+      premise = this.generator.generatePremise(this.currentTrial + attempts * 137);
+      const testLattice = new AdvancedRelationalLattice();
+      testLattice.applyPremise(premise);
+      
+      compatible = this.checkDeepCompatibility(refLattice, testLattice);
+      attempts++;
+    } while (compatible && attempts < 30);
+    
+    return premise;
+  }
+  
+  checkDeepCompatibility(lattice1, lattice2) {
+    // Multi-dimensional compatibility check
+    let compatibilityScore = 0;
+    let checks = 0;
+    
+    // Check symbol state alignment
+    for (const [sym, state1] of lattice1.symbols) {
+      if (lattice2.symbols.has(sym)) {
+        checks++;
+        const state2 = lattice2.symbols.get(sym);
+        
+        // Allow spatial inversions
+        const spatialInversion = 
+          (Math.abs(state1.pos.x + state2.pos.x) <= 1) ||
+          (Math.abs(state1.pos.y + state2.pos.y) <= 1) ||
+          (Math.abs(state1.pos.z + state2.pos.z) <= 1);
+        
+        if (spatialInversion) compatibilityScore += 0.3;
+        
+        // Energy similarity
+        if (Math.abs(state1.energy - state2.energy) <= 3) compatibilityScore += 0.2;
+      }
+    }
+    
+    // Check relationship preservation
+    for (const [rel, data1] of lattice1.relations) {
+      if (lattice2.relations.has(rel)) {
+        checks++;
+        const data2 = lattice2.relations.get(rel);
+        
+        // Compatible relation types
+        const compatible = 
+          (data1.type === data2.type) ||
+          (data1.type === 'affecting' && data2.type === 'enabling') ||
+          (data1.type === 'enabling' && data2.type === 'affecting');
+        
+        if (compatible) compatibilityScore += 0.5;
+      }
+    }
+    
+    // Need significant compatibility to match
+    return checks > 0 && (compatibilityScore / checks) >= 0.4;
+  }
+  
+  startResponseTimer() {
+    // Start countdown
+    let timeLeft = this.responseWindow;
+    this.countdownTimer = setInterval(() => {
+      timeLeft -= 100;
+      if (this.onCountdown) {
+        this.onCountdown(Math.max(0, timeLeft / 1000));
+      }
+      
+      if (timeLeft <= 0) {
+        clearInterval(this.countdownTimer);
+      }
+    }, 100);
+    
+    // Set timeout for trial end
+    this.responseTimer = setTimeout(() => {
+      this.endTrial();
+    }, this.responseWindow);
+  }
+  
+  registerResponse() {
+    if (this.hasResponded || !this.isRunning) return;
+    
+    this.hasResponded = true;
+    const responseTime = Date.now() - this.trialStartTime;
+    
+    // Record response
+    if (this.history[this.currentTrial]) {
+      this.history[this.currentTrial].response = true;
+      this.history[this.currentTrial].responseTime = responseTime;
+    }
+    
+    // Clear timers
+    if (this.responseTimer) clearTimeout(this.responseTimer);
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+    
+    // Evaluate and end trial
+    this.endTrial();
+  }
+  
+  endTrial() {
+    // Clear any remaining timers
+    if (this.responseTimer) clearTimeout(this.responseTimer);
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+    
+    // Evaluate response
+    const trial = this.history[this.currentTrial];
+    if (!trial) return;
+    
+    const shouldHaveResponded = trial.isMatch;
+    const didRespond = trial.response === true;
+    
+    let feedback = null;
+    
+    if (shouldHaveResponded && didRespond) {
+      // Correct hit
+      this.correctHits++;
+      feedback = {
+        type: 'correct',
+        message: 'Correct! That was a match.'
+      };
+    } else if (!shouldHaveResponded && didRespond) {
+      // False alarm
+      this.falseAlarms++;
+      feedback = {
+        type: 'incorrect',
+        message: 'Incorrect. That was not a match.'
+      };
+    } else if (shouldHaveResponded && !didRespond) {
+      // Miss
+      this.misses++;
+      feedback = {
+        type: 'missed',
+        message: 'Missed match! You should have pressed space.'
+      };
+    } else {
+      // Correct rejection (no response needed, none given)
+      this.correctHits++;
+      feedback = {
+        type: 'correct',
+        message: 'Correct! No match detected.'
+      };
+    }
+    
+    // Send feedback
+    if (this.onFeedback) {
+      this.onFeedback(feedback);
+    }
+    
+    // Update trial counter
+    this.currentTrial++;
+    
+    // Check if game complete
+    if (this.currentTrial >= this.maxTrials) {
+      this.endGame();
+    } else {
+      // Schedule next trial
+      setTimeout(() => {
+        this.runTrial();
+      }, 2000); // 2 second inter-trial interval
+    }
+  }
+  
+  endGame() {
+    this.isRunning = false;
+    
+    if (this.onTrialEnd) {
+      this.onTrialEnd({
+        correct: this.correctHits,
+        errors: this.falseAlarms,
+        missed: this.misses,
+        total: this.maxTrials
+      });
+    }
+  }
+  
+  pause() {
+    this.isPaused = true;
+    if (this.responseTimer) clearTimeout(this.responseTimer);
+    if (this.countdownTimer) clearInterval(this.countdownTimer);
+  }
+  
+  resume() {
+    this.isPaused = false;
+    // Restart current trial
+    this.runTrial();
+  }
+}
+
+/* ===== MAIN GAME INTERFACE ===== */
+const game = new RelationalNBackGame();
+let speakEnabled = true;
+
+// UI Update functions
+game.onPremiseShow = (premises, trialNum) => {
+  const container = $('premiseContainer');
+  container.innerHTML = '';
+  
+  premises.forEach((premise, idx) => {
+    const div = document.createElement('div');
+    div.className = 'premise-line';
+    div.style.animationDelay = `${idx * 0.1}s`;
+    
+    if (premises.length > 1) {
+      const num = document.createElement('span');
+      num.className = 'premise-number';
+      num.textContent = (idx + 1).toString();
+      div.appendChild(num);
+    }
+    
+    // Parse and style premise
+    const words = premise.split(' ');
+    words.forEach((word, i) => {
+      const span = document.createElement('span');
+      
+      // Apply semantic styling
+      if (/^[A-Z]+$/.test(word)) {
+        if (['A','B','C'].includes(word)) {
+          span.className = 'symbol-A';
+        } else if (['X','Y','Z'].includes(word)) {
+          span.className = 'symbol-X';
+        } else if (['RED','BLUE','GREEN'].includes(word)) {
+          span.className = 'symbol-color';
+          span.style.color = word.toLowerCase();
+        } else if (['ONE','TWO','THREE'].includes(word)) {
+          span.className = 'symbol-number';
+        } else if (['UP','DOWN','LEFT','RIGHT','IN','OUT'].includes(word)) {
+          span.className = 'axis';
+        } else if (['ALPHA','BETA','GAMMA'].includes(word)) {
+          span.className = 'symbol-X';
+        }
+      } else if (word.includes('-')) {
+        span.className = 'compound';
+      } else if (['affecting','triggering','blocking','enabling','preventing','modulating','inverting','amplifying'].includes(word)) {
+        span.className = 'relation';
+      } else {
+        span.className = 'operation';
+      }
+      
+      span.textContent = word;
+      div.appendChild(span);
+      
+      if (i < words.length - 1) {
+        div.appendChild(document.createTextNode(' '));
+      }
+    });
+    
+    container.appendChild(div);
+  });
+  
+  // Update trial counter
+  setText('idx', trialNum + 1);
+  
+  // Clear previous feedback
+  $('feedbackArea').innerHTML = '';
+  
+  // Speak premise
+  if (speakEnabled) {
+    speak(premises.join('. '));
+  }
+};
+
+game.onCountdown = (timeLeft) => {
+  setText('countdown', timeLeft.toFixed(1) + 's');
+};
+
+game.onFeedback = (feedback) => {
+  const area = $('feedbackArea');
+  area.innerHTML = '';
+  
+  const div = document.createElement('div');
+  div.className = `feedback ${feedback.type}`;
+  div.textContent = feedback.message;
+  area.appendChild(div);
+  
+  // Update scores
+  setText('corr', game.correctHits);
+  setText('err', game.falseAlarms);
+  setText('miss', game.misses);
+};
+
+game.onTrialEnd = (stats) => {
+  const container = $('premiseContainer');
+  container.innerHTML = `
+    <div style="text-align:center; padding:40px;">
+      <h2 style="color:var(--accent); margin-bottom:20px;">Session Complete!</h2>
+      <div style="font-size:20px; font-weight:normal;">
+        <p>Correct: <span style="color:var(--success)">${stats.correct}</span></p>
+        <p>Errors: <span style="color:var(--error)">${stats.errors}</span></p>
+        <p>Missed: <span style="color:var(--warning)">${stats.missed}</span></p>
+        <p style="margin-top:20px">Accuracy: ${((stats.correct / stats.total) * 100).toFixed(1)}%</p>
+      </div>
+    </div>
+  `;
+};
+
+async function speak(text) {
+  if (!speakEnabled || !window.speechSynthesis) return;
+  
+  return new Promise(resolve => {
+    try {
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'en-US';
+      utterance.rate = 0.8;
+      utterance.pitch = 1.0;
+      utterance.volume = 1.0;
+      utterance.onend = resolve;
+      utterance.onerror = resolve;
+      
+      if (window.speechSynthesis.speaking) {
+        window.speechSynthesis.cancel();
+      }
+      
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      resolve();
+    }
+  });
+}
+
+// Control functions
+function start() {
+  const config = {
+    nLevel: parseInt($('nback').value),
+    maxTrials: parseInt($('trials').value),
+    matchProbability: parseInt($('matchProb').value) / 100,
+    responseWindow: parseFloat($('solveWindow').value) * 1000,
+    statementsPerTrial: parseInt($('statements').value)
+  };
+  
+  speakEnabled = $('speakEnabled').checked;
+  
+  game.initialize(config);
+  game.isRunning = true;
+  
+  // Update UI
+  setText('max', config.maxTrials);
+  setText('nDisplay', config.nLevel);
+  setText('corr', 0);
+  setText('err', 0);
+  setText('miss', 0);
+  
+  $('start').disabled = true;
+  $('pause').disabled = false;
+  $('reset').disabled = false;
+  
+  // Disable settings during game
+  $('nback').disabled = true;
+  $('trials').disabled = true;
+  $('matchProb').disabled = true;
+  $('solveWindow').disabled = true;
+  $('statements').disabled = true;
+  
+  // Start first trial
+  game.runTrial();
+}
+
+function pause() {
+  if (game.isPaused) {
+    game.resume();
+    $('pause').textContent = '⏸ Pause';
+  } else {
+    game.pause();
+    $('pause').textContent = '▶ Resume';
+  }
+}
+
+function reset() {
+  game.isRunning = false;
+  game.reset();
+  
+  // Clear timers
+  if (game.responseTimer) clearTimeout(game.responseTimer);
+  if (game.countdownTimer) clearInterval(game.countdownTimer);
+  
+  // Reset UI
+  $('premiseContainer').innerHTML = '<div style="text-align:center; color:var(--mut); font-size:20px; font-weight:normal;">Press START to begin</div>';
+  $('feedbackArea').innerHTML = '';
+  
+  setText('idx', 0);
+  setText('corr', 0);
+  setText('err', 0);
+  setText('miss', 0);
+  setText('countdown', '—');
+  
+  $('start').disabled = false;
+  $('pause').disabled = true;
+  $('reset').disabled = true;
+  $('pause').textContent = '⏸ Pause';
+  
+  // Re-enable settings
+  $('nback').disabled = false;
+  $('trials').disabled = false;
+  $('matchProb').disabled = false;
+  $('solveWindow').disabled = false;
+  $('statements').disabled = false;
+  
+  // Stop speech
+  if (window.speechSynthesis) {
+    window.speechSynthesis.cancel();
+  }
+}
+
+// Event listeners
+document.addEventListener('DOMContentLoaded', () => {
+  // Instructions modal
+  const modal = $('instructionsModal');
+  const btn = $('instructionsBtn');
+  const span = document.querySelector('.close');
+  
+  btn.onclick = () => modal.style.display = 'block';
+  span.onclick = () => modal.style.display = 'none';
+  window.onclick = (e) => {
+    if (e.target === modal) modal.style.display = 'none';
+  };
+  
+  // Settings controls
+  $('nback').oninput = (e) => {
+    setText('nVal', e.target.value);
+    setText('nDisplay', e.target.value);
+  };
+  
+  $('statements').oninput = (e) => {
+    setText('stmtVal', e.target.value);
+  };
+  
+  $('matchProb').oninput = (e) => {
+    setText('matchVal', e.target.value + '%');
+  };
+  
+  $('solveWindow').oninput = (e) => {
+    setText('solveVal', parseFloat(e.target.value).toFixed(1) + 's');
+  };
+  
+  $('trials').oninput = (e) => {
+    setText('tVal', e.target.value);
+    setText('max', e.target.value);
+  };
+  
+  // Control buttons
+  $('start').onclick = start;
+  $('pause').onclick = pause;
+  $('reset').onclick = reset;
+  
+  // Spacebar for response
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && game.isRunning && !game.isPaused) {
+      e.preventDefault();
+      game.registerResponse();
+    }
+  });
+  
+  // Initialize displays
+  setText('nVal', $('nback').value);
+  setText('nDisplay', $('nback').value);
+  setText('stmtVal', $('statements').value);
+  setText('matchVal', $('matchProb').value + '%');
+  setText('solveVal', parseFloat($('solveWindow').value).toFixed(1) + 's');
+  setText('tVal', $('trials').value);
+  setText('max', $('trials').value);
+});
+</script>
+</body>
+</html>
