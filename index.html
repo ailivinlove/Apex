@@ -438,6 +438,9 @@ input[type=range]::-moz-range-thumb {
         <div class="status-item" style="color:var(--error)">False: <span id="falseAlarms">0</span></div>
         <div class="status-item" style="color:var(--warning)">Missed: <span id="misses">0</span></div>
       </div>
+      <div class="status-display" style="margin-top:5px">
+        <div class="status-item" style="color:var(--mut)">No Response: <span id="noResponses">0</span></div>
+      </div>
       
       <div class="scheduled-effects" id="scheduledEffects" style="display:none">
         <strong style="color:var(--cascade)">⏱ Scheduled Effects:</strong>
@@ -3271,6 +3274,7 @@ class CanonicalStateVectorNBack {
     this.correctHits = 0;
     this.falseAlarms = 0;
     this.misses = 0;
+    this.noResponses = 0;
     this.responseTimes = [];
     this.confidenceScores = [];
     
@@ -3317,6 +3321,7 @@ class CanonicalStateVectorNBack {
     this.correctHits = 0;
     this.falseAlarms = 0;
     this.misses = 0;
+    this.noResponses = 0;
     this.responseTimes = [];
     this.confidenceScores = [];
     this.awaitingResponse = false;
@@ -3736,20 +3741,26 @@ class CanonicalStateVectorNBack {
   
   endTrial() {
     this.awaitingResponse = false;
-    
+
     if (this.responseTimer) clearTimeout(this.responseTimer);
     if (this.countdownInterval) clearInterval(this.countdownInterval);
-    
-    const shouldHaveResponded = this.schedule[this.currentTrial] && this.currentTrial >= this.nLevel;
-    
-    if (shouldHaveResponded) {
-      this.misses++;
-      const verification = this.verifyMatch();
-      this.showFeedback('missed', 'Missed match! State trajectories were identical.', verification);
-    } else {
-      this.correctHits++;
+
+    const canEvaluate = this.currentTrial >= this.nLevel;
+    const shouldHaveResponded = this.schedule[this.currentTrial] && canEvaluate;
+
+    if (canEvaluate) {
+      this.noResponses++;
     }
-    
+
+    if (!canEvaluate) {
+      this.showFeedback('missed', 'No response recorded. Reference window not yet established for comparison.', null);
+    } else if (shouldHaveResponded) {
+      this.misses++;
+      this.showFeedback('missed', 'No response recorded. Scheduled match requires explicit confirmation.', null);
+    } else {
+      this.showFeedback('missed', 'No response recorded. Match status withheld without participant feedback.', null);
+    }
+
     setTimeout(() => {
       this.nextTrial();
     }, 2500);
@@ -3797,8 +3808,9 @@ class CanonicalStateVectorNBack {
     setText('correctHits', this.correctHits);
     setText('falseAlarms', this.falseAlarms);
     setText('misses', this.misses);
-    
-    const total = this.correctHits + this.falseAlarms + this.misses;
+    setText('noResponses', this.noResponses);
+
+    const total = this.correctHits + this.falseAlarms + this.misses + this.noResponses;
     if (total > 0) {
       const accuracy = (this.correctHits / total * 100).toFixed(1);
       setText('accuracy', accuracy + '%');
@@ -3830,7 +3842,8 @@ class CanonicalStateVectorNBack {
   endSession() {
     this.isRunning = false;
     
-    const accuracy = (this.correctHits / this.totalTrials) * 100;
+    const evaluatedTrials = this.correctHits + this.falseAlarms + this.misses + this.noResponses;
+    const accuracy = evaluatedTrials > 0 ? (this.correctHits / evaluatedTrials) * 100 : 0;
     const avgResponse = this.responseTimes.length > 0 ? 
       this.responseTimes.reduce((a,b) => a+b, 0) / this.responseTimes.length / 1000 : 0;
     const avgConfidence = this.confidenceScores.length > 0 ?
@@ -3845,6 +3858,7 @@ class CanonicalStateVectorNBack {
           <div>Correct Hits: <span style="color:var(--success)">${this.correctHits}</span></div>
           <div>False Alarms: <span style="color:var(--error)">${this.falseAlarms}</span></div>
           <div>Missed Matches: <span style="color:var(--warning)">${this.misses}</span></div>
+          <div>No Response Trials: <span style="color:var(--mut)">${this.noResponses}</span></div>
           <div style="margin-top:20px; padding-top:20px; border-top:1px solid rgba(0,200,255,0.3)">
             <div>Final Accuracy: <strong>${accuracy.toFixed(1)}%</strong></div>
             <div>Avg Response Time: <strong>${avgResponse.toFixed(2)}s</strong></div>
@@ -3927,6 +3941,7 @@ function start() {
   setText('correctHits', '0');
   setText('falseAlarms', '0');
   setText('misses', '0');
+  setText('noResponses', '0');
   setText('accuracy', '—');
   setText('avgResponse', '—');
   setText('progress', '0%');
@@ -3970,6 +3985,7 @@ function reset() {
   setText('correctHits', '0');
   setText('falseAlarms', '0');
   setText('misses', '0');
+  setText('noResponses', '0');
   setText('accuracy', '—');
   setText('avgResponse', '—');
   setText('progress', '0%');
