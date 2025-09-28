@@ -109,15 +109,30 @@ input[type=range]::-moz-range-thumb {
   box-shadow:0 0 10px rgba(0,200,255,0.5);
 }
 
-.kbd { 
+.kbd {
   display:inline-block;
-  padding:4px 8px; 
-  border-radius:4px; 
-  background:rgba(0,0,0,0.5); 
+  padding:4px 8px;
+  border-radius:4px;
+  background:rgba(0,0,0,0.5);
   border:1px solid rgba(255,255,255,.3);
   font-size:12px;
   font-weight:bold;
   box-shadow:0 2px 4px rgba(0,0,0,0.3);
+}
+
+.legend-chip {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  padding:2px 8px;
+  background:rgba(0,200,255,0.12);
+  border:1px solid rgba(0,200,255,0.35);
+  color:var(--accent);
+  font-size:11px;
+  font-weight:700;
+  margin-right:4px;
+  margin-bottom:4px;
 }
 
 #premiseDisplay { 
@@ -379,7 +394,22 @@ input[type=range]::-moz-range-thumb {
       <label>
         <input type="checkbox" id="counterfactuals"> Counterfactual Verification
       </label>
-      
+
+      <label>
+        <input type="checkbox" id="compressedMath"> Compressed Math Surface
+        <span id="mathLegendBtn" class="legend-chip" style="cursor:pointer">?</span>
+      </label>
+      <div id="mathLegend" class="panel" style="display:none; margin-top:8px; padding:10px">
+        <div class="legend-chip">× push</div>
+        <div class="legend-chip">- pull</div>
+        <div class="legend-chip">÷ weaken</div>
+        <div class="legend-chip">+ nudge</div>
+        <div class="legend-chip">= balance groups</div>
+        <div class="legend-chip">√a a oscillates</div>
+        <div class="legend-chip">c% c holds</div>
+        <div class="legend-chip">b2 happens at t+2</div>
+      </div>
+
       <button id="instructionsBtn" class="btn instructions" style="width:100%; margin-top:20px">
         📖 Instructions & Theory
       </button>
@@ -459,7 +489,17 @@ input[type=range]::-moz-range-thumb {
     <h2>Canonical State-Vector N-Back Protocol (≥0.90 G-Load)</h2>
     
     <p><strong>CORE CONCEPT:</strong> This is deterministic state-vector simulation with persistent canonical identity. Each symbol maintains an immutable ID across ALL trials, accumulating transformations through multi-dimensional state vectors that compound over time.</p>
-    
+
+    <h3>Compliance guardrails</h3>
+    <p>These constraints keep Compressed Math Mode aligned with canonical verification.</p>
+    <h3>Compliance guardrails — Compressed Math Mode</h3>
+    <ul>
+      <li><strong>Max 9 tokens</strong> per premise (e.g., <code>a × b - c ÷ d + e</code>).</li>
+      <li><strong>Allowed tokens only:</strong> letters a–e (optionally <code>√</code> prefix, <code>%</code> postfix, or a single digit suffix), and operators <code>× - ÷ + =</code>.</li>
+      <li>Surface is still presentation only: MATCH depends on the canonical trajectory.</li>
+      <li><strong>“=”</strong> means the left group must balance the right at check time.</li>
+    </ul>
+
     <h3>I. Theoretical Foundation: From Topology to Trajectory</h3>
     <p>Unlike pattern matching, this requires genuine mental physics simulation. Each symbol is a quantum-like entity with:</p>
     <ul>
@@ -1016,7 +1056,7 @@ class InvariantLedger {
 class StateVectorEngine {
   constructor(registry, config) {
     this.registry = registry;
-    this.config = config;
+    this.config = { ...(config || {}), compressedMath: !!(config && config.compressedMath) };
     this.axisManager = new AxisManager();
     this.invariantLedger = new InvariantLedger();
     this.scheduledEffects = [];
@@ -1033,7 +1073,7 @@ class StateVectorEngine {
 
     const parsed = this.parsePremise(premise);
     if (!parsed) {
-      this.proofTrace.push('Rejected: five-token constraint violated.');
+      this.proofTrace.push('Rejected: invalid premise format.');
       return null;
     }
 
@@ -1080,7 +1120,13 @@ class StateVectorEngine {
   }
 
   parsePremise(text) {
-    const words = text.trim().split(/\s+/);
+    const trimmed = text.trim();
+
+    if (this.config.compressedMath && this.isMathSurface(trimmed)) {
+      return this.parseMathPremise(trimmed);
+    }
+
+    const words = trimmed.split(/\s+/);
     if (words.length !== 5) return null;
 
     const [w0, w1, w2, w3, w4] = words;
@@ -1119,6 +1165,98 @@ class StateVectorEngine {
 
     parsed.timingHints = this.detectTimingHints(parsed);
     return parsed;
+  }
+
+  isMathSurface(text) {
+    const toks = text.trim().split(/\s+/);
+    if (toks.length < 5 || toks.length > 9) return false;
+    return toks.every(t => /^(?:[√]?[a-eA-E](?:%|[0-9])?|[×÷+\-=])$/.test(t));
+  }
+
+  parseMathPremise(text) {
+    const tokens = text.trim().split(/\s+/);
+    const operations = [];
+    const opMap = { '×': 'PUSH', '-': 'PULL', '÷': 'WEAKEN', '+': 'NUDGE' };
+    const groups = { left: [], right: [] };
+    const rawGroups = { left: [], right: [] };
+    const trace = [];
+
+    let currentSide = 'left';
+    let pendingOperator = null;
+    let lastOperand = null;
+
+    const parseOperand = (token) => {
+      const match = token.match(/^([√]?)([a-eA-E])((%|[0-9])?)$/);
+      if (!match) return null;
+      const hasRoot = match[1] === '√';
+      const base = match[2].toUpperCase();
+      const suffix = match[3] || '';
+      const hold = suffix === '%';
+      const delay = suffix && /\d/.test(suffix) ? parseInt(suffix, 10) : null;
+      const id = this.registry.getOrCreateId(base);
+      return { raw: token, base, id, oscillate: hasRoot, hold, delay };
+    };
+
+    for (const token of tokens) {
+      if (token === '=') {
+        currentSide = 'right';
+        pendingOperator = null;
+        lastOperand = null;
+        continue;
+      }
+
+      if (opMap[token]) {
+        pendingOperator = token;
+        continue;
+      }
+
+      const operand = parseOperand(token);
+      if (!operand) continue;
+
+      groups[currentSide].push(operand);
+      rawGroups[currentSide].push(token);
+
+      if (operand.oscillate) {
+        operations.push({ op: 'OSC', subj: operand, obj: null, delay: operand.delay || null });
+      }
+
+      if (pendingOperator && lastOperand) {
+        const opName = opMap[pendingOperator] || pendingOperator;
+        operations.push({
+          op: opName,
+          subj: lastOperand,
+          obj: operand,
+          delay: operand.delay ?? lastOperand.delay ?? null
+        });
+        pendingOperator = null;
+      }
+
+      lastOperand = operand;
+    }
+
+    const expectations = [];
+    const balanceGroups = {
+      left: groups.left.map(o => o.id),
+      right: groups.right.map(o => o.id)
+    };
+
+    if (tokens.includes('=')) {
+      expectations.push('balance-groups');
+    }
+
+    return {
+      text,
+      tokens,
+      isMath: true,
+      operations,
+      groups,
+      rawGroups,
+      trace,
+      invariants: {
+        expectations,
+        balanceGroups
+      }
+    };
   }
 
   extractSymbols(word) {
@@ -1170,6 +1308,69 @@ class StateVectorEngine {
   }
 
   canonicalize(parsed) {
+    if (parsed && parsed.isMath) {
+      const operations = parsed.operations || [];
+      const symbolIds = new Set();
+
+      for (const op of operations) {
+        if (op.subj?.id) symbolIds.add(op.subj.id);
+        if (op.obj?.id) symbolIds.add(op.obj.id);
+      }
+
+      if (parsed.groups) {
+        for (const side of Object.values(parsed.groups)) {
+          for (const operand of side) {
+            if (operand?.id) symbolIds.add(operand.id);
+          }
+        }
+      }
+
+      const idsArray = Array.from(symbolIds);
+      const snapshotIds = idsArray.length > 0 ? idsArray : null;
+      const invariants = parsed.invariants || { expectations: [], balanceGroups: { left: [], right: [] } };
+
+      const canonical = {
+        human: parsed.text,
+        timeIndex: this.currentTrial,
+        tokens: parsed.tokens,
+        subjects: [],
+        objects: [],
+        modifier: null,
+        direction: null,
+        relation: null,
+        timingHints: [],
+        axisToken: null,
+        subjectIds: [],
+        objectIds: [],
+        canonicalOp: 'MATH',
+        axisHint: { axis: 'x', delta: 0, note: 'math', defaulted: true },
+        immediateOps: [],
+        scheduled: [],
+        recursive: [],
+        axisEvents: [],
+        invariants,
+        ambiguityNotes: [],
+        symbolSet: new Set(idsArray),
+        state0: this.captureStateSnapshot(snapshotIds),
+        proofSeed: `t${this.currentTrial}: math=${parsed.tokens.join(' ')}`,
+        mathOperations: operations,
+        mathGroups: parsed.groups,
+        mathRawGroups: parsed.rawGroups || null,
+        mathTrace: parsed.trace || []
+      };
+
+      this.proofTrace.push(canonical.proofSeed);
+      for (const m of operations) {
+        this.proofTrace.push(
+          m.op === 'OSC'
+            ? `OSC ${m.subj.raw}${m.delay ? ` @t+${m.delay}` : ''}`
+            : `${m.op} ${m.subj?.raw || '?'}→${m.obj?.raw || '?'}${m.delay ? ` @t+${m.delay}` : ''}`
+        );
+      }
+
+      return canonical;
+    }
+
     const canonical = {
       human: parsed.text,
       timeIndex: this.currentTrial,
@@ -2004,6 +2205,30 @@ class StateVectorEngine {
       }
     }
 
+    if (canonical.invariants && canonical.invariants.expectations.includes('balance-groups')) {
+      const g = canonical.invariants.balanceGroups || { left: [], right: [] };
+      const sum = (ids, key) => ids.reduce((acc, id) => {
+        const s = this.registry.getState(id);
+        if (!s || !s.exists) return acc;
+        if (key === 'energy') return acc + s.energy;
+        if (key === 'x') return acc + s.x;
+        if (key === 'px') return acc + s.momentum.x;
+        if (key === 'info') return acc + s.information;
+        return acc;
+      }, 0);
+      const tol = 0.5;
+      const diffs = {
+        energy: Math.abs(sum(g.left, 'energy') - sum(g.right, 'energy')),
+        posX: Math.abs(sum(g.left, 'x') - sum(g.right, 'x')),
+        momX: Math.abs(sum(g.left, 'px') - sum(g.right, 'px')),
+        info: Math.abs(sum(g.left, 'info') - sum(g.right, 'info'))
+      };
+      if (diffs.energy > tol || diffs.posX > tol || diffs.momX > tol || diffs.info > tol) {
+        violations.push('balance');
+        this.proofTrace.push(`Balance diff E:${diffs.energy.toFixed(2)} X:${diffs.posX.toFixed(2)} pX:${diffs.momX.toFixed(2)} I:${diffs.info.toFixed(2)}`);
+      }
+    }
+
     this.invariantLedger.record(this.currentTrial, totals, deltas, canonical.invariants.expectations);
     this.lastTotals = totals;
 
@@ -2185,6 +2410,8 @@ class CanonicalPremiseGenerator {
                           'backward', 'precisely', 'strongly', 'carefully', 'symmetrically',
                           'equally'];
     this.directions = [...this.directionPool, ...this.delayedTiming, ...this.recursiveTiming];
+    this.mathOperators = ['×', '-', '÷', '+'];
+    this.mathOperands = ['a', 'b', 'c', 'd', 'e'];
 
     this.usedPremises = new Set();
     this.premiseHistory = [];
@@ -2194,15 +2421,21 @@ class CanonicalPremiseGenerator {
   generate(shouldMatch = false, referenceIndex = null, registry = null) {
     let result;
 
-    if (shouldMatch && referenceIndex !== null && registry) {
+    if (this.config && this.config.compressedMath) {
+      result = this.generateMath(shouldMatch, referenceIndex);
+    } else if (shouldMatch && referenceIndex !== null && registry) {
       result = this.generateMatching(referenceIndex, registry);
     } else {
       result = this.generateNew();
     }
 
     let attempts = 0;
-    while (this.usedPremises.has(result.premise) && attempts < 50) {
-      result = shouldMatch ? this.generateMatching(referenceIndex, registry) : this.generateNew();
+    while (this.usedPremises.has(result.premise) && attempts < 50 && !(this.config && this.config.compressedMath && shouldMatch)) {
+      if (this.config && this.config.compressedMath) {
+        result = this.generateMath(false, null);
+      } else {
+        result = shouldMatch ? this.generateMatching(referenceIndex, registry) : this.generateNew();
+      }
       attempts++;
     }
 
@@ -2325,6 +2558,37 @@ class CanonicalPremiseGenerator {
     return { premise, includeDelayed, includeRecursive, includeAxis };
   }
 
+  generateMath(shouldMatch = false, referenceIndex = null) {
+    if (shouldMatch && referenceIndex !== null) {
+      const reference = this.premiseHistory[referenceIndex];
+      if (reference && /[×÷+\-=]/.test(reference)) {
+        return { premise: reference, includeDelayed: false, includeRecursive: false, includeAxis: false };
+      }
+    }
+
+    const tokens = [];
+    tokens.push(this.randomMathOperand());
+
+    const leftOps = 2;
+    for (let i = 0; i < leftOps; i++) {
+      tokens.push(this.randomFrom(this.mathOperators));
+      tokens.push(this.randomMathOperand());
+    }
+
+    tokens.push('=');
+    tokens.push(this.randomMathOperand());
+
+    if (Math.random() < 0.5) {
+      tokens.push(this.randomFrom(this.mathOperators));
+      tokens.push(this.randomMathOperand());
+    }
+
+    let premise = tokens.join(' ');
+    premise = premise.trim().split(/\s+/).slice(0, 9).join(' ');
+
+    return { premise, includeDelayed: false, includeRecursive: false, includeAxis: false };
+  }
+
   generateMatching(referenceIndex, registry) {
     const reference = this.premiseHistory[referenceIndex];
     if (!reference) return this.generateNew();
@@ -2399,6 +2663,19 @@ class CanonicalPremiseGenerator {
     return { includeDelayed, includeRecursive, includeAxis };
   }
 
+  randomMathOperand() {
+    const base = this.randomFrom(this.mathOperands);
+    const prefix = Math.random() < 0.25 ? '√' : '';
+    const roll = Math.random();
+    let suffix = '';
+    if (roll < 0.25) {
+      suffix = '%';
+    } else if (roll < 0.5) {
+      suffix = String(Math.floor(Math.random() * 3) + 1);
+    }
+    return `${prefix}${base}${suffix}`;
+  }
+
   randomFrom(array) {
     return array[Math.floor(Math.random() * array.length)];
   }
@@ -2425,6 +2702,7 @@ class CanonicalStateVectorNBack {
     this.voiceEnabled = true;
     this.showProofTraces = true;
     this.useCounterfactuals = false;
+    this.compressedMath = false;
     
     // State
     this.currentTrial = 0;
@@ -2447,7 +2725,8 @@ class CanonicalStateVectorNBack {
   
   initialize(settings) {
     this.difficultyLevel = settings.difficultyLevel;
-    this.config = DIFFICULTY_CONFIGS[this.difficultyLevel];
+    const baseConfig = DIFFICULTY_CONFIGS[this.difficultyLevel] || DIFFICULTY_CONFIGS[1];
+    this.config = { ...baseConfig };
     this.nLevel = settings.nLevel;
     this.totalTrials = settings.totalTrials;
     this.matchProbability = settings.matchProbability;
@@ -2456,12 +2735,17 @@ class CanonicalStateVectorNBack {
     this.voiceEnabled = settings.voiceEnabled;
     this.showProofTraces = settings.showProofTraces;
     this.useCounterfactuals = settings.useCounterfactuals;
-    
+    this.compressedMath = settings.compressedMath;
+
     // Update config for counterfactuals
     if (this.useCounterfactuals) {
       this.config.counterfactuals = true;
+    } else {
+      this.config.counterfactuals = false;
     }
-    
+
+    this.config.compressedMath = this.compressedMath;
+
     this.reset();
     this.generateSchedule();
   }
@@ -3056,7 +3340,8 @@ function start() {
     statementsPerTrial: parseInt($('statementsPerTrial').value),
     voiceEnabled: $('voiceEnabled').checked,
     showProofTraces: $('proofTraces').checked,
-    useCounterfactuals: $('counterfactuals').checked
+    useCounterfactuals: $('counterfactuals').checked,
+    compressedMath: $('compressedMath').checked
   };
   
   game.initialize(settings);
@@ -3168,7 +3453,12 @@ document.addEventListener('DOMContentLoaded', () => {
   $('responseWindow').oninput = (e) => {
     setText('windowValue', parseFloat(e.target.value).toFixed(1) + 's');
   };
-  
+
+  $('mathLegendBtn').onclick = () => {
+    const n = $('mathLegend');
+    n.style.display = (n.style.display === 'none' || !n.style.display) ? 'block' : 'none';
+  };
+
   $('startBtn').onclick = start;
   $('pauseBtn').onclick = pause;
   $('resetBtn').onclick = reset;
