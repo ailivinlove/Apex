@@ -1483,27 +1483,58 @@ class StateVectorEngine {
     const opMap = {
       'pushes': 'PUSH',
       'push': 'PUSH',
+      'presses': 'PUSH',
+      'propels': 'PUSH',
+      'drives': 'PUSH',
+      'thrusts': 'PUSH',
       'pulls': 'PULL',
       'pull': 'PULL',
+      'draws': 'PULL',
+      'reels': 'PULL',
+      'retrieves': 'PULL',
       'splits': 'SPLIT',
       'split': 'SPLIT',
+      'cleaves': 'SPLIT',
+      'bifurcates': 'SPLIT',
+      'fractures': 'SPLIT',
       'merges': 'MERGE',
       'merge': 'MERGE',
+      'fuses': 'MERGE',
+      'coalesces': 'MERGE',
+      'unites': 'MERGE',
       'triggers': 'CASCADE',
       'activates': 'CASCADE',
+      'ignites': 'CASCADE',
+      'unleashes': 'CASCADE',
+      'cascades': 'CASCADE',
       'rotates': 'ROTATE',
       'rotate': 'ROTATE',
+      'spins': 'ROTATE',
+      'whirls': 'ROTATE',
       'oscillates': 'OSCILLATE',
       'oscillate': 'OSCILLATE',
+      'orbits': 'OSCILLATE',
+      'swings': 'OSCILLATE',
+      'precesses': 'OSCILLATE',
       'transforms': 'TRANSFORM',
       'transform': 'TRANSFORM',
+      'morphs': 'TRANSFORM',
+      'reconfigures': 'TRANSFORM',
       'collides': 'COLLIDE',
       'collide': 'COLLIDE',
+      'impacts': 'COLLIDE',
+      'crashes': 'COLLIDE',
       'bounces': 'BOUNCE',
+      'ricochets': 'BOUNCE',
       'absorbs': 'ABSORB',
+      'ingests': 'ABSORB',
       'emit': 'EMIT',
       'emits': 'EMIT',
-      'resonates': 'RESONATE'
+      'radiates': 'EMIT',
+      'releases': 'EMIT',
+      'resonates': 'RESONATE',
+      'synchronizes': 'RESONATE',
+      'syncs': 'RESONATE'
     };
     return opMap[operation] || 'UNKNOWN';
   }
@@ -2403,6 +2434,24 @@ class CanonicalPremiseGenerator {
       colors: ['RED', 'BLUE', 'GREEN', 'YELLOW', 'PURPLE', 'ORANGE']
     };
 
+    this.symbolPrefixes = ['ULTRA', 'QUANTUM', 'HYPER', 'PRIME', 'SHADOW', 'PHASE'];
+    this.operationVariants = {
+      PUSH: ['push', 'presses', 'propels', 'thrusts', 'drives'],
+      PULL: ['pull', 'draws', 'reels', 'retrieves'],
+      SPLIT: ['splits', 'cleaves', 'bifurcates', 'fractures'],
+      MERGE: ['merges', 'fuses', 'coalesces', 'unites'],
+      CASCADE: ['triggers', 'activates', 'ignites', 'unleashes', 'cascades'],
+      RESONATE: ['resonates', 'synchronizes', 'syncs'],
+      TRANSFORM: ['transforms', 'morphs', 'reconfigures'],
+      OSCILLATE: ['oscillates', 'orbits', 'swings', 'precesses'],
+      COLLIDE: ['collides', 'impacts', 'crashes'],
+      ABSORB: ['absorbs', 'ingests'],
+      EMIT: ['emits', 'radiates', 'releases'],
+      BOUNCE: ['bounces', 'ricochets'],
+      ROTATE: ['rotates', 'spins', 'whirls'],
+      UNKNOWN: []
+    };
+
     this.axisEvents = ['axis-swap', 'axis-rotate', 'axis-invert', 'axis-merge', 'axis-split'];
     this.delayedTiming = ['later', 'after', 'delayed', 'again'];
     this.recursiveTiming = ['periodically', 'recursively', 'every-two'];
@@ -2418,13 +2467,13 @@ class CanonicalPremiseGenerator {
     this.stats = { total: 0, delayed: 0, recursive: 0, axis: 0 };
   }
 
-  generate(shouldMatch = false, referenceIndex = null, registry = null) {
+  generate(shouldMatch = false, referenceIndex = null, registry = null, blueprint = null) {
     let result;
 
     if (this.config && this.config.compressedMath) {
-      result = this.generateMath(shouldMatch, referenceIndex);
+      result = this.generateMath(shouldMatch, referenceIndex, blueprint);
     } else if (shouldMatch && referenceIndex !== null && registry) {
-      result = this.generateMatching(referenceIndex, registry);
+      result = this.generateMatching(referenceIndex, registry, blueprint);
     } else {
       result = this.generateNew();
     }
@@ -2432,9 +2481,11 @@ class CanonicalPremiseGenerator {
     let attempts = 0;
     while (this.usedPremises.has(result.premise) && attempts < 50 && !(this.config && this.config.compressedMath && shouldMatch)) {
       if (this.config && this.config.compressedMath) {
-        result = this.generateMath(false, null);
+        result = this.generateMath(false, null, null, attempts + 1);
       } else {
-        result = shouldMatch ? this.generateMatching(referenceIndex, registry) : this.generateNew();
+        result = shouldMatch
+          ? this.generateMatching(referenceIndex, registry, blueprint, attempts + 1)
+          : this.generateNew();
       }
       attempts++;
     }
@@ -2558,7 +2609,11 @@ class CanonicalPremiseGenerator {
     return { premise, includeDelayed, includeRecursive, includeAxis };
   }
 
-  generateMath(shouldMatch = false, referenceIndex = null) {
+  generateMath(shouldMatch = false, referenceIndex = null, blueprint = null, attempt = 0) {
+    if (shouldMatch && blueprint && blueprint.canonicalOp === 'MATH') {
+      return this.generateMathMatchFromBlueprint(blueprint, attempt);
+    }
+
     if (shouldMatch && referenceIndex !== null) {
       const reference = this.premiseHistory[referenceIndex];
       if (reference && /[×÷+\-=]/.test(reference)) {
@@ -2589,10 +2644,95 @@ class CanonicalPremiseGenerator {
     return { premise, includeDelayed: false, includeRecursive: false, includeAxis: false };
   }
 
-  generateMatching(referenceIndex, registry) {
-    const reference = this.premiseHistory[referenceIndex];
+  generateMathMatchFromBlueprint(blueprint, attempt = 0) {
+    const referenceTokens = Array.isArray(blueprint.tokens)
+      ? blueprint.tokens
+      : (typeof blueprint.human === 'string' ? blueprint.human.split(/\s+/) : []);
+
+    if (!referenceTokens || referenceTokens.length === 0) {
+      return this.generateMath(false, null, null, attempt + 1);
+    }
+
+    const tokens = referenceTokens.map(token => {
+      if (token === '=') return token;
+      if (this.mathOperators.includes(token)) return token;
+
+      const match = token.match(/^(√?)([a-eA-E])([%0-9]?)$/);
+      if (!match) return token;
+
+      const [, radical, base, suffix] = match;
+      const flipped = base === base.toLowerCase() ? base.toUpperCase() : base.toLowerCase();
+      const finalBase = flipped === base ? base.toUpperCase() : flipped;
+
+      return `${radical || ''}${finalBase}${suffix || ''}`;
+    });
+
+    const premise = tokens.join(' ');
+    return { premise, includeDelayed: false, includeRecursive: false, includeAxis: false };
+  }
+
+  generateMatching(referenceIndex, registry, blueprint = null, attempt = 0) {
+    const reference = blueprint?.human || this.premiseHistory[referenceIndex];
     if (!reference) return this.generateNew();
 
+    if (!blueprint || !blueprint.canonicalOp || blueprint.canonicalOp === 'UNKNOWN') {
+      return this.generateMatchingFallback(reference, registry);
+    }
+
+    if (blueprint.canonicalOp === 'MATH') {
+      return this.generateMathMatchFromBlueprint(blueprint, attempt);
+    }
+
+    const refTokens = reference.split(' ');
+    const tokens = new Array(5);
+
+    const subjectBases = (blueprint.subjectIds || []).map((id, idx) =>
+      this.chooseAlternateSurface(registry, id, blueprint.subjects ? blueprint.subjects[idx] : null, attempt)
+    );
+
+    const objectBases = (blueprint.objectIds || []).map((id, idx) =>
+      this.chooseAlternateSurface(registry, id, blueprint.objects ? blueprint.objects[idx] : null, attempt)
+    );
+
+    tokens[0] = this.composeSymbolToken(subjectBases, refTokens[0]);
+    tokens[1] = this.chooseOperationVariant(blueprint.canonicalOp, refTokens[1]);
+
+    const axisWord = this.buildAxisToken(blueprint, refTokens);
+    const axisIndex = refTokens.findIndex(tok => tok && tok.toLowerCase().includes('axis-'));
+
+    if (blueprint.relation) {
+      tokens[2] = this.chooseRelationVariant(blueprint.relation, refTokens[2]);
+      tokens[3] = objectBases.length > 0
+        ? this.composeSymbolToken(objectBases, refTokens[3])
+        : this.ensureDirectionalToken(refTokens[3], blueprint.modifier || refTokens[3]);
+      tokens[4] = this.createTailToken(refTokens[4], blueprint);
+    } else {
+      tokens[2] = objectBases.length > 0
+        ? this.composeSymbolToken(objectBases, refTokens[2])
+        : this.ensureDirectionalToken(refTokens[2], blueprint.objects?.[0] || refTokens[2]);
+      tokens[3] = this.createModifierToken(refTokens[3], blueprint);
+      tokens[4] = this.createTailToken(refTokens[4], blueprint);
+    }
+
+    if (axisWord) {
+      const targetIndex = axisIndex >= 0 ? axisIndex : (blueprint.relation ? 4 : 3);
+      tokens[targetIndex] = axisWord;
+    }
+
+    for (let i = 0; i < tokens.length; i++) {
+      if (!tokens[i] && refTokens[i]) {
+        tokens[i] = this.ensureDirectionalToken(refTokens[i], refTokens[i]);
+      } else if (!tokens[i]) {
+        tokens[i] = 'HYPER';
+      }
+    }
+
+    const premise = tokens.join(' ');
+    const inferred = this.inferFeatures(premise);
+    return { premise, ...inferred };
+  }
+
+  generateMatchingFallback(reference, registry) {
     const words = reference.split(' ');
     const newWords = [];
 
@@ -2653,6 +2793,170 @@ class CanonicalPremiseGenerator {
     const premise = newWords.join(' ');
     const inferred = this.inferFeatures(premise);
     return { premise, ...inferred };
+  }
+
+  chooseAlternateSurface(registry, canonicalId, originalSurface = null, attempt = 0) {
+    if (!canonicalId) return originalSurface || 'VECTOR';
+
+    const avoid = new Set();
+    for (const [surface, id] of registry.surfaceToId.entries()) {
+      if (id === canonicalId) {
+        avoid.add(surface.toUpperCase());
+      }
+    }
+    if (originalSurface) {
+      avoid.add(originalSurface.toUpperCase());
+    }
+
+    const base = originalSurface ? originalSurface.toUpperCase() : null;
+    const synonymCandidates = base ? registry.findSynonyms(base) : [];
+    const pools = [...this.symbols.primary, ...this.symbols.secondary, ...this.symbolPrefixes];
+    const candidates = [...synonymCandidates, ...pools.map(p => p.toUpperCase())];
+
+    let choice = null;
+    for (const candidate of candidates) {
+      const upper = candidate.toUpperCase();
+      if (avoid.has(upper)) continue;
+      if (registry.surfaceToId.has(upper) && registry.surfaceToId.get(upper) !== canonicalId) continue;
+      choice = upper;
+      break;
+    }
+
+    if (!choice) {
+      const suffix = (attempt % 90) + 10;
+      choice = `${(base || 'SYMBOL')}${suffix}`.toUpperCase();
+    }
+
+    registry.surfaceToId.set(choice, canonicalId);
+    return choice;
+  }
+
+  composeSymbolToken(bases, referenceToken = '') {
+    if (!bases || bases.length === 0) {
+      return this.ensureDirectionalToken(referenceToken, referenceToken || 'VECTOR');
+    }
+
+    const originalParts = this.splitSymbolParts(referenceToken);
+    const connector = referenceToken.includes('-AND-')
+      ? '-AND-'
+      : referenceToken.includes('-WITH-')
+        ? '-WITH-'
+        : (bases.length > 1 ? '-WITH-' : '');
+
+    const parts = bases.map((base, idx) => {
+      const original = originalParts[idx] || '';
+      const prefixPool = [...this.symbols.colors, ...this.symbolPrefixes];
+      const originalPrefix = original.includes('-') ? original.split('-').slice(0, -1).join('-').toUpperCase() : null;
+      const filtered = prefixPool.filter(p => p.toUpperCase() !== originalPrefix);
+      const prefix = filtered.length > 0 ? this.randomFrom(filtered) : this.randomFrom(this.symbolPrefixes);
+      const decorated = prefix ? `${prefix}-${base}` : base;
+      if (decorated.toLowerCase() === original.toLowerCase()) {
+        return `META-${base}`;
+      }
+      return decorated;
+    });
+
+    let token = bases.length > 1 ? parts.join(connector || '-WITH-') : parts[0];
+    if (referenceToken && token.toLowerCase() === referenceToken.toLowerCase()) {
+      token = bases.length > 1
+        ? parts.map(part => `QUANTUM-${part.split('-').pop()}`).join('-WITH-')
+        : `QUANTUM-${bases[0]}`;
+    }
+
+    return token;
+  }
+
+  chooseOperationVariant(op, referenceToken = '') {
+    const options = this.operationVariants[op] || [referenceToken];
+    const refLower = (referenceToken || '').toLowerCase();
+    const candidate = options.find(opt => opt.toLowerCase() !== refLower);
+    if (candidate) return candidate;
+    return referenceToken ? referenceToken.toUpperCase() : (options[0] || 'push');
+  }
+
+  chooseRelationVariant(relation, referenceToken = '') {
+    if (!relation) return this.ensureDirectionalToken(referenceToken, referenceToken);
+    const variants = ['forming', 'creating', 'producing', 'generating', 'becoming'];
+    const refLower = relation.toLowerCase();
+    const candidate = variants.find(v => v !== refLower);
+    return candidate ? candidate.toUpperCase() : relation.toUpperCase();
+  }
+
+  createModifierToken(referenceToken, blueprint) {
+    const base = blueprint?.modifier || referenceToken || 'with';
+    if ((base || '').toLowerCase().includes('axis-')) {
+      return base;
+    }
+    return this.ensureDirectionalToken(referenceToken, base);
+  }
+
+  createTailToken(referenceToken, blueprint) {
+    const hints = blueprint?.timingHints || [];
+    if (hints.length > 0) {
+      const source = hints[0].source || referenceToken || 'later';
+      return this.ensureTimingToken(referenceToken, source);
+    }
+
+    if (blueprint?.direction) {
+      return this.ensureDirectionalToken(referenceToken, blueprint.direction);
+    }
+
+    if (blueprint?.modifier && !blueprint.relation) {
+      return this.ensureDirectionalToken(referenceToken, blueprint.modifier);
+    }
+
+    return this.ensureDirectionalToken(referenceToken, referenceToken || 'forward');
+  }
+
+  ensureTimingToken(referenceToken, base) {
+    if (!base) return this.ensureDirectionalToken(referenceToken, 'later');
+    const candidate = base.toUpperCase();
+    if (referenceToken && candidate === referenceToken) {
+      return base.toLowerCase();
+    }
+    return candidate;
+  }
+
+  ensureDirectionalToken(referenceToken, base) {
+    if (!base) return referenceToken ? referenceToken.toUpperCase() : 'FORWARD';
+    const lower = base.toLowerCase();
+    const canonical = lower;
+    const candidate = canonical.toUpperCase();
+    if (referenceToken && candidate === referenceToken) {
+      return canonical;
+    }
+    return candidate;
+  }
+
+  buildAxisToken(blueprint, referenceTokens) {
+    const events = blueprint?.axisEvents || [];
+    if (!events || events.length === 0) return null;
+
+    const map = {
+      ROTATE_AXIS: 'axis-rotate',
+      MERGE_AXIS: 'axis-merge',
+      SPLIT_AXIS: 'axis-split',
+      INVERT_AXIS: 'axis-invert'
+    };
+
+    const parts = events.map(e => map[e.type] || 'axis-rotate');
+    const combined = parts.map(p => `${p.toUpperCase()}!`).join('&');
+
+    if (referenceTokens) {
+      const existing = referenceTokens.find(tok => tok && tok.toLowerCase().includes('axis-'));
+      if (existing && combined.toLowerCase() === existing.toLowerCase()) {
+        return combined + '!';
+      }
+    }
+
+    return combined;
+  }
+
+  splitSymbolParts(token = '') {
+    if (!token) return [];
+    if (token.includes('-AND-')) return token.split('-AND-');
+    if (token.includes('-WITH-')) return token.split('-WITH-');
+    return [token];
   }
 
   inferFeatures(premise) {
@@ -2791,7 +3095,11 @@ class CanonicalStateVectorNBack {
       
       if (shouldMatch && this.currentTrial >= this.nLevel) {
         const referenceIndex = this.currentTrial - this.nLevel;
-        premise = this.generator.generate(true, referenceIndex, this.registry);
+        const referenceState = this.stateHistory[referenceIndex]
+          ? (this.stateHistory[referenceIndex][i] || this.stateHistory[referenceIndex][0])
+          : null;
+        const blueprint = referenceState && referenceState.parsed ? referenceState.parsed : null;
+        premise = this.generator.generate(true, referenceIndex, this.registry, blueprint);
       } else {
         premise = this.generator.generate(false);
       }
