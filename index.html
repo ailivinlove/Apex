@@ -177,9 +177,13 @@ input[type=range]::-moz-range-thumb {
 .relation { color:#a55eea; font-weight:900; text-decoration:underline dotted; }
 .state { color:#ffd700; font-weight:bold; }
 .compound { background:rgba(0,210,211,0.15); padding:2px 6px; border-radius:3px; }
+.compound.object {
+  background:rgba(255,165,0,0.15);
+  border:1px solid rgba(255,165,0,0.4);
+}
 .quantum { animation:quantumFlicker 2s infinite; }
-.scheduled { 
-  background:rgba(165,94,234,0.2); 
+.scheduled {
+  background:rgba(165,94,234,0.2);
   border:1px dashed var(--cascade); 
   padding:2px 6px; 
   border-radius:3px; 
@@ -507,6 +511,12 @@ input[type=range]::-moz-range-thumb {
       <li><strong>Side-swap allowed:</strong> Swapping both sides of <code>=</code> is permitted and preserves the same balance check.</li>
     </ul>
 
+    <h3>Surface Diversity (Why words change)</h3>
+    <p>
+      Premises always use five simple words, but the <em>same</em> hidden IDs and operations can appear with different words (e.g., HOUND = DOG, PRESS = PUSH).
+      Matches are judged by the hidden simulation, not by repeated words. If a match is possible, the surface will still look different on purpose.
+    </p>
+
     <h3>I. Theoretical Foundation: From Topology to Trajectory</h3>
     <p>Unlike pattern matching, this requires genuine mental physics simulation. Each symbol is a quantum-like entity with:</p>
     <ul>
@@ -764,6 +774,41 @@ class CanonicalRegistry {
       ['PLANET', 'WORLD', 'GLOBE'],
       ['CELL', 'ORGANISM', 'MICROBE']
     ];
+
+    this.synonymGroups.push(
+      ['WOLF','CANID'], ['FOX','VULPINE'], ['BEAR','URSINE'],
+      ['LION','PANTHER'], ['TIGER','STRIPE-CAT'], ['LEOPARD','SPOT-CAT'], ['JAGUAR','AMAZON-CAT'],
+      ['CHEETAH','SPRINT-CAT'], ['ELEPHANT','PACHYDERM'], ['RHINO','RHINOCEROS'], ['HIPPO','HIPPOPOTAMUS'],
+      ['GIRAFFE','TALL-NECK'], ['ZEBRA','STRIPE-HORSE'], ['DEER','HART'], ['ELK','WAPITI'],
+      ['MOOSE','ELK-MOOSE'], ['HORSE','STALLION','MARE'], ['DONKEY','BURRO'], ['CAMEL','DROMEDARY'],
+      ['LLAMA','ALPACA'], ['GOAT','KID'], ['SHEEP','LAMB'], ['COW','CATTLE'], ['BISON','BUFFALO'],
+      ['PIG','HOG','SWINE','BOAR'], ['RABBIT','HARE','BUNNY'], ['MOUSE','RODENT'], ['RAT','RODENT'],
+      ['SQUIRREL','TREE-RODENT'], ['OTTER','MUSTELID'], ['BEAVER','DAM-RODENT'], ['RACCOON','BANDIT'],
+      ['BADGER','MUSTELID'], ['SKUNK','MUSTELID'], ['MONKEY','PRIMATE'], ['APE','PRIMATE'],
+      ['GORILLA','PRIMATE'], ['CHIMP','PRIMATE'], ['ORANGUTAN','PRIMATE'], ['KANGAROO','ROO'],
+      ['KOALA','BEAR-KOALA'], ['PANDA','BEAR-PANDA'], ['BAT','FLYING-MAMMAL'], ['DOLPHIN','PORPOISE'],
+      ['WHALE','CETACEAN'], ['SHARK','CARTILAGE-FISH'], ['SEAL','SEA-MAMMAL'], ['PENGUIN','SEA-BIRD'],
+      ['EAGLE','RAPTOR'], ['HAWK','RAPTOR'], ['FALCON','RAPTOR'], ['OWL','RAPTOR'],
+      ['DUCK','WATERFOWL'], ['SWAN','WATERFOWL'], ['GOOSE','WATERFOWL'], ['TURKEY','FOWL'],
+      ['CHICKEN','HEN','ROOSTER'], ['PEACOCK','PEAFOWL'], ['PARROT','MACAW'], ['CROW','CORVID'],
+      ['RAVEN','CORVID'], ['SPARROW','SONG-BIRD'], ['ROBIN','SONG-BIRD'],
+      ['ANT','INSECT'], ['BEE','INSECT'], ['WASP','INSECT'], ['BUTTERFLY','INSECT'], ['MOTH','INSECT'],
+      ['DRAGONFLY','INSECT'], ['SPIDER','ARTHROPOD'], ['SCORPION','ARTHROPOD'],
+      ['CRAB','CRUSTACEAN'], ['LOBSTER','CRUSTACEAN'], ['OCTOPUS','CEPHALOPOD'], ['SQUID','CEPHALOPOD'],
+      ['STARFISH','SEA-STAR'], ['JELLYFISH','CNIDARIAN'], ['TURTLE','REPTILE'], ['LIZARD','REPTILE'],
+      ['SNAKE','REPTILE'], ['FROG','AMPHIBIAN'], ['TOAD','AMPHIBIAN'],
+
+      // Physics synonyms (map different surfaces to same canonical idea)
+      ['LIGHT','PHOTON'], ['ELECTRON','CHARGE'], ['HEAT','TEMPERATURE'], ['POWER','WORK'],
+      ['MASS','WEIGHT'], ['SPEED','VELOCITY'], ['ROTATION','SPIN'], ['FLOW','CURRENT'],
+      ['RIPPLE','WAVE'], ['FORCE','PUSH'], ['PULL','DRAG'], ['LIFT','UPFORCE'], ['DRAG','RESIST'],
+      ['THRUST','PUSH'], ['REFLECTION','MIRROR'], ['REFRACTION','BEND'], ['ABSORPTION','SOAK'],
+      ['EMISSION','RADIATION'], ['TRANSFER','MOVE'], ['FUSION','MERGE'], ['FISSION','SPLIT'],
+      ['EXPANSION','GROWTH'], ['COMPRESSION','SQUEEZE'], ['PHASE','STATE'], ['FREQUENCY','RATE'],
+      ['AMPLITUDE','SIZE'], ['WAVELENGTH','LENGTH'], ['PERIOD','CYCLE'], ['FIELD','REGION'],
+      ['VECTOR','ARROW'], ['SCALAR','VALUE'], ['AXIS','DIRECTION'], ['FRAME','REFERENCE'],
+      ['EQUILIBRIUM','BALANCE'], ['RESONANCE','TUNE']
+    );
   }
 
   getOrCreateId(surface) {
@@ -1349,6 +1394,9 @@ class StateVectorEngine {
     if (!word) return [];
     if (/axis/i.test(word)) return [];
 
+    if (word.includes('-OBJECT-')) {
+      return word.split('-OBJECT-').map(w => w.replace(/-/g, '').toUpperCase());
+    }
     if (word.includes('-AND-')) {
       return word.split('-AND-').map(w => w.replace(/-/g, '').toUpperCase());
     }
@@ -1585,7 +1633,7 @@ class StateVectorEngine {
   }
 
   mapToCanonicalOp(operation) {
-    const opMap = {
+    const baseOpMap = {
       'pushes': 'PUSH',
       'push': 'PUSH',
       'presses': 'PUSH',
@@ -1640,6 +1688,22 @@ class StateVectorEngine {
       'resonates': 'RESONATE',
       'synchronizes': 'RESONATE',
       'syncs': 'RESONATE'
+    };
+    const opMap = {
+      ...baseOpMap,
+      'presses': 'PUSH','shoves':'PUSH','nudges':'PUSH','drives':'PUSH',
+      'drags':'PULL','tugs':'PULL','yanks':'PULL',
+      'spins':'ROTATE','turns':'ROTATE','twists':'ROTATE',
+      'joins':'MERGE','combines':'MERGE','fuses':'MERGE',
+      'breaks':'SPLIT','divides':'SPLIT','separates':'SPLIT',
+      'starts':'CASCADE','launches':'CASCADE','causes':'CASCADE','triggers':'CASCADE','activates':'CASCADE',
+      'vibrates':'OSCILLATE','pulses':'OSCILLATE','waves':'OSCILLATE',
+      'changes':'TRANSFORM','shifts':'TRANSFORM','remaps':'TRANSFORM',
+      'hits':'COLLIDE','crashes':'COLLIDE','smashes':'COLLIDE',
+      'rebounds':'BOUNCE','bounces':'BOUNCE',
+      'soaks':'ABSORB','takes-in':'ABSORB',
+      'gives':'EMIT','sends':'EMIT','emits':'EMIT',
+      'tunes':'RESONATE','matches':'RESONATE','locks':'RESONATE'
     };
     return opMap[operation] || 'UNKNOWN';
   }
@@ -2532,28 +2596,62 @@ class CanonicalPremiseGenerator {
     this.config = config;
 
     this.symbols = {
-      primary: ['DOG', 'CAT', 'CIRCLE', 'SQUARE', 'TRIANGLE', 'ATOM', 'WAVE', 'PARTICLE',
-                'STAR', 'PLANET', 'CELL', 'ENGINE', 'TIMER', 'CRYSTAL', 'SPARK', 'VECTOR'],
-      secondary: ['HOUND', 'FELINE', 'SPHERE', 'BOX', 'PYRAMID', 'MOLECULE', 'RIPPLE',
-                  'QUANTUM', 'SUN', 'WORLD', 'ORGANISM', 'MOTOR', 'CLOCK', 'PRISM', 'SIGNAL'],
-      colors: ['RED', 'BLUE', 'GREEN', 'YELLOW', 'PURPLE', 'ORANGE']
+      // 70+ species (uppercase, single tokens; beginner-legible)
+      species: [
+        'DOG','CAT','WOLF','FOX','BEAR','LION','TIGER','LEOPARD','JAGUAR','CHEETAH','PANTHER','LYNX','BOBCAT','COUGAR',
+        'ELEPHANT','RHINO','HIPPO','GIRAFFE','ZEBRA','DEER','ELK','MOOSE','HORSE','DONKEY','CAMEL','LLAMA','GOAT','SHEEP',
+        'COW','BISON','BUFFALO','PIG','BOAR','RABBIT','HARE','MOUSE','RAT','SQUIRREL','OTTER','BEAVER','RACCOON','BADGER',
+        'SKUNK','MONKEY','APE','GORILLA','CHIMP','ORANGUTAN','KANGAROO','KOALA','PANDA','BAT','DOLPHIN','WHALE','SHARK',
+        'SEAL','PENGUIN','EAGLE','HAWK','FALCON','OWL','DUCK','SWAN','GOOSE','TURKEY','CHICKEN','PEACOCK','PARROT','CROW',
+        'RAVEN','SPARROW','ROBIN','ANT','BEE','WASP','BUTTERFLY','MOTH','DRAGONFLY','SPIDER','SCORPION','CRAB','LOBSTER',
+        'OCTOPUS','SQUID','STARFISH','JELLYFISH','TURTLE','LIZARD','SNAKE','FROG','TOAD'
+      ],
+
+      // 120+ beginner-legible physics words (nouns/objects/states)
+      physics: [
+        'FORCE','MASS','SPEED','TIME','HEAT','LIGHT','SOUND','FRICTION','GRAVITY','MAGNET','CHARGE','CURRENT','VOLTAGE',
+        'ENERGY','POWER','WORK','IMPULSE','PRESSURE','DENSITY','BUOYANCY','TORQUE','INERTIA','MOMENTUM','COLLISION','ORBIT',
+        'LIFT','DRAG','THRUST','REFLECTION','REFRACTION','ABSORPTION','EMISSION','TRANSFER','CONVERSION','FUSION','FISSION',
+        'EXPANSION','COMPRESSION','PHASE','FREQUENCY','AMPLITUDE','WAVELENGTH','PERIOD','PULSE','RIPPLE','WAVE','FLOW',
+        'FIELD','VECTOR','SCALAR','ANGLE','AXIS','FRAME','ROTATION','TILT','SPIN','ROLL','PITCH','YAW','EQUILIBRIUM',
+        'RESONANCE','HARMONIC','NODE','ANTINODE','SHOCK','TURBULENCE','VISCOSITY','SPRING','LEVER','GEAR','PULLEY','WEDGE',
+        'WHEEL','AXLE','PLANE','MACHINE','BATTERY','CIRCUIT','SWITCH','RESISTOR','CAPACITOR','COIL','MAGNETISM','INDUCTION',
+        'RADIATION','CONDUCTION','CONVECTION','TEMPERATURE','PHOTON','ELECTRON','PROTON','NEUTRON','ATOM','MOLECULE','ION',
+        'PLASMA','VACUUM','MEDIUM','REFLECTOR','LENS','MIRROR','PRISM','DIODE','LASER','SOLAR','WIND','KINETIC','POTENTIAL',
+        'ELASTIC','PLASTIC','STRESS','STRAIN','LOAD','BALANCE','CENTER','LEVERAGE','AXLE-FORCE','BEARING','SPRING-FORCE'
+      ],
+
+      // Keep and expand colors if you like (optional)
+      colors: ['RED','BLUE','GREEN','YELLOW','PURPLE','ORANGE','CYAN','MAGENTA','WHITE','BLACK'],
+
+      // Axis/temporal pools you already had:
+      axisEvents: ['axis-swap','axis-rotate','axis-invert','axis-merge','axis-split'],
+      delayedTiming: ['later','after','delayed','again'],
+      recursiveTiming: ['periodically','recursively','every-two'],
+      directionPool: ['upward','downward','leftward','rightward','forward','backward','precisely','strongly','carefully','symmetrically','equally']
     };
+    // Normalize for easy access:
+    this.words = {
+      subjects: [...this.symbols.species, ...this.symbols.physics],
+      objects:  [...this.symbols.species, ...this.symbols.physics]
+    };
+    this.directions = [...this.symbols.directionPool, ...this.symbols.delayedTiming, ...this.symbols.recursiveTiming];
 
     this.symbolPrefixes = ['ULTRA', 'QUANTUM', 'HYPER', 'PRIME', 'SHADOW', 'PHASE'];
     this.operationVariants = {
-      PUSH: ['push', 'presses', 'propels', 'thrusts', 'drives'],
-      PULL: ['pull', 'draws', 'reels', 'retrieves'],
-      SPLIT: ['splits', 'cleaves', 'bifurcates', 'fractures'],
-      MERGE: ['merges', 'fuses', 'coalesces', 'unites'],
-      CASCADE: ['triggers', 'activates', 'ignites', 'unleashes', 'cascades'],
-      RESONATE: ['resonates', 'synchronizes', 'syncs'],
-      TRANSFORM: ['transforms', 'morphs', 'reconfigures'],
-      OSCILLATE: ['oscillates', 'orbits', 'swings', 'precesses'],
-      COLLIDE: ['collides', 'impacts', 'crashes'],
-      ABSORB: ['absorbs', 'ingests'],
-      EMIT: ['emits', 'radiates', 'releases'],
-      BOUNCE: ['bounces', 'ricochets'],
-      ROTATE: ['rotates', 'spins', 'whirls'],
+      PUSH: ['push', 'pushes', 'presses', 'propels', 'thrusts', 'drives', 'shoves', 'nudges'],
+      PULL: ['pull', 'pulls', 'draws', 'reels', 'retrieves', 'drags', 'tugs', 'yanks'],
+      SPLIT: ['splits', 'split', 'cleaves', 'bifurcates', 'fractures', 'breaks', 'divides', 'separates'],
+      MERGE: ['merges', 'merge', 'fuses', 'coalesces', 'unites', 'joins', 'combines'],
+      CASCADE: ['triggers', 'activates', 'ignites', 'unleashes', 'cascades', 'starts', 'launches', 'causes'],
+      RESONATE: ['resonates', 'synchronizes', 'syncs', 'tunes', 'matches', 'locks'],
+      TRANSFORM: ['transforms', 'transform', 'morphs', 'reconfigures', 'changes', 'shifts', 'remaps'],
+      OSCILLATE: ['oscillates', 'oscillate', 'orbits', 'swings', 'precesses', 'vibrates', 'pulses', 'waves'],
+      COLLIDE: ['collides', 'collide', 'impacts', 'crashes', 'hits', 'smashes'],
+      ABSORB: ['absorbs', 'ingests', 'soaks', 'takes-in'],
+      EMIT: ['emit', 'emits', 'radiates', 'releases', 'gives', 'sends'],
+      BOUNCE: ['bounces', 'ricochets', 'rebounds'],
+      ROTATE: ['rotates', 'rotate', 'spins', 'whirls', 'turns', 'twists'],
       UNKNOWN: []
     };
 
@@ -2571,6 +2669,47 @@ class CanonicalPremiseGenerator {
     this.premiseHistory = [];
     this.lastSurfaces = [];
     this.stats = { total: 0, delayed: 0, recursive: 0, axis: 0 };
+
+    this.engineVerbToOp = {};
+    for (const [op, variants] of Object.entries(this.operationVariants)) {
+      variants.forEach(v => {
+        this.engineVerbToOp[v.toLowerCase()] = op;
+        this.engineVerbToOp[v.toUpperCase()] = op;
+      });
+    }
+
+    this.policy = {
+      historyWindow: 40,
+      minTokenDiff: 3,
+      forbidCaseOnly: true,
+      rotateCategories: true
+    };
+
+    this.normalizeSurface = (s = '') => s.trim().toUpperCase();
+    this.tokenize = (s = '') => this.normalizeSurface(s).split(/\s+/).filter(Boolean);
+    this.tokenDiffCount = (a = '', b = '') => {
+      const A = this.tokenize(a);
+      const B = this.tokenize(b);
+      const len = Math.min(A.length, B.length);
+      let diff = Math.max(A.length, B.length) - len;
+      for (let i = 0; i < len; i++) {
+        if (A[i] !== B[i]) diff++;
+      }
+      return diff;
+    };
+    this.isRecent = (prem = '') => {
+      const target = this.normalizeSurface(prem);
+      const recent = this.premiseHistory
+        .slice(-this.policy.historyWindow)
+        .flatMap(entry => {
+          if (!entry) return [];
+          if (Array.isArray(entry)) {
+            return entry.map(this.normalizeSurface);
+          }
+          return [this.normalizeSurface(entry)];
+        });
+      return recent.includes(target);
+    };
   }
 
   generate(shouldMatch = false, referenceIndex = null, registry = null, blueprint = null) {
@@ -2583,25 +2722,30 @@ class CanonicalPremiseGenerator {
         result = this.generateMathNew();
       }
     } else if (shouldMatch && referenceIndex !== null && registry) {
-      result = this.generateMatching(referenceIndex, registry, blueprint);
+      result = this.generateMatching(referenceIndex, registry);
     } else {
       result = this.generateNew();
     }
 
     let attempts = 0;
-    while (this.usedPremises.has(result.premise) && attempts < 50 && !(this.config && this.config.compressedMath && shouldMatch)) {
+    while (
+      this.usedPremises.has(this.normalizeSurface(result.premise)) &&
+      attempts < 50 &&
+      !(this.config && this.config.compressedMath && shouldMatch)
+    ) {
       if (this.config && this.config.compressedMath) {
         result = this.generateMathNew();
       } else {
         result = shouldMatch
-          ? this.generateMatching(referenceIndex, registry, blueprint, attempts + 1)
+          ? this.generateMatching(referenceIndex, registry)
           : this.generateNew();
       }
       attempts++;
     }
 
     const premise = result.premise;
-    this.usedPremises.add(premise);
+    const normalizedPremise = this.normalizeSurface(premise);
+    this.usedPremises.add(normalizedPremise);
     this.recordStats(result);
 
     if (this.usedPremises.size > 100) {
@@ -2660,61 +2804,72 @@ class CanonicalPremiseGenerator {
 
     switch(pattern) {
       case 'push': {
-        const subject = this.randomFrom(this.symbols.primary);
-        const verb = this.randomFrom(['pushes', 'pulls']);
-        const object = this.randomFrom(this.symbols.primary);
-        const modifier = axisToken || this.randomFrom(['toward', 'with', 'against', 'aligning']);
+        const subject = this.randomFrom(this.words.subjects);
+        const verb = this.randomFrom(['pushes','presses','shoves','nudges','drives','pulls','drags','spins','rotates']);
+        const object = this.randomFrom(this.words.objects);
+        const modifier = axisToken || this.randomFrom(['toward','creating','forming','into','aligning','initiating']);
         tokens = [subject, verb, object, modifier, tailWord];
         break;
       }
       case 'split': {
-        const subject = this.randomFrom(this.symbols.primary);
-        const object = this.randomFrom(['TWO-PARTICLES', 'TWO-FRAGMENTS', 'TWO-ATOMS']);
-        const modifier = axisToken || 'forming';
-        tokens = [subject, 'splits', object, modifier, tailWord];
+        const subject = this.randomFrom(this.words.subjects);
+        const objA = this.randomFrom(this.words.objects);
+        const objB = this.randomFrom(this.words.objects);
+        const verb = this.randomFrom(['splits','breaks','divides','separates']);
+        const modifier = axisToken || this.randomFrom(['forming','creating','toward']);
+        tokens = [subject, verb, `${objA}-OBJECT-${objB}`, modifier, tailWord];
         break;
       }
       case 'merge': {
-        const subj1 = this.randomFrom(this.symbols.primary);
-        const subj2 = this.randomFrom(this.symbols.primary);
-        const object = this.randomFrom(this.symbols.primary);
+        const subj1 = this.randomFrom(this.words.subjects);
+        const subj2 = this.randomFrom(this.words.subjects);
+        const object = this.randomFrom(this.words.objects);
+        const verb = this.randomFrom(['merges','joins','combines','fuses']);
         const modifier = axisToken || 'creating';
-        tokens = [`${subj1}-AND-${subj2}`, 'merges', object, modifier, tailWord];
+        tokens = [`${subj1}-OBJECT-${subj2}`, verb, object, modifier, tailWord];
         break;
       }
       case 'cascade': {
-        const subject = this.randomFrom(this.symbols.primary);
-        const verb = this.randomFrom(['triggers', 'activates']);
-        const object = this.randomFrom(this.symbols.primary);
-        const modifier = axisToken || this.randomFrom(['initiating', 'causing', 'starting']);
+        const subject = this.randomFrom(this.words.subjects);
+        const verb = this.randomFrom(['triggers','activates','starts','launches','causes']);
+        const object = this.randomFrom(this.words.objects);
+        const modifier = axisToken || this.randomFrom(['initiating','causing','starting','driving']);
         tokens = [subject, verb, object, modifier, tailWord];
         break;
       }
       case 'resonate': {
-        const subject = this.randomFrom(this.symbols.primary);
-        const object = this.randomFrom(this.symbols.secondary);
+        const subject = this.randomFrom(this.words.subjects);
+        const object = this.randomFrom(this.words.objects);
+        const verb = this.randomFrom(['resonates','tunes','matches','locks']);
         const modifier = axisToken || 'with';
-        tokens = [subject, 'resonates', object, modifier, tailWord];
+        tokens = [subject, verb, object, modifier, tailWord];
         break;
       }
       case 'transform': {
-        const subject = this.randomFrom(this.symbols.primary);
-        const object = this.randomFrom(this.symbols.secondary);
-        const modifier = axisToken || 'into';
-        tokens = [subject, 'transforms', object, modifier, tailWord];
+        const subject = this.randomFrom(this.words.subjects);
+        const object = this.randomFrom(this.words.objects);
+        const verb = this.randomFrom(['transforms','changes','shifts','remaps']);
+        const modifier = axisToken || this.randomFrom(['into','toward','becoming']);
+        tokens = [subject, verb, object, modifier, tailWord];
         break;
       }
       case 'oscillate':
       default: {
-        const subject = `${this.randomFrom(this.symbols.colors)}-${this.randomFrom(this.symbols.primary)}`;
-        const object = this.randomFrom(this.symbols.primary);
-        const modifier = axisToken || 'around';
-        tokens = [subject, 'oscillates', object, modifier, tailWord];
+        const subject = this.randomFrom(this.words.subjects);
+        const object = this.randomFrom(this.words.objects);
+        const verb = this.randomFrom(['oscillates','vibrates','pulses','waves']);
+        const modifier = axisToken || this.randomFrom(['around','across','along']);
+        tokens = [subject, verb, object, modifier, tailWord];
         break;
       }
     }
 
-    const premise = tokens.join(' ');
+    let premise = tokens.join(' ').toUpperCase();
+    let attempts = 0;
+    while (this.isRecent(premise) && attempts < 50) {
+      attempts++;
+      return this.generateNew();
+    }
     this.rememberSurface(premise);
     return { premise, includeDelayed, includeRecursive, includeAxis };
   }
@@ -2776,69 +2931,103 @@ class CanonicalPremiseGenerator {
     return { premise, includeDelayed: false, includeRecursive: false, includeAxis: false };
   }
 
-  generateMatching(referenceIndex, registry, blueprint = null, attempt = 0) {
-    const historyEntry = this.premiseHistory[referenceIndex];
-    const reference = blueprint?.human || (Array.isArray(historyEntry) ? historyEntry[0] : historyEntry);
+  generateMatching(referenceIndex, registry) {
+    const reference = this.premiseHistory[referenceIndex];
     if (!reference) return this.generateNew();
 
-    if (
-      (this.config && this.config.compressedMath && this.isMathSurface(reference)) ||
-      (blueprint && blueprint.canonicalOp === 'MATH')
+    const refString = Array.isArray(reference) ? reference[0] : reference;
+    const refTokens = this.tokenize(refString || '');
+    if (refTokens.length < 5) {
+      return this.generateNew();
+    }
+
+    const [t0, t1, t2, t3, t4] = refTokens;
+
+    const swapSubject = (tok) => {
+      const parts = tok.includes('-OBJECT-') ? tok.split('-OBJECT-') : [tok];
+      const mapped = parts.map(part => {
+        const syns = registry.findSynonyms(part) || [];
+        const canonicalId = registry.surfaceToId.get(part) || null;
+        const sameId = syns.filter(s => {
+          const upper = s.toUpperCase();
+          if (!registry.surfaceToId.has(upper)) return true;
+          return registry.surfaceToId.get(upper) === canonicalId;
+        });
+        const options = sameId.filter(s => this.normalizeSurface(s) !== part.toUpperCase());
+        return options.length > 0
+          ? this.normalizeSurface(this.randomFrom(options))
+          : part.toUpperCase();
+      });
+      return mapped.join('-OBJECT-');
+    };
+
+    const verbSyn = (verb) => {
+      const v = verb.toLowerCase();
+      const op = this.engineVerbToOp[v] || v;
+      const banks = {
+        'PUSH': ['pushes','presses','shoves','nudges','drives'],
+        'PULL': ['pulls','drags','tugs','yanks'],
+        'ROTATE': ['rotates','spins','turns','twists'],
+        'MERGE': ['merges','joins','combines','fuses'],
+        'SPLIT': ['splits','breaks','divides','separates'],
+        'CASCADE': ['triggers','activates','starts','launches','causes'],
+        'OSCILLATE': ['oscillates','vibrates','pulses','waves'],
+        'TRANSFORM': ['transforms','changes','shifts','remaps'],
+        'COLLIDE': ['collides','hits','crashes','smashes'],
+        'BOUNCE': ['bounces','rebounds'],
+        'ABSORB': ['absorbs','soaks','takes-in'],
+        'EMIT': ['emits','gives','sends'],
+        'RESONATE': ['resonates','tunes','matches','locks']
+      };
+      const pool = banks[op.toUpperCase?.() ? op.toUpperCase() : op.toUpperCase()] || [verb];
+      const choice = pool.filter(w => this.normalizeSurface(w) !== verb.toUpperCase());
+      const pick = choice.length > 0 ? this.randomFrom(choice) : verb;
+      return this.normalizeSurface(pick);
+    };
+
+    const swapRel = (tok) => {
+      const relations = ['FORMING','CREATING','INTO','TOWARD','BECOMING','GENERATING'];
+      if (!relations.includes(tok)) return tok;
+      const alts = relations.filter(r => r !== tok);
+      return alts.length > 0 ? this.randomFrom(alts) : tok;
+    };
+
+    const swapTail = (tok) => {
+      const dirs = this.symbols.directionPool.map(s => s.toUpperCase());
+      const delayed = this.symbols.delayedTiming.map(s => s.toUpperCase());
+      const recursive = this.symbols.recursiveTiming.map(s => s.toUpperCase());
+      const bank = [...dirs, ...delayed, ...recursive];
+      const list = dirs.includes(tok)
+        ? dirs
+        : delayed.includes(tok)
+          ? delayed
+          : recursive.includes(tok)
+            ? recursive
+            : bank;
+      const alts = list.filter(option => option !== tok);
+      return alts.length > 0 ? this.randomFrom(alts) : tok;
+    };
+
+    const buildCandidate = () => [
+      swapSubject(t0),
+      verbSyn(t1),
+      swapSubject(t2),
+      swapRel(t3),
+      swapTail(t4)
+    ].join(' ').toUpperCase();
+
+    let candidate = buildCandidate();
+    let tries = 0;
+    while (
+      (this.isRecent(candidate) || this.tokenDiffCount(candidate, refString) < this.policy.minTokenDiff) &&
+      tries < 50
     ) {
-      return this.generateMathMatch(referenceIndex, registry, blueprint);
+      candidate = buildCandidate();
+      tries++;
     }
 
-    if (!blueprint || !blueprint.canonicalOp || blueprint.canonicalOp === 'UNKNOWN') {
-      return this.generateMatchingFallback(reference, registry);
-    }
-
-    const refTokens = reference.split(' ');
-    const tokens = new Array(5);
-
-    const subjectBases = (blueprint.subjectIds || []).map((id, idx) =>
-      this.chooseAlternateSurface(registry, id, blueprint.subjects ? blueprint.subjects[idx] : null, attempt)
-    );
-
-    const objectBases = (blueprint.objectIds || []).map((id, idx) =>
-      this.chooseAlternateSurface(registry, id, blueprint.objects ? blueprint.objects[idx] : null, attempt)
-    );
-
-    tokens[0] = this.composeSymbolToken(subjectBases, refTokens[0]);
-    tokens[1] = this.chooseOperationVariant(blueprint.canonicalOp, refTokens[1]);
-
-    const axisWord = this.buildAxisToken(blueprint, refTokens);
-    const axisIndex = refTokens.findIndex(tok => tok && tok.toLowerCase().includes('axis-'));
-
-    if (blueprint.relation) {
-      tokens[2] = this.chooseRelationVariant(blueprint.relation, refTokens[2]);
-      tokens[3] = objectBases.length > 0
-        ? this.composeSymbolToken(objectBases, refTokens[3])
-        : this.ensureDirectionalToken(refTokens[3], blueprint.modifier || refTokens[3]);
-      tokens[4] = this.createTailToken(refTokens[4], blueprint);
-    } else {
-      tokens[2] = objectBases.length > 0
-        ? this.composeSymbolToken(objectBases, refTokens[2])
-        : this.ensureDirectionalToken(refTokens[2], blueprint.objects?.[0] || refTokens[2]);
-      tokens[3] = this.createModifierToken(refTokens[3], blueprint);
-      tokens[4] = this.createTailToken(refTokens[4], blueprint);
-    }
-
-    if (axisWord) {
-      const targetIndex = axisIndex >= 0 ? axisIndex : (blueprint.relation ? 4 : 3);
-      tokens[targetIndex] = axisWord;
-    }
-
-    for (let i = 0; i < tokens.length; i++) {
-      if (!tokens[i] && refTokens[i]) {
-        tokens[i] = this.ensureDirectionalToken(refTokens[i], refTokens[i]);
-      } else if (!tokens[i]) {
-        tokens[i] = 'HYPER';
-      }
-    }
-
-    const premise = tokens.join(' ');
-    const inferred = this.inferFeatures(premise);
-    return { premise, ...inferred };
+    const inferred = this.inferFeatures(candidate);
+    return { premise: candidate, ...inferred };
   }
 
   generateMatchingFallback(reference, registry) {
@@ -3021,7 +3210,7 @@ class CanonicalPremiseGenerator {
 
   rememberSurface(surface) {
     if (!surface) return;
-    this.lastSurfaces.push(surface);
+    this.lastSurfaces.push(this.normalizeSurface(surface));
     if (this.lastSurfaces.length > SURFACE_RULES.dedupeWindow) {
       this.lastSurfaces.shift();
     }
@@ -3033,7 +3222,10 @@ class CanonicalPremiseGenerator {
 
   recordTrialPremises(trialIndex, premises) {
     if (typeof trialIndex !== 'number') return;
-    this.premiseHistory[trialIndex] = Array.isArray(premises) ? [...premises] : [premises];
+    const normalized = Array.isArray(premises)
+      ? premises.map(p => this.normalizeSurface(p))
+      : [this.normalizeSurface(premises)];
+    this.premiseHistory[trialIndex] = normalized;
   }
 
   isMathSurface(text) {
@@ -3413,23 +3605,29 @@ class CanonicalStateVectorNBack {
       const words = premise.split(' ');
       words.forEach((word, idx) => {
         const span = document.createElement('span');
-        
+        const lower = word.toLowerCase();
+
         // Enhanced styling based on word type and context
-        if (word.includes('-AND-') || word.includes('-WITH-')) {
+        if (word.includes('-OBJECT-')) {
+          span.className = 'compound object';
+        } else if (word.includes('-AND-') || word.includes('-WITH-')) {
           span.className = 'compound';
-        } else if (this.engine.scheduledEffects.length > 0 && 
-                   (word === 'delayed' || word === 'later' || word === 'recursively')) {
+        } else if (this.engine.scheduledEffects.length > 0 &&
+                   (lower === 'delayed' || lower === 'later' || lower === 'recursively')) {
           span.className = 'scheduled';
-        } else if (this.config.quantumSuperposition && 
-                   (word === 'QUANTUM' || word === 'PHOTON' || word === 'ELECTRON')) {
+        } else if (this.config.quantumSuperposition &&
+                   (lower === 'quantum' || lower === 'photon' || lower === 'electron')) {
           span.className = 'quantum';
-        } else if (['pushes', 'pulls', 'splits', 'merges', 'triggers', 'activates', 
-                    'rotates', 'oscillates', 'transforms', 'collides', 'bounces',
-                    'absorbs', 'emits', 'resonates'].includes(word)) {
+        } else if (['pushes','pulls','splits','merges','triggers','activates',
+                    'rotates','oscillates','transforms','collides','bounces',
+                    'absorbs','emits','resonates','presses','shoves','nudges','drives',
+                    'drags','spins','starts','launches','causes','vibrates','pulses',
+                    'waves','changes','shifts','remaps','hits','smashes','rebounds',
+                    'soaks','sends','tunes','matches','locks'].includes(lower)) {
           span.className = 'operation';
-        } else if (['forming', 'creating', 'into', 'toward', 'becoming', 'generating'].includes(word)) {
+        } else if (['forming', 'creating', 'into', 'toward', 'becoming', 'generating', 'with'].includes(lower)) {
           span.className = 'relation';
-        } else if (this.generator.directions.includes(word)) {
+        } else if (this.generator.directions.includes(lower)) {
           span.className = 'state';
         } else if (word.startsWith('RED') || word.startsWith('CRIMSON') || word.startsWith('SCARLET')) {
           span.className = 'sym-color';
