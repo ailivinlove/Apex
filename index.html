@@ -288,6 +288,11 @@ input[type=range]::-moz-range-thumb {
 .diff-level-3 { background:rgba(255,107,107,0.2); color:var(--error); }
 .diff-level-4 { background:rgba(255,0,255,0.2); color:var(--quantum); }
 .diff-level-5 { background:rgba(165,94,234,0.2); color:var(--cascade); }
+.diff-level-6 { background:rgba(46,196,182,0.2); color:#2ec4b6; }
+.diff-level-7 { background:rgba(255,159,28,0.2); color:#ff9f1c; }
+.diff-level-8 { background:rgba(255,0,0,0.2); color:#ff4d4d; }
+.diff-level-9 { background:rgba(75,0,130,0.2); color:#8a2be2; }
+.diff-level-10 { background:rgba(0,191,255,0.2); color:#00bfff; }
 
 /* Modal */
 .modal {
@@ -671,6 +676,60 @@ input[type=range]::-moz-range-thumb {
    ≥0.90 G-LOAD IMPLEMENTATION WITH FULL SPECIFICATIONS
    ============================================================ */
 
+// ===== APEX-PROTECT-BEGIN (v4) =====
+const APEX_FEATURES = Object.freeze({
+  diversityV3: true,            // surface-different, canonically-equivalent matches
+  visibleBeginnerLevels: true,  // Levels 1..5 are shown in UI
+  relabelAdvanced: true,        // old Levels 1..5 become internal 6..10
+  objectConnector: true,        // keep -OBJECT-
+  caseNormalization: true,      // uppercase surfaces; block case-only “variation”
+  devSelfChecks: false          // set true only during internal testing
+});
+// ===== APEX-PROTECT-END (v4) =====
+
+// Prepare difficulty select shim for protected UI patch
+const apxV4_sliderRef = document.getElementById('difficultyLevel');
+if (apxV4_sliderRef && !document.getElementById('difficulty')) {
+  const apxV4_selectShim = document.createElement('select');
+  apxV4_selectShim.id = 'difficulty';
+  apxV4_selectShim.style.display = 'none';
+  apxV4_sliderRef.parentElement?.insertBefore(apxV4_selectShim, apxV4_sliderRef);
+}
+
+// ===== APEX-PROTECT-BEGIN (v4-ui-difficulty) =====
+(function apxV4_expandDifficultyUI(){
+  if (!APEX_FEATURES.visibleBeginnerLevels) return;
+  const sel = document.getElementById('difficulty');
+  if (!sel) return;
+  const current = Number(sel.value || 1);
+  // Rebuild options 1..10 (labels: "Level 1"..."Level 10")
+  sel.innerHTML = '';
+  for (let i=1;i<=10;i++){
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = `Level ${i}`;
+    sel.appendChild(opt);
+  }
+  // Preserve previously chosen level if still meaningful
+  sel.value = String(Math.min(Math.max(current,1),10));
+})();
+// ===== APEX-PROTECT-END (v4-ui-difficulty) =====
+
+// ===== APEX-PROTECT-BEGIN (v4-migrate-difficulty) =====
+(function apxV4_migrateStoredDifficulty(){
+  try{
+    const key='apex:difficulty';
+    const raw=localStorage.getItem(key);
+    if (!raw) return;
+    const val=Number(raw);
+    if (val>=1 && val<=5){
+      // Treat legacy 1..5 as advanced 6..10 to preserve previous players' challenge
+      localStorage.setItem(key, String(val+5));
+    }
+  }catch(e){}
+})();
+// ===== APEX-PROTECT-END (v4-migrate-difficulty) =====
+
 // DOM helpers
 const $ = id => document.getElementById(id);
 const setText = (id, text) => { const el = $(id); if(el) el.textContent = text; };
@@ -733,6 +792,92 @@ const DIFFICULTY_CONFIGS = {
     axisMutations: true
   }
 };
+
+// ===== APEX-PROTECT-BEGIN (v4-internal-levels) =====
+/*
+Visible levels:
+  1..5  = NEW beginner levels (IQ ceilings hidden: 80, 90, 95, 100, 110)
+  6..10 = ALIASES of existing DIFFICULTY_CONFIGS 1..5 (algorithms untouched)
+*/
+
+const APEX_IQ_LEVELS = Object.freeze({
+  1: { iqMax: 80  },  // Beginner-1
+  2: { iqMax: 90  },  // Beginner-2
+  3: { iqMax: 95  },  // Beginner-3
+  4: { iqMax:100  },  // Beginner-4
+  5: { iqMax:110  }   // Beginner-5
+});
+
+const APEX_INTERNAL_LEVELS = Object.freeze({
+  1: { name: "Beginner-1", aliasOf: null },
+  2: { name: "Beginner-2", aliasOf: null },
+  3: { name: "Beginner-3", aliasOf: null },
+  4: { name: "Beginner-4", aliasOf: null },
+  5: { name: "Beginner-5", aliasOf: null },
+  6: { aliasOf: 1 }, // your old Level 1
+  7: { aliasOf: 2 }, // your old Level 2
+  8: { aliasOf: 3 }, // your old Level 3
+  9: { aliasOf: 4 }, // your old Level 4
+ 10: { aliasOf: 5 }  // your old Level 5
+});
+
+// Beginner gates: strictly beginner words; five-token surfaces
+const APEX_BEGINNER_GATES = Object.freeze({
+  1: { allowAxis:false, allowSchedule:false, allowRecursive:false,
+       verbs:['pushes','pulls'],
+       relations:['toward','into'],
+       tails:['leftward','rightward','upward','downward'],
+       allowCompound:false, minTokenDiff:2, maxConstraints:1 },
+
+  2: { allowAxis:false, allowSchedule:false, allowRecursive:false,
+       verbs:['pushes','pulls','merges','splits'],
+       relations:['toward','into','creating','forming'],
+       tails:['leftward','rightward','upward','downward','forward','backward'],
+       allowCompound:true, minTokenDiff:2, maxConstraints:1 },
+
+  3: { allowAxis:false, allowSchedule:true, allowRecursive:false,
+       verbs:['pushes','pulls','merges','splits','rotates','oscillates'],
+       relations:['toward','into','creating','forming'],
+       tails:['later','again','forward','backward','upward','downward'],
+       allowCompound:true, minTokenDiff:3, maxConstraints:2 },
+
+  4: { allowAxis:false, allowSchedule:true, allowRecursive:false,
+       verbs:['pushes','pulls','merges','splits','rotates','oscillates','transforms'],
+       relations:['toward','into','creating','forming','becoming'],
+       tails:['later','after','again','forward','backward'],
+       allowCompound:true, minTokenDiff:3, maxConstraints:2 },
+
+  5: { allowAxis:true, allowSchedule:true, allowRecursive:false,
+       verbs:['pushes','pulls','merges','splits','rotates','oscillates','transforms','collides'],
+       relations:['toward','into','creating','forming','becoming','generating'],
+       tails:['later','after','again','periodically','recursively','forward','backward'],
+       axisTokens:['axis-rotate'],
+       allowCompound:true, minTokenDiff:3, maxConstraints:3 }
+});
+
+// Policy derived from hidden IQ ceilings
+function apxV4_policyForLevel(level){
+  const gates = APEX_BEGINNER_GATES[level];
+  if (!gates) return null;
+  const iq = APEX_IQ_LEVELS[level].iqMax;
+  // conservative working-memory slots by IQ band
+  const wmSlots = (iq<=80)?2 : (iq<=90)?2 : (iq<=95)?3 : (iq<=100)?3 : 4;
+  return { iqMax: iq, wmSlots, maxConstraints: gates.maxConstraints, gates };
+}
+
+function apxV4_getActiveProfile(visibleLevel){
+  const node = APEX_INTERNAL_LEVELS[visibleLevel];
+  if (!node) return { ...DIFFICULTY_CONFIGS[1] };
+  if (node.aliasOf){
+    // Advanced levels — keep your original algorithms untouched
+    const base = DIFFICULTY_CONFIGS[node.aliasOf];
+    return { ...base, name: base.name };
+  }
+  // Beginner levels — generator is shaped by gates; keep base relaxed
+  const relaxed = { ...DIFFICULTY_CONFIGS[1] };
+  return { ...relaxed, name: APEX_INTERNAL_LEVELS[visibleLevel].name, gLoad: 0.70 + (visibleLevel-1)*0.03 };
+}
+// ===== APEX-PROTECT-END (v4-internal-levels) =====
 
 // Global config
 const SURFACE_RULES = {
@@ -2710,6 +2855,35 @@ class CanonicalPremiseGenerator {
         });
       return recent.includes(target);
     };
+
+    // ===== APEX-PROTECT-BEGIN (v4-beginner-policy) =====
+    this.apxV4_getPolicy = () => {
+      if (!APEX_FEATURES.visibleBeginnerLevels) return null;
+      const lvl = (typeof game!=='undefined' ? game.visibleLevel : 7) || 7;
+      if (lvl>=1 && lvl<=5) return apxV4_policyForLevel(lvl);
+      return null; // advanced levels use original behavior
+    };
+    this.apxV4_countConstraints = (canon) => {
+      let k=0;
+      if (canon.identityCoupling)    k++;
+      if (canon.hasSchedule)         k++;
+      if (canon.hasAxisOrDir)        k++;
+      if (canon.hasInhibitOrEnergy)  k++;
+      return k;
+    };
+    // ===== APEX-PROTECT-END (v4-beginner-policy) =====
+
+    // ===== APEX-PROTECT-BEGIN (v4-diversity-helpers) =====
+    this.apxV4_norm  = s => (APEX_FEATURES.caseNormalization ? String(s||'').toUpperCase() : String(s||''));
+    this.apxV4_toks  = s => this.apxV4_norm(s).split(/\s+/);
+    this.apxV4_diff  = (a,b) => { const A=this.apxV4_toks(a), B=this.apxV4_toks(b);
+      let d=0; for(let i=0;i<Math.min(A.length,B.length);i++) if (A[i]!==B[i]) d++; return d; };
+    this.apxV4_sig   = s => { const T=this.apxV4_toks(s); return ['S','V','O','R','T'].slice(0,T.length).join(''); };
+    this.apxV4_recent=[];
+    this.apxV4_push  = (prem)=>{ const P=this.apxV4_norm(prem); this.apxV4_recent.push({P,sig:this.apxV4_sig(P)}); if (this.apxV4_recent.length>80) this.apxV4_recent.shift(); };
+    this.apxV4_near  = (prem,minDiff)=>{ const P=this.apxV4_norm(prem), sig=this.apxV4_sig(P);
+      return this.apxV4_recent.some(r => (r.P===P) || (r.sig===sig && this.apxV4_diff(r.P,P)<minDiff)); };
+    // ===== APEX-PROTECT-END (v4-diversity-helpers) =====
   }
 
   generate(shouldMatch = false, referenceIndex = null, registry = null, blueprint = null) {
@@ -2790,88 +2964,254 @@ class CanonicalPremiseGenerator {
   }
 
   generateNew() {
-    const includeRecursive = this.shouldIncludeRecursive();
-    const includeDelayed = includeRecursive || this.shouldIncludeDelayed();
-    const includeAxis = this.shouldIncludeAxisEvent();
+    const policy = this.apxV4_getPolicy ? this.apxV4_getPolicy() : null;
+    const gates = policy?.gates;
 
-    const tailWord = includeRecursive ? this.randomFrom(this.recursiveTiming)
-                     : includeDelayed ? this.randomFrom(this.delayedTiming)
-                     : this.randomFrom(this.directionPool);
-    const axisToken = includeAxis ? this.randomFrom(this.axisEvents) : null;
+    let includeRecursive = this.shouldIncludeRecursive();
+    let includeDelayed = includeRecursive || this.shouldIncludeDelayed();
+    let includeAxis = this.shouldIncludeAxisEvent();
 
-    const pattern = this.choosePattern();
-    let tokens = [];
+    if (gates) {
+      if (!gates.allowRecursive) includeRecursive = false;
+      if (!gates.allowSchedule) includeDelayed = false;
+      if (!gates.allowAxis) includeAxis = false;
+    }
 
-    switch(pattern) {
-      case 'push': {
-        const subject = this.randomFrom(this.words.subjects);
-        const verb = this.randomFrom(['pushes','presses','shoves','nudges','drives','pulls','drags','spins','rotates']);
-        const object = this.randomFrom(this.words.objects);
-        const modifier = axisToken || this.randomFrom(['toward','creating','forming','into','aligning','initiating']);
-        tokens = [subject, verb, object, modifier, tailWord];
-        break;
+    let tailType = includeRecursive ? 'recursive' : includeDelayed ? 'delayed' : 'direction';
+    let axisEnabled = includeAxis;
+    const axisPool = (gates && Array.isArray(gates.axisTokens) && gates.axisTokens.length)
+      ? gates.axisTokens.map(a => a.toUpperCase())
+      : this.axisEvents.map(a => a.toUpperCase());
+    let axisToken = axisEnabled ? this.randomFrom(axisPool) : null;
+
+    const patternDefs = [
+      { name:'push', verbs:['pushes','presses','shoves','nudges','drives','pulls','drags','spins','rotates'], relations:['toward','creating','forming','into','aligning','initiating'], subjectCompound:false, objectCompound:false },
+      { name:'split', verbs:['splits','breaks','divides','separates'], relations:['forming','creating','toward','into'], subjectCompound:false, objectCompound:true },
+      { name:'merge', verbs:['merges','joins','combines','fuses'], relations:['creating','forming','toward'], subjectCompound:true, objectCompound:false },
+      { name:'cascade', verbs:['triggers','activates','starts','launches','causes'], relations:['initiating','causing','starting','driving','forming','creating'], subjectCompound:false, objectCompound:false },
+      { name:'resonate', verbs:['resonates','tunes','matches','locks'], relations:['with','toward','into','creating'], subjectCompound:false, objectCompound:false },
+      { name:'transform', verbs:['transforms','changes','shifts','remaps'], relations:['into','toward','becoming','forming'], subjectCompound:false, objectCompound:false },
+      { name:'oscillate', verbs:['oscillates','vibrates','pulses','waves'], relations:['around','across','along','toward'], subjectCompound:false, objectCompound:false }
+    ];
+
+    let patternOptions = [...patternDefs];
+    if (gates?.verbs) {
+      patternOptions = patternOptions.filter(def => def.verbs.some(v => gates.verbs.includes(v)));
+    }
+    if (gates && gates.allowCompound === false) {
+      patternOptions = patternOptions.filter(def => !def.subjectCompound && !def.objectCompound);
+    }
+    if (patternOptions.length === 0) patternOptions = [...patternDefs];
+    const patternDef = this.randomFrom(patternOptions);
+    const pattern = patternDef.name;
+
+    const pickSubject = () => this.randomFrom(this.words.subjects).toUpperCase();
+    const pickObject = () => this.randomFrom(this.words.objects).toUpperCase();
+    const pickVerb = (pool) => {
+      let basePool = Array.isArray(pool) && pool.length ? pool : ['pushes','pulls'];
+      if (gates?.verbs) {
+        const allowed = basePool.filter(v => gates.verbs.includes(v));
+        basePool = allowed.length ? allowed : gates.verbs;
       }
+      return this.randomFrom(basePool).toUpperCase();
+    };
+    const pickRelation = (pool) => {
+      let basePool = Array.isArray(pool) && pool.length ? pool : ['toward','into','creating','forming'];
+      if (gates?.relations) {
+        const allowed = basePool.filter(r => gates.relations.includes(r));
+        basePool = allowed.length ? allowed : gates.relations;
+      }
+      return this.randomFrom(basePool).toUpperCase();
+    };
+    const pickTailToken = (type = tailType) => {
+      let basePool;
+      if (type === 'recursive') basePool = this.recursiveTiming;
+      else if (type === 'delayed') basePool = this.delayedTiming;
+      else basePool = this.directionPool;
+      if (gates) {
+        if (!gates.allowSchedule && type !== 'direction') basePool = this.directionPool;
+        if (!gates.allowRecursive && type === 'recursive') basePool = this.directionPool;
+      }
+      if (gates?.tails) {
+        const allowed = basePool.filter(t => gates.tails.includes(t));
+        basePool = allowed.length ? allowed : gates.tails;
+      }
+      return this.randomFrom(basePool).toUpperCase();
+    };
+    const pickNeutralRelation = () => pickRelation(['toward','into','creating','forming','becoming','generating','with']);
+    const pickNeutralVerb = () => pickVerb(['pushes','pulls']);
+
+    let subjectToken = pickSubject();
+    let objectToken = pickObject();
+    let verbToken = pickVerb(patternDef.verbs);
+    let relationToken = axisToken || pickRelation(patternDef.relations);
+    let tailToken = pickTailToken();
+
+    switch (pattern) {
       case 'split': {
-        const subject = this.randomFrom(this.words.subjects);
-        const objA = this.randomFrom(this.words.objects);
-        const objB = this.randomFrom(this.words.objects);
-        const verb = this.randomFrom(['splits','breaks','divides','separates']);
-        const modifier = axisToken || this.randomFrom(['forming','creating','toward']);
-        tokens = [subject, verb, `${objA}-OBJECT-${objB}`, modifier, tailWord];
+        subjectToken = pickSubject();
+        const objA = pickObject();
+        const objB = pickObject();
+        objectToken = (gates && gates.allowCompound === false) ? objA : `${objA}-OBJECT-${objB}`;
+        verbToken = pickVerb(patternDef.verbs);
+        relationToken = axisToken || pickRelation(patternDef.relations);
         break;
       }
       case 'merge': {
-        const subj1 = this.randomFrom(this.words.subjects);
-        const subj2 = this.randomFrom(this.words.subjects);
-        const object = this.randomFrom(this.words.objects);
-        const verb = this.randomFrom(['merges','joins','combines','fuses']);
-        const modifier = axisToken || 'creating';
-        tokens = [`${subj1}-OBJECT-${subj2}`, verb, object, modifier, tailWord];
+        const subj1 = pickSubject();
+        const subj2 = pickSubject();
+        subjectToken = (gates && gates.allowCompound === false) ? subj1 : `${subj1}-OBJECT-${subj2}`;
+        objectToken = pickObject();
+        verbToken = pickVerb(patternDef.verbs);
+        relationToken = axisToken || pickRelation(patternDef.relations);
         break;
       }
-      case 'cascade': {
-        const subject = this.randomFrom(this.words.subjects);
-        const verb = this.randomFrom(['triggers','activates','starts','launches','causes']);
-        const object = this.randomFrom(this.words.objects);
-        const modifier = axisToken || this.randomFrom(['initiating','causing','starting','driving']);
-        tokens = [subject, verb, object, modifier, tailWord];
-        break;
-      }
-      case 'resonate': {
-        const subject = this.randomFrom(this.words.subjects);
-        const object = this.randomFrom(this.words.objects);
-        const verb = this.randomFrom(['resonates','tunes','matches','locks']);
-        const modifier = axisToken || 'with';
-        tokens = [subject, verb, object, modifier, tailWord];
-        break;
-      }
-      case 'transform': {
-        const subject = this.randomFrom(this.words.subjects);
-        const object = this.randomFrom(this.words.objects);
-        const verb = this.randomFrom(['transforms','changes','shifts','remaps']);
-        const modifier = axisToken || this.randomFrom(['into','toward','becoming']);
-        tokens = [subject, verb, object, modifier, tailWord];
-        break;
-      }
+      case 'cascade':
+      case 'resonate':
+      case 'transform':
       case 'oscillate':
+      case 'push':
       default: {
-        const subject = this.randomFrom(this.words.subjects);
-        const object = this.randomFrom(this.words.objects);
-        const verb = this.randomFrom(['oscillates','vibrates','pulses','waves']);
-        const modifier = axisToken || this.randomFrom(['around','across','along']);
-        tokens = [subject, verb, object, modifier, tailWord];
+        subjectToken = pickSubject();
+        objectToken = pickObject();
+        verbToken = pickVerb(patternDef.verbs);
+        relationToken = axisToken || pickRelation(patternDef.relations);
         break;
       }
     }
 
-    let premise = tokens.join(' ').toUpperCase();
+    const recursiveSet = new Set(this.recursiveTiming.map(t => t.toUpperCase()));
+    const delayedSet = new Set(this.delayedTiming.map(t => t.toUpperCase()));
+
+    const canon = { identityCoupling:false, hasSchedule:false, hasAxisOrDir:false, hasInhibitOrEnergy:!['PUSHES','PULLS'].includes(verbToken) };
+    let tokens = [];
+
+    const updateCanonFlags = () => {
+      includeRecursive = recursiveSet.has(tailToken);
+      includeDelayed = includeRecursive || delayedSet.has(tailToken);
+      includeAxis = Boolean(axisToken) || (relationToken || '').includes('AXIS-');
+      const hasCompound = [subjectToken, objectToken].some(tok => tok && (tok.includes('-OBJECT-') || tok.includes('-AND-') || tok.includes('-WITH-')));
+      canon.identityCoupling = hasCompound;
+      canon.hasSchedule = includeRecursive || includeDelayed;
+      canon.hasAxisOrDir = includeAxis;
+      canon.hasInhibitOrEnergy = !['PUSHES','PULLS'].includes(verbToken);
+    };
+
+    const updateTokens = () => {
+      tokens = [subjectToken, verbToken, objectToken, relationToken, tailToken];
+      updateCanonFlags();
+    };
+
+    const stripAxisTokens = () => {
+      axisEnabled = false;
+      axisToken = null;
+      relationToken = pickNeutralRelation();
+      updateTokens();
+    };
+    const stripScheduleTokens = () => {
+      tailType = 'direction';
+      tailToken = pickTailToken('direction');
+      updateTokens();
+    };
+    const disableRecursion = () => {
+      if (tailType === 'recursive') {
+        tailType = includeDelayed ? 'delayed' : 'direction';
+        tailToken = pickTailToken(tailType);
+      }
+      updateTokens();
+    };
+    const simplifyVerbToNeutral = () => {
+      verbToken = pickNeutralVerb();
+      updateTokens();
+    };
+    const forbidCompoundSubjects = () => {
+      if (subjectToken.includes('-OBJECT-') || subjectToken.includes('-AND-') || subjectToken.includes('-WITH-')) {
+        subjectToken = pickSubject();
+      }
+      if (objectToken.includes('-OBJECT-') || objectToken.includes('-AND-') || objectToken.includes('-WITH-')) {
+        objectToken = pickObject();
+      }
+      updateTokens();
+    };
+
+    updateTokens();
+
+    if (policy) {
+      if (!gates.allowAxis) stripAxisTokens();
+      if (!gates.allowSchedule) stripScheduleTokens();
+      if (!gates.allowRecursive) disableRecursion();
+      if (gates.allowCompound === false) forbidCompoundSubjects();
+
+      let used = this.apxV4_countConstraints(canon);
+      while (used > policy.maxConstraints) {
+        if (canon.hasSchedule) stripScheduleTokens();
+        else if (canon.hasAxisOrDir) stripAxisTokens();
+        else if (canon.hasInhibitOrEnergy) simplifyVerbToNeutral();
+        used = this.apxV4_countConstraints(canon);
+      }
+    }
+
+    const rebuildPremise = () => tokens.join(' ');
+    const minDiff = policy?.gates?.minTokenDiff ?? this.policy.minTokenDiff;
+
+    const rerollTokensRespectingCanonicalAndGates = () => {
+      if (patternDef.subjectCompound && (!gates || gates.allowCompound !== false)) {
+        subjectToken = `${pickSubject()}-OBJECT-${pickSubject()}`;
+      } else {
+        subjectToken = pickSubject();
+      }
+      if (patternDef.objectCompound && (!gates || gates.allowCompound !== false)) {
+        objectToken = `${pickObject()}-OBJECT-${pickObject()}`;
+      } else {
+        objectToken = pickObject();
+      }
+      verbToken = pickVerb(patternDef.verbs);
+      if (axisEnabled && (!gates || gates.allowAxis !== false)) {
+        axisToken = this.randomFrom(axisPool);
+      } else {
+        axisToken = null;
+      }
+      relationToken = axisToken || pickRelation(patternDef.relations);
+      tailToken = pickTailToken(tailType);
+      updateTokens();
+
+      if (policy) {
+        if (gates.allowCompound === false) forbidCompoundSubjects();
+        if (!gates.allowAxis) stripAxisTokens();
+        if (!gates.allowSchedule) stripScheduleTokens();
+        if (!gates.allowRecursive) disableRecursion();
+
+        let used = this.apxV4_countConstraints(canon);
+        while (used > policy.maxConstraints) {
+          if (canon.hasSchedule) stripScheduleTokens();
+          else if (canon.hasAxisOrDir) stripAxisTokens();
+          else if (canon.hasInhibitOrEnergy) simplifyVerbToNeutral();
+          used = this.apxV4_countConstraints(canon);
+        }
+      }
+    };
+
+    // ===== APEX-PROTECT-BEGIN (v4-diversity-enforce) =====
+    let premise = rebuildPremise();
+    let candidate = this.apxV4_norm ? this.apxV4_norm(premise) : premise;
+    let rerollTries = 0;
+    while (this.apxV4_near && this.apxV4_near(candidate, minDiff) && rerollTries < 60) {
+      rerollTokensRespectingCanonicalAndGates();
+      premise = rebuildPremise();
+      candidate = this.apxV4_norm ? this.apxV4_norm(premise) : premise;
+      rerollTries++;
+    }
+    // ===== APEX-PROTECT-END (v4-diversity-enforce) =====
+
     let attempts = 0;
-    while (this.isRecent(premise) && attempts < 50) {
+    while (this.isRecent(candidate) && attempts < 50) {
       attempts++;
       return this.generateNew();
     }
-    this.rememberSurface(premise);
-    return { premise, includeDelayed, includeRecursive, includeAxis };
+
+    if (this.apxV4_push) this.apxV4_push(candidate);
+    this.rememberSurface(candidate);
+    return { premise: candidate, includeDelayed, includeRecursive, includeAxis };
   }
 
   generateMathNew() {
@@ -2941,7 +3281,20 @@ class CanonicalPremiseGenerator {
       return this.generateNew();
     }
 
+    const policy = this.apxV4_getPolicy ? this.apxV4_getPolicy() : null;
+    const gates = policy?.gates;
+    const minDiff = policy?.gates?.minTokenDiff ?? this.policy.minTokenDiff;
+
     const [t0, t1, t2, t3, t4] = refTokens;
+    const gateVerbSet = gates?.verbs ? new Set(gates.verbs.map(v => v.toUpperCase())) : null;
+    const gateRelSet = gates?.relations ? new Set(gates.relations.map(r => r.toUpperCase())) : null;
+    const gateTailSet = gates?.tails ? new Set(gates.tails.map(t => t.toUpperCase())) : null;
+    const dirs = this.symbols.directionPool.map(s => s.toUpperCase());
+    const delayed = this.symbols.delayedTiming.map(s => s.toUpperCase());
+    const recursive = this.symbols.recursiveTiming.map(s => s.toUpperCase());
+
+    const pickSimpleSubject = () => this.randomFrom(this.words.subjects).toUpperCase();
+    const pickSimpleObject = () => this.randomFrom(this.words.objects).toUpperCase();
 
     const swapSubject = (tok) => {
       const parts = tok.includes('-OBJECT-') ? tok.split('-OBJECT-') : [tok];
@@ -2958,7 +3311,18 @@ class CanonicalPremiseGenerator {
           ? this.normalizeSurface(this.randomFrom(options))
           : part.toUpperCase();
       });
+      if (gates && gates.allowCompound === false) {
+        return mapped[0] || pickSimpleSubject();
+      }
       return mapped.join('-OBJECT-');
+    };
+
+    const swapObject = (tok) => {
+      const mapped = swapSubject(tok);
+      if (gates && gates.allowCompound === false) {
+        return mapped.includes('-OBJECT-') ? mapped.split('-OBJECT-')[0] : mapped;
+      }
+      return mapped;
     };
 
     const verbSyn = (verb) => {
@@ -2980,52 +3344,120 @@ class CanonicalPremiseGenerator {
         'RESONATE': ['resonates','tunes','matches','locks']
       };
       const pool = banks[op.toUpperCase?.() ? op.toUpperCase() : op.toUpperCase()] || [verb];
-      const choice = pool.filter(w => this.normalizeSurface(w) !== verb.toUpperCase());
+      let choice = pool.filter(w => this.normalizeSurface(w) !== verb.toUpperCase());
+      if (gateVerbSet) {
+        const filtered = choice.filter(w => gateVerbSet.has(this.normalizeSurface(w)));
+        if (filtered.length > 0) {
+          choice = filtered;
+        } else {
+          const fallback = Array.from(gateVerbSet).filter(w => w !== verb.toUpperCase());
+          if (fallback.length > 0) choice = fallback;
+        }
+      }
       const pick = choice.length > 0 ? this.randomFrom(choice) : verb;
       return this.normalizeSurface(pick);
     };
 
     const swapRel = (tok) => {
-      const relations = ['FORMING','CREATING','INTO','TOWARD','BECOMING','GENERATING'];
-      if (!relations.includes(tok)) return tok;
+      const baseRelations = ['FORMING','CREATING','INTO','TOWARD','BECOMING','GENERATING','WITH'];
+      let relations = baseRelations;
+      if (gateRelSet) {
+        const intersect = baseRelations.filter(r => gateRelSet.has(r));
+        relations = intersect.length > 0 ? intersect : Array.from(gateRelSet);
+      }
+      if (!relations.includes(tok)) {
+        return this.randomFrom(relations);
+      }
       const alts = relations.filter(r => r !== tok);
       return alts.length > 0 ? this.randomFrom(alts) : tok;
     };
 
     const swapTail = (tok) => {
-      const dirs = this.symbols.directionPool.map(s => s.toUpperCase());
-      const delayed = this.symbols.delayedTiming.map(s => s.toUpperCase());
-      const recursive = this.symbols.recursiveTiming.map(s => s.toUpperCase());
-      const bank = [...dirs, ...delayed, ...recursive];
-      const list = dirs.includes(tok)
-        ? dirs
-        : delayed.includes(tok)
-          ? delayed
-          : recursive.includes(tok)
-            ? recursive
-            : bank;
+      let list;
+      if (dirs.includes(tok)) list = dirs;
+      else if (delayed.includes(tok)) list = delayed;
+      else if (recursive.includes(tok)) list = recursive;
+      else list = [...dirs, ...delayed, ...recursive];
+
+      if (gates) {
+        if (!gates.allowSchedule) list = dirs;
+        else if (!gates.allowRecursive) list = list.filter(option => !recursive.includes(option));
+      }
+      if (gateTailSet) {
+        const intersect = list.filter(option => gateTailSet.has(option));
+        list = intersect.length > 0 ? intersect : Array.from(gateTailSet);
+      }
       const alts = list.filter(option => option !== tok);
-      return alts.length > 0 ? this.randomFrom(alts) : tok;
+      if (alts.length > 0) return this.randomFrom(alts);
+      return list.length > 0 ? list[0] : tok;
+    };
+
+    const enforceGatesOnTokens = (arr) => {
+      if (!policy) return arr;
+      const tokens = [...arr];
+      if (!gates.allowAxis && tokens[3] && tokens[3].includes('AXIS-')) {
+        const neutral = gateRelSet ? Array.from(gateRelSet) : ['TOWARD','INTO','CREATING','FORMING'];
+        tokens[3] = this.randomFrom(neutral);
+      }
+      if (!gates.allowCompound) {
+        if (tokens[0] && (tokens[0].includes('-OBJECT-') || tokens[0].includes('-AND-') || tokens[0].includes('-WITH-'))) {
+          tokens[0] = pickSimpleSubject();
+        }
+        if (tokens[2] && (tokens[2].includes('-OBJECT-') || tokens[2].includes('-AND-') || tokens[2].includes('-WITH-'))) {
+          tokens[2] = pickSimpleObject();
+        }
+      }
+      const tail = tokens[4] || '';
+      if (!gates.allowSchedule && (delayed.includes(tail) || recursive.includes(tail))) {
+        let pool = dirs;
+        if (gateTailSet) {
+          const allowed = pool.filter(option => gateTailSet.has(option));
+          pool = allowed.length > 0 ? allowed : Array.from(gateTailSet);
+        }
+        tokens[4] = this.randomFrom(pool);
+      } else if (!gates.allowRecursive && recursive.includes(tail)) {
+        let pool = delayed.filter(option => !recursive.includes(option));
+        if (pool.length === 0) pool = dirs;
+        if (gateTailSet) {
+          const allowed = pool.filter(option => gateTailSet.has(option));
+          pool = allowed.length > 0 ? allowed : Array.from(gateTailSet);
+        }
+        tokens[4] = this.randomFrom(pool.length > 0 ? pool : dirs);
+      }
+      return tokens;
     };
 
     const buildCandidate = () => [
       swapSubject(t0),
       verbSyn(t1),
-      swapSubject(t2),
-      swapRel(t3),
-      swapTail(t4)
-    ].join(' ').toUpperCase();
+      swapObject(t2),
+      swapRel(this.normalizeSurface(t3)),
+      swapTail(this.normalizeSurface(t4))
+    ].map(tok => this.normalizeSurface(tok)).join(' ');
 
-    let candidate = buildCandidate();
+    // ===== APEX-PROTECT-BEGIN (v4-diversity-enforce) =====
+    let candidate = this.apxV4_norm ? this.apxV4_norm(buildCandidate()) : buildCandidate();
+    candidate = enforceGatesOnTokens(candidate.split(' ')).join(' ');
     let tries = 0;
     while (
-      (this.isRecent(candidate) || this.tokenDiffCount(candidate, refString) < this.policy.minTokenDiff) &&
-      tries < 50
+      (
+        this.isRecent(candidate) ||
+        this.tokenDiffCount(candidate, refString) < this.policy.minTokenDiff ||
+        (this.apxV4_near && this.apxV4_near(candidate, minDiff))
+      ) &&
+      tries < 60
     ) {
-      candidate = buildCandidate();
+      let rebuilt = this.apxV4_norm ? this.apxV4_norm(buildCandidate()) : buildCandidate();
+      rebuilt = enforceGatesOnTokens(rebuilt.split(' ')).join(' ');
+      candidate = rebuilt;
       tries++;
     }
+    // ===== APEX-PROTECT-END (v4-diversity-enforce) =====
 
+    if (this.apxV4_push) this.apxV4_push(candidate);
+    if (typeof apxV4_devAssertDiversity === 'function') {
+      apxV4_devAssertDiversity(refString, candidate, minDiff);
+    }
     const inferred = this.inferFeatures(candidate);
     return { premise: candidate, ...inferred };
   }
@@ -3433,7 +3865,12 @@ class CanonicalPremiseGenerator {
 /* ===== GAME CONTROLLER ===== */
 class CanonicalStateVectorNBack {
   constructor() {
-    this.config = DIFFICULTY_CONFIGS[2]; // Default to Level 2
+    const apxV4_defaultLevel = APEX_FEATURES.visibleBeginnerLevels ? 1 : 2;
+    this.config = APEX_FEATURES.visibleBeginnerLevels
+      ? apxV4_getActiveProfile(apxV4_defaultLevel)
+      : DIFFICULTY_CONFIGS[2];
+    this.visibleLevel = apxV4_defaultLevel;
+    this.difficultyLevel = this.visibleLevel;
     this.registry = new CanonicalRegistry();
     this.engine = new StateVectorEngine(this.registry, this.config);
     this.generator = new CanonicalPremiseGenerator(this.config);
@@ -3443,7 +3880,7 @@ class CanonicalStateVectorNBack {
     this.schedule = [];
     
     // Settings
-    this.difficultyLevel = 2;
+    this.difficultyLevel = this.visibleLevel;
     this.nLevel = 2;
     this.totalTrials = 50;
     this.matchProbability = 0.3;
@@ -3478,6 +3915,11 @@ class CanonicalStateVectorNBack {
     this.difficultyLevel = settings.difficultyLevel;
     const baseConfig = DIFFICULTY_CONFIGS[this.difficultyLevel] || DIFFICULTY_CONFIGS[1];
     this.config = { ...baseConfig };
+    // ===== APEX-PROTECT-BEGIN (v4-apply-visible-level) =====
+    this.visibleLevel = Math.min(Math.max(Number(this.difficultyLevel||1),1),10);
+    this.config = apxV4_getActiveProfile(this.visibleLevel);
+    // ===== APEX-PROTECT-END (v4-apply-visible-level) =====
+    this.difficultyLevel = this.visibleLevel;
     this.nLevel = settings.nLevel;
     this.totalTrials = settings.totalTrials;
     this.matchProbability = settings.matchProbability;
@@ -3533,6 +3975,15 @@ class CanonicalStateVectorNBack {
     if (!this.isRunning || this.isPaused) return;
     
     this.awaitingResponse = true;
+    // ===== APEX-PROTECT-BEGIN (v4-advance-visible-level) =====
+    if (APEX_FEATURES.visibleBeginnerLevels){
+      this.visibleLevel = Math.min(Math.max(Number(document.getElementById('difficulty')?.value||this.visibleLevel),1),10);
+      this.config = apxV4_getActiveProfile(this.visibleLevel);
+      this.difficultyLevel = this.visibleLevel;
+      if (this.generator) this.generator.config = this.config;
+      if (this.engine) this.engine.config = this.config;
+    }
+    // ===== APEX-PROTECT-END (v4-advance-visible-level) =====
     const shouldMatch = this.schedule[this.currentTrial];
     
     const premises = [];
@@ -4133,8 +4584,9 @@ function start() {
   
   game.initialize(settings);
   game.isRunning = true;
-  
-  setText('currentGLoad', game.config.gLoad);
+
+  setText('currentGLoad', game.config.gLoad.toFixed(2));
+  apxV4_updateDifficultyUI(game.visibleLevel);
   setText('totalTrials', settings.totalTrials);
   setText('correctHits', '0');
   setText('falseAlarms', '0');
@@ -4202,31 +4654,70 @@ function reset() {
   if (window.speechSynthesis) {
     window.speechSynthesis.cancel();
   }
+
+  const diffSlider = $('difficultyLevel');
+  if (diffSlider) {
+    apxV4_updateDifficultyUI(diffSlider.value);
+  }
+}
+
+// ===== APEX-PROTECT-BEGIN (v4-self-checks) =====
+function apxV4_devAssertDiversity(ref, cand, minDiff){
+  if (!APEX_FEATURES.devSelfChecks) return;
+  const A = (ref||'').toUpperCase(), B = (cand||'').toUpperCase();
+  if (A===B) throw new Error('APEX V4: identical surfaces blocked');
+  const diff = game.generator.apxV4_diff(A,B);
+  if (diff < (minDiff||3)) throw new Error('APEX V4: token difference below threshold');
+}
+// ===== APEX-PROTECT-END (v4-self-checks) =====
+
+function apxV4_updateDifficultyUI(level) {
+  const lvl = Math.min(Math.max(Number(level || 1), 1), 10);
+  const profile = apxV4_getActiveProfile(lvl);
+  const label = $('difficultyValue');
+  if (label) {
+    const displayName = profile.name ? `Level ${lvl} — ${profile.name}` : `Level ${lvl}`;
+    setText('difficultyValue', `${displayName} (${profile.gLoad.toFixed(2)}g)`);
+  }
+  const indicator = $('difficultyIndicator');
+  if (indicator) {
+    indicator.textContent = `${profile.gLoad.toFixed(2)}g`;
+    indicator.className = `difficulty-indicator diff-level-${lvl}`;
+  }
+  const counterToggle = $('counterfactuals');
+  if (counterToggle) {
+    counterToggle.disabled = !profile.counterfactuals;
+    if (!profile.counterfactuals) counterToggle.checked = false;
+  }
+  setText('currentGLoad', profile.gLoad.toFixed(2));
 }
 
 // Initialize event listeners
 document.addEventListener('DOMContentLoaded', () => {
-  // Difficulty level handler
-  $('difficultyLevel').oninput = (e) => {
-    const level = parseInt(e.target.value);
-    const config = DIFFICULTY_CONFIGS[level];
-    setText('difficultyValue', `Level ${level} (${config.gLoad}g)`);
-    setText('currentGLoad', config.gLoad);
-    
-    // Update difficulty indicator
-    const indicator = $('difficultyIndicator');
-    indicator.textContent = `${config.gLoad}g`;
-    indicator.className = `difficulty-indicator diff-level-${level}`;
-    
-    // Enable/disable counterfactuals based on level
-    if (level >= 4) {
-      $('counterfactuals').disabled = false;
-    } else {
-      $('counterfactuals').disabled = true;
-      $('counterfactuals').checked = false;
-    }
-  };
-  
+  const difficultySlider = $('difficultyLevel');
+  const difficultySelect = document.getElementById('difficulty');
+  if (difficultySlider) {
+    difficultySlider.setAttribute('max', '10');
+    difficultySlider.oninput = (e) => {
+      const level = parseInt(e.target.value, 10);
+      if (difficultySelect) {
+        difficultySelect.value = String(level);
+      }
+      apxV4_updateDifficultyUI(level);
+    };
+  }
+  if (difficultySelect) {
+    difficultySelect.addEventListener('change', (e) => {
+      const level = parseInt(e.target.value, 10);
+      if (difficultySlider) {
+        difficultySlider.value = String(level);
+        difficultySlider.dispatchEvent(new Event('input'));
+      } else {
+        apxV4_updateDifficultyUI(level);
+      }
+    });
+  }
+
   $('nbackLevel').oninput = (e) => {
     setText('nbackValue', e.target.value);
   };
@@ -4272,7 +4763,11 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   
   // Initialize displays
-  setText('currentGLoad', '0.90');
+  if (difficultySlider) {
+    const initialLevel = parseInt(difficultySlider.value, 10) || 1;
+    if (difficultySelect) difficultySelect.value = String(initialLevel);
+    apxV4_updateDifficultyUI(initialLevel);
+  }
   setText('totalEnergy', '100');
   setText('totalMomentum', '(0,0,0)');
   setText('totalInfo', '50');
