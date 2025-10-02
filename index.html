@@ -675,171 +675,6 @@ input[type=range]::-moz-range-thumb {
 const $ = id => document.getElementById(id);
 const setText = (id, text) => { const el = $(id); if(el) el.textContent = text; };
 
-// ===== APEX-PROTECT-BEGIN (v2.2) =====
-const APEX_FEATURES_V22 = Object.freeze({
-  diversityV2: true,                 // surface-different matches
-  canonicalDigestEnforce: true,      // canonical equivalence check
-  beginnerSublevels: true,           // B1..B5 gating inside Difficulty 1
-  objectConnector: true,             // keep -OBJECT-
-  caseNormalization: true,           // uppercase surfaces
-  diversityQuotas: true,             // category quotas + cooldowns
-  uniquenessWindowSize: 160,         // session sliding window for repeats
-  minRoleDiff: 3,                    // roles that must differ (of 5)
-  minTokenDiff: 3,                   // token positions that must differ
-  minLevenshtein: 9,                 // edit distance vs reference
-  maxBigramOverlap: 0,               // shared 2-grams vs reference
-  crossSessionUniqHours: 24,         // localStorage memory horizon
-  structuralTemplates: true,         // pattern-level diversity
-  cbsBandsHard: true,                // hard-bind CBS to B-tier
-  rngDeterministic: true             // seed = sessionId ^ trial ^ refDigest
-});
-// ===== APEX-PROTECT-END (v2.2) =====
-
-// ===== APEX-PROTECT-BEGIN (v2.2-rng) =====
-function apxV22_seededRng(seed) {
-  // xorshift32
-  let x = seed >>> 0;
-  return ()=>{ x ^= x<<13; x ^= x>>>17; x ^= x<<5; return (x>>>0)/4294967296; };
-}
-function apxV22_makeSeed(sessionId, trialIdx, refDigest='') {
-  let h=2166136261>>>0; const s=`${sessionId}|${trialIdx}|${refDigest}`;
-  for (let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=(h*16777619)>>>0; }
-  return h;
-}
-// ===== APEX-PROTECT-END (v2.2-rng) =====
-
-// ===== APEX-PROTECT-BEGIN (v2.2-templates) =====
-// 5 roles: SUBJECT VERB OBJECT RELATION TAIL (always five words)
-const APEX_TEMPLATES = Object.freeze([
-  // T1: S V O toward D
-  {id:'T1', mask:['S','V','O','R','T'], relationPool:['toward','into','towards'], tailPool:['leftward','rightward','upward','downward','forward','backward']},
-  // T2: O resists S until LATER
-  {id:'T2', mask:['O','V','S','R','T'], verbMap:{resists:'pulls'}, relationPool:['until'], tailPool:['later','after','again']},
-  // T3: S merges O creating RESULT
-  {id:'T3', mask:['S','V','O','R','T'], relationPool:['creating','forming'], tailPool:['result','pair','link']},
-  // T4: S splits O then LATER
-  {id:'T4', mask:['S','V','O','R','T'], relationPool:['then'], tailPool:['later','again']},
-  // T5: S rotates O around AXIS
-  {id:'T5', mask:['S','V','O','R','T'], relationPool:['around'], tailPool:['axis','center']},
-  // T6: O blocks S until STOP
-  {id:'T6', mask:['O','V','S','R','T'], relationPool:['until'], tailPool:['stop','halt']},
-  // T7: S pushes O, repeats TWICE
-  {id:'T7', mask:['S','V','O','R','T'], relationPool:['repeats'], tailPool:['twice','thrice']},
-  // T8: S and O -OBJECT- LATER
-  {id:'T8', mask:['S','V','O','R','T'], relationPool:['-OBJECT-'], tailPool:['later','again']}
-]);
-// ensures selected template ≠ reference template for matches
-// ===== APEX-PROTECT-END (v2.2-templates) =====
-
-// ===== APEX-PROTECT-BEGIN (v2.2-role-guards) =====
-function apxV22_rolesFromPremise(s){
-  const t=s.trim().split(/\s+/); return {S:t[0],V:t[1],O:t[2],R:t[3],T:t[4]};
-}
-function apxV22_roleDiffCount(a,b){
-  const A=apxV22_rolesFromPremise(a), B=apxV22_rolesFromPremise(b);
-  let c=0; if(A.S!==B.S)c++; if(A.V!==B.V)c++; if(A.O!==B.O)c++; if(A.R!==B.R)c++; if(A.T!==B.T)c++;
-  return c;
-}
-// ===== APEX-PROTECT-END (v2.2-role-guards) =====
-
-// ===== APEX-PROTECT-BEGIN (v2.2-cross-session) =====
-const APEX_LS_KEY = 'APEX_V22_SURFACES';
-function apxV22_loadHistory(){
-  try{
-    const raw = localStorage.getItem(APEX_LS_KEY); if(!raw) return [];
-    const arr = JSON.parse(raw) || []; const now=Date.now();
-    const ms = APEX_FEATURES_V22.crossSessionUniqHours*3600*1000;
-    return arr.filter(x => now - x.ts < ms).map(x=>x.s);
-  }catch(e){ return []; }
-}
-function apxV22_saveSurface(s){
-  try{
-    const raw = localStorage.getItem(APEX_LS_KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    arr.push({s, ts: Date.now()});
-    while (arr.length > 500) arr.shift();
-    localStorage.setItem(APEX_LS_KEY, JSON.stringify(arr));
-  }catch(e){}
-}
-// ===== APEX-PROTECT-END (v2.2-cross-session) =====
-
-// ===== APEX-PROTECT-BEGIN (v2.2-canonical) =====
-function apxV22_digest(canon){
-  const norm = {
-    op: canon?.canonicalOp||null,
-    subj:[...(canon?.subjectIds||[])].sort(),
-    obj:[...(canon?.objectIds||[])].sort(),
-    axis: canon?.axisHint||null,
-    sched:(canon?.scheduled||[]).map(s=>({k:s.k,mode:s.mode})).sort((a,b)=>a.k-b.k),
-    recur:(canon?.recursive||[]).map(r=>({p:r.p,decay:r.decay})).sort((a,b)=>a.p-b.p),
-    inv: canon?.invariants||null
-  };
-  return JSON.stringify(norm);
-}
-
-function apxV22_resynthesizeSurfaceSameCanonical(refState, registry, generator, refTemplateId, refRoles){
-  if(!APEX_FEATURES_V22.structuralTemplates){
-    const original = (refState?.parsed?.human || refState?.parsed?.text || '').toUpperCase();
-    return { surface: original, templateId: refTemplateId || null, verb: refRoles?.V || null };
-  }
-  const templates = APEX_TEMPLATES;
-  let tpl = generator.apxV22_pickTemplate(templates);
-  let guard=0;
-  while(tpl && tpl.id===refTemplateId && guard++<10){
-    tpl = generator.apxV22_pickTemplate(templates);
-  }
-  tpl = tpl || templates[0];
-  const subjWord = registry.pickSubjectSynonym(refState?.parsed?.subjectIds || [], generator, refRoles?.S || '');
-  const objWord = registry.pickObjectSynonym(refState?.parsed?.objectIds || [], generator, refRoles?.O || '');
-  const verbWord = registry.pickVerbSynonym(refState?.parsed?.canonicalOp, generator, refRoles?.V || '');
-  const relationWord = registry.pickRelationForAxisSchedule(refState?.parsed, tpl.relationPool, generator, refRoles?.R || '');
-  const tailWord = registry.pickTailForAxisSchedule(refState?.parsed, tpl.tailPool, generator, refRoles?.T || '');
-  const slots = {S:subjWord, V:verbWord, O:objWord, R:relationWord, T:tailWord};
-  const words = tpl.mask.map(k=>slots[k] || 'VECTOR');
-  return { surface: words.join(' ').toUpperCase(), templateId: tpl.id, verb: verbWord };
-}
-// ===== APEX-PROTECT-END (v2.2-canonical) =====
-
-// ===== APEX-PROTECT-BEGIN (v2.2-role-guards) =====
-function apxV22_isTooSimilar(ref, cand, recentSet){
-  const A = (ref||'').toUpperCase(), B = (cand||'').toUpperCase();
-  if (recentSet && recentSet.has(B)) return true;
-  const roleDiff = apxV22_roleDiffCount(A,B);
-  if (roleDiff < APEX_FEATURES_V22.minRoleDiff) return true;
-  const generator = (typeof game !== 'undefined' && game && game.generator) ? game.generator : null;
-  if (!generator) return false;
-  if (generator.apxV2_lev(A,B) < APEX_FEATURES_V22.minLevenshtein) return true;
-  if (generator.apxV2_tokenDiff(A,B) < APEX_FEATURES_V22.minTokenDiff) return true;
-  if (generator.apxV2_bigramOverlap(A,B) > APEX_FEATURES_V22.maxBigramOverlap) return true;
-  return false;
-}
-// ===== APEX-PROTECT-END (v2.2-role-guards) =====
-
-// ===== APEX-PROTECT-BEGIN (v2.2-cbs) =====
-function apxV22_cbs(canon){
-  const w = { deps:1, schedule:2, axis:2, compound:1, ambiguity:2 };
-  const deps = ((canon.subjectIds?.length||1)-1) + ((canon.objectIds?.length||1)-1);
-  const schedule = (canon.scheduled?.length||0) + (canon.recursive?.length||0);
-  const axis = canon.axisHint ? 1 : 0;
-  const compound = ((canon.subjectIds?.length||0)>1 || (canon.objectIds?.length||0)>1) ? 1 : 0;
-  const ambiguitySource = canon.ambiguityFlags || canon.ambiguityNotes || [];
-  const ambiguity = Array.isArray(ambiguitySource) ? Math.min(1, ambiguitySource.length) : 0;
-  return w.deps*deps + w.schedule*schedule + w.axis*axis + w.compound*compound + w.ambiguity*ambiguity;
-}
-// Map to hidden “IQ bands” (not displayed)
-const CBS_BANDS = Object.freeze({
-  B1: [0,1],   // ~80
-  B2: [1,1.5], // ~90
-  B3: [1.5,2.2], // ~95
-  B4: [2.2,3.2], // ~100
-  B5: [3.2,4.5]  // ~110
-});
-function apxV22_cbsWithinTier(cbs, tier){
-  const k = ['B1','B2','B3','B4','B5'][tier-1] || 'B3';
-  const [lo,hi] = CBS_BANDS[k]; return cbs>=lo && cbs<=hi;
-}
-// ===== APEX-PROTECT-END (v2.2-cbs) =====
-
 /* ===== DIFFICULTY LEVEL CONFIGURATIONS ===== */
 const DIFFICULTY_CONFIGS = {
   1: { // 0.85g - Current topology matching
@@ -976,172 +811,6 @@ class CanonicalRegistry {
     );
   }
 
-  apxV22_setRng(refDigest = '') {
-    let rngFn = () => Math.random();
-    if (typeof game !== 'undefined' && game && APEX_FEATURES_V22.rngDeterministic) {
-      const seed = apxV22_makeSeed(game.sessionId || Date.now(), game.currentTrial || 0, refDigest || '');
-      rngFn = apxV22_seededRng(seed);
-    }
-    this.apxV2_rng = rngFn;
-  }
-
-  apxV22_random() {
-    try {
-      return this.apxV2_rng();
-    } catch (e) {
-      return Math.random();
-    }
-  }
-
-  apxV22_pickFromArray(array) {
-    if (!Array.isArray(array) || array.length === 0) return null;
-    const idx = Math.floor(this.apxV22_random() * array.length);
-    return array[idx];
-  }
-
-  apxV22_randomSubject(referenceToken = '') {
-    const avoid = (referenceToken || '').toUpperCase();
-    let choice = null;
-    for (let guard = 0; guard < 6; guard++) {
-      choice = (this.apxV22_pickFromArray(this.words.subjects) || '').toUpperCase();
-      if (choice && choice !== avoid) break;
-    }
-    return (choice || avoid || 'VECTOR').toUpperCase();
-  }
-
-  apxV22_randomObject(referenceToken = '') {
-    const avoid = (referenceToken || '').toUpperCase();
-    let choice = null;
-    for (let guard = 0; guard < 6; guard++) {
-      choice = (this.apxV22_pickFromArray(this.words.objects) || '').toUpperCase();
-      if (choice && choice !== avoid) break;
-    }
-    return (choice || avoid || 'OBJECT').toUpperCase();
-  }
-
-  apxV22_pickTemplate(templates = APEX_TEMPLATES) {
-    return this.apxV22_pickFromArray(templates);
-  }
-
-  apxV22_assertFiveWords(premise) {
-    if (this.config && this.config.compressedMath) return;
-    const tokens = (premise || '').trim().split(/\s+/).filter(Boolean);
-    if (tokens.length !== 5) {
-      throw new Error('APEX V2.2: premise must contain exactly five words');
-    }
-  }
-
-  apxV2_push(surface) {
-    if (!surface) return;
-    const normalized = this.normalizeSurface(surface);
-    const windowSize = APEX_FEATURES_V22.uniquenessWindowSize || 160;
-    this.apxV2_recent.push(normalized);
-    this.apxV2_recentSet.add(normalized);
-    while (this.apxV2_recent.length > windowSize) {
-      const removed = this.apxV2_recent.shift();
-      if (!this.apxV2_recent.includes(removed)) {
-        this.apxV2_recentSet.delete(removed);
-      }
-    }
-  }
-
-  apxV22_canUseVerb(verb) {
-    if (!APEX_FEATURES_V22.diversityQuotas) return true;
-    if (!verb) return true;
-    const normalized = verb.toUpperCase();
-    const window = (typeof game !== 'undefined' && game ? game.v22_windowSize : null) || 50;
-    const maxRatio = (typeof game !== 'undefined' && game ? game.v21_maxVerbRatio : null) || 0.2;
-    const queue = this.apxV2_recentVerbQueue;
-    if (queue.length < 5) return true;
-    const counts = this.apxV2_recentVerbCounts.get(normalized) || 0;
-    const projectedTotal = Math.min(queue.length + 1, window);
-    const projectedCount = counts + 1;
-    if (projectedTotal === 0) return true;
-    return (projectedCount / projectedTotal) <= maxRatio + 1e-9;
-  }
-
-  apxV22_commitVerb(verb) {
-    if (!verb || !APEX_FEATURES_V22.diversityQuotas) return;
-    const normalized = verb.toUpperCase();
-    const window = (typeof game !== 'undefined' && game ? game.v22_windowSize : null) || 50;
-    const queue = this.apxV2_recentVerbQueue;
-    const counts = this.apxV2_recentVerbCounts;
-    queue.push(normalized);
-    counts.set(normalized, (counts.get(normalized) || 0) + 1);
-    while (queue.length > window) {
-      const removed = queue.shift();
-      const current = counts.get(removed) || 0;
-      if (current <= 1) counts.delete(removed);
-      else counts.set(removed, current - 1);
-    }
-  }
-
-  apxV22_commitSurface(premise, templateId = null) {
-    if (!premise) return;
-    const normalized = this.normalizeSurface(premise);
-    this.apxV22_assertFiveWords(normalized);
-    this.apxV2_push(normalized);
-    this.rememberSurface(normalized);
-    const storedTemplate = templateId ?? null;
-    this._apxV2_lastTemplateId = storedTemplate;
-    this.apxV2_templateSequence.push(storedTemplate);
-    if (this.apxV2_templateSequence.length > 512) {
-      this.apxV2_templateSequence.splice(0, this.apxV2_templateSequence.length - 512);
-    }
-    if (typeof game !== 'undefined' && game) {
-      if (!game._v22_cross) {
-        game._v22_cross = new Set();
-      }
-      game._v22_cross.add(normalized);
-      if (typeof apxV22_saveSurface === 'function') {
-        apxV22_saveSurface(normalized);
-      }
-    }
-  }
-
-  apxV2_bigramOverlap(a, b) {
-    const tokensA = (a || '').toUpperCase().split(/\s+/).filter(Boolean);
-    const tokensB = (b || '').toUpperCase().split(/\s+/).filter(Boolean);
-    const setA = new Set();
-    const setB = new Set();
-    for (let i = 0; i < tokensA.length - 1; i++) {
-      setA.add(`${tokensA[i]} ${tokensA[i + 1]}`);
-    }
-    for (let i = 0; i < tokensB.length - 1; i++) {
-      setB.add(`${tokensB[i]} ${tokensB[i + 1]}`);
-    }
-    let overlap = 0;
-    for (const bigram of setA) {
-      if (setB.has(bigram)) overlap++;
-    }
-    return overlap;
-  }
-
-  apxV2_lev(a, b) {
-    const A = (a || '').toUpperCase();
-    const B = (b || '').toUpperCase();
-    const m = A.length;
-    const n = B.length;
-    const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-    for (let i = 0; i <= m; i++) dp[i][0] = i;
-    for (let j = 0; j <= n; j++) dp[0][j] = j;
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        const cost = A[i - 1] === B[j - 1] ? 0 : 1;
-        dp[i][j] = Math.min(
-          dp[i - 1][j] + 1,
-          dp[i][j - 1] + 1,
-          dp[i - 1][j - 1] + cost
-        );
-      }
-    }
-    return dp[m][n];
-  }
-
-  apxV2_tokenDiff(a, b) {
-    return this.tokenDiffCount(a, b);
-  }
-
   getOrCreateId(surface) {
     const alias = this.resolveAlias(surface);
     if (alias) return alias;
@@ -1236,162 +905,6 @@ class CanonicalRegistry {
       }
     }
     return [];
-  }
-
-  getSurfacesForId(id) {
-    const out = [];
-    for (const [surface, mapped] of this.surfaceToId.entries()) {
-      if (mapped === id) {
-        out.push(surface.toUpperCase());
-      }
-    }
-    return out;
-  }
-
-  pickSubjectSynonym(ids, generator, referenceToken = '') {
-    if (!ids || ids.length === 0) {
-      return generator.apxV22_randomSubject(referenceToken);
-    }
-    const referenceParts = referenceToken ? referenceToken.split('-OBJECT-') : [];
-    const parts = ids.map((id, idx) => {
-      const surfaces = this.getSurfacesForId(id);
-      let candidates = [];
-      for (const surface of surfaces) {
-        candidates.push(surface.toUpperCase());
-        const syns = this.findSynonyms(surface) || [];
-        for (const syn of syns) {
-          candidates.push(syn.toUpperCase());
-        }
-      }
-      candidates = [...new Set(candidates.filter(Boolean))];
-      const ref = (referenceParts[idx] || '').toUpperCase();
-      const filtered = candidates.filter(word => word !== ref);
-      const choice = generator.apxV22_pickFromArray(filtered.length > 0 ? filtered : candidates);
-      return (choice || ref || generator.apxV22_randomSubject(ref)).toUpperCase();
-    });
-    const token = parts.length > 1 && APEX_FEATURES_V22.objectConnector
-      ? parts.join('-OBJECT-')
-      : parts[0];
-    return (token || generator.apxV22_randomSubject(referenceToken)).toUpperCase();
-  }
-
-  pickObjectSynonym(ids, generator, referenceToken = '') {
-    if (!ids || ids.length === 0) {
-      return generator.apxV22_randomObject(referenceToken);
-    }
-    const referenceParts = referenceToken ? referenceToken.split('-OBJECT-') : [];
-    const parts = ids.map((id, idx) => {
-      const surfaces = this.getSurfacesForId(id);
-      let candidates = [];
-      for (const surface of surfaces) {
-        candidates.push(surface.toUpperCase());
-        const syns = this.findSynonyms(surface) || [];
-        for (const syn of syns) {
-          candidates.push(syn.toUpperCase());
-        }
-      }
-      candidates = [...new Set(candidates.filter(Boolean))];
-      const ref = (referenceParts[idx] || '').toUpperCase();
-      const filtered = candidates.filter(word => word !== ref);
-      const choice = generator.apxV22_pickFromArray(filtered.length > 0 ? filtered : candidates);
-      return (choice || ref || generator.apxV22_randomObject(ref)).toUpperCase();
-    });
-    const token = parts.length > 1 && APEX_FEATURES_V22.objectConnector
-      ? parts.join('-OBJECT-')
-      : parts[0];
-    return (token || generator.apxV22_randomObject(referenceToken)).toUpperCase();
-  }
-
-  pickVerbSynonym(canonicalOp, generator, referenceToken = '') {
-    const op = (canonicalOp || '').toUpperCase();
-    const pools = generator.operationVariants || {};
-    const options = pools[op] || pools[op?.toUpperCase()] || [];
-    const upperOptions = options.map(opt => opt.toUpperCase());
-    const reference = (referenceToken || '').toUpperCase();
-    const filtered = upperOptions.filter(opt => opt !== reference);
-    const choice = generator.apxV22_pickFromArray(filtered.length > 0 ? filtered : upperOptions);
-    if (choice) return choice.toUpperCase();
-    if (reference) return reference;
-    return 'PUSHES';
-  }
-
-  pickRelationForAxisSchedule(canon, relationPool, generator, referenceToken = '') {
-    if (!Array.isArray(relationPool) || relationPool.length === 0) {
-      return (referenceToken || 'TOWARD').toUpperCase();
-    }
-    const pool = relationPool.map(r => r.toUpperCase());
-    if (pool.includes('-OBJECT-')) {
-      return '-OBJECT-';
-    }
-    const reference = (referenceToken || '').toUpperCase();
-    const filtered = pool.filter(word => word !== reference);
-    const hasSchedule = (canon?.scheduled?.length || 0) > 0;
-    const hasRecursive = (canon?.recursive?.length || 0) > 0;
-    const axis = (canon?.axisHint?.axis || '').toLowerCase();
-    let candidate = null;
-    if (pool.includes('REPEATS') && hasRecursive) {
-      candidate = 'REPEATS';
-    } else if (pool.includes('UNTIL') && hasSchedule) {
-      candidate = 'UNTIL';
-    } else if (pool.includes('THEN') && hasSchedule) {
-      candidate = 'THEN';
-    } else if (pool.includes('AROUND') && axis) {
-      candidate = 'AROUND';
-    } else if (pool.includes('CREATING')) {
-      candidate = 'CREATING';
-    } else if (pool.includes('FORMING')) {
-      candidate = 'FORMING';
-    }
-    if (!candidate) {
-      candidate = generator.apxV22_pickFromArray(filtered.length > 0 ? filtered : pool);
-    }
-    return (candidate || reference || pool[0]).toUpperCase();
-  }
-
-  pickTailForAxisSchedule(canon, tailPool, generator, referenceToken = '') {
-    if (!Array.isArray(tailPool) || tailPool.length === 0) {
-      return (referenceToken || 'FORWARD').toUpperCase();
-    }
-    const pool = tailPool.map(t => t.toUpperCase());
-    const reference = (referenceToken || '').toUpperCase();
-    const filtered = pool.filter(word => word !== reference);
-    const hasSchedule = (canon?.scheduled?.length || 0) > 0;
-    const hasRecursive = (canon?.recursive?.length || 0) > 0;
-    const axis = (canon?.axisHint?.axis || 'x').toLowerCase();
-    const delta = canon?.axisHint?.delta ?? 0;
-    const directionMap = {
-      x: delta < 0 ? 'LEFTWARD' : 'RIGHTWARD',
-      y: delta < 0 ? 'DOWNWARD' : 'UPWARD',
-      z: delta < 0 ? 'BACKWARD' : 'FORWARD'
-    };
-    let candidate = null;
-    if (['LEFTWARD','RIGHTWARD'].some(dir => pool.includes(dir)) && axis === 'x') {
-      candidate = directionMap.x;
-    } else if (['UPWARD','DOWNWARD'].some(dir => pool.includes(dir)) && axis === 'y') {
-      candidate = directionMap.y;
-    } else if (['FORWARD','BACKWARD'].some(dir => pool.includes(dir)) && axis === 'z') {
-      candidate = directionMap.z;
-    } else if (pool.includes('AXIS')) {
-      candidate = 'AXIS';
-    } else if (pool.includes('CENTER')) {
-      candidate = 'CENTER';
-    } else if (pool.includes('TWICE') && hasRecursive) {
-      candidate = 'TWICE';
-    } else if (pool.includes('THRICE') && hasRecursive) {
-      candidate = 'THRICE';
-    } else if (pool.includes('LATER') && (hasSchedule || hasRecursive)) {
-      candidate = 'LATER';
-    } else if (pool.includes('AGAIN') && hasRecursive) {
-      candidate = 'AGAIN';
-    } else if (pool.includes('AFTER') && hasSchedule) {
-      candidate = 'AFTER';
-    } else if (pool.includes('STOP') && !hasSchedule && !hasRecursive) {
-      candidate = 'STOP';
-    }
-    if (!candidate) {
-      candidate = generator.apxV22_pickFromArray(filtered.length > 0 ? filtered : pool);
-    }
-    return (candidate || reference || pool[0]).toUpperCase();
   }
   
   getState(id) {
@@ -2070,7 +1583,6 @@ class StateVectorEngine {
           objects: [...canonical.objectIds],
           axis: canonical.axisHint.axis,
           delta: canonical.axisHint.delta,
-          k: hint.offset,
           offset: hint.offset,
           magnitude: hint.magnitude,
           mode: 'delay',
@@ -2084,7 +1596,6 @@ class StateVectorEngine {
             objects: [...canonical.objectIds],
             axis: canonical.axisHint.axis,
             delta: canonical.axisHint.delta,
-            k: hint.spacing * k,
             offset: hint.spacing * k,
             magnitude: 1,
             mode: 'repeat',
@@ -2098,7 +1609,6 @@ class StateVectorEngine {
           objects: [...canonical.objectIds],
           axis: canonical.axisHint.axis,
           delta: canonical.axisHint.delta,
-          p: hint.period,
           period: hint.period,
           startOffset: hint.startOffset,
           amplitude: hint.amplitude,
@@ -3121,16 +2631,6 @@ class CanonicalPremiseGenerator {
       directionPool: ['upward','downward','leftward','rightward','forward','backward','precisely','strongly','carefully','symmetrically','equally']
     };
     // Normalize for easy access:
-    this.symbols.species.push(
-      'FERRET','PORCUPINE','MANATEE','PLATYPUS','ALBATROSS','HERON','IBIS','KINGFISHER','LYREBIRD','PELICAN',
-      'SEAHORSE','CUTTLEFISH','ANCHOVY','SARDINE','GLOWWORM','FIREFLY','HORNET','LOCUST','TERMITE','CICADA'
-    );
-    this.symbols.physics.push(
-      'DAMPING','ADHESION','COHESION','SINGULARITY','SHEAR','TORSION','SPECTRUM','CATALYST','LATTICE','WAVEGUIDE',
-      'ION-STREAM','PLASMA-ARC','PRESSURE-WAVE','POTENTIAL-WELL','VECTOR-FIELD','QUANTUM-STATE','GAUGE-FIELD',
-      'SPINOR','FERMI-BAND','BOSE-CLOUD','ENTROPY-WAVE','FLUX-TUBE','GRAVIMETER','THERMAL-FLOW','CHARGE-FLUX'
-    );
-
     this.words = {
       subjects: [...this.symbols.species, ...this.symbols.physics],
       objects:  [...this.symbols.species, ...this.symbols.physics]
@@ -3169,15 +2669,6 @@ class CanonicalPremiseGenerator {
     this.premiseHistory = [];
     this.lastSurfaces = [];
     this.stats = { total: 0, delayed: 0, recursive: 0, axis: 0 };
-
-    this.apxV2_recent = [];
-    this.apxV2_recentSet = new Set();
-    this.apxV2_recentVerbQueue = [];
-    this.apxV2_recentVerbCounts = new Map();
-    this.apxV2_templateSequence = [];
-    this.historyTemplateIds = [];
-    this._apxV2_lastTemplateId = null;
-    this.apxV2_rng = () => Math.random();
 
     this.engineVerbToOp = {};
     for (const [op, variants] of Object.entries(this.operationVariants)) {
@@ -3221,13 +2712,8 @@ class CanonicalPremiseGenerator {
     };
   }
 
-  generate(shouldMatch = false, referenceIndex = null, registry = null, blueprint = null, statementIndex = 0) {
+  generate(shouldMatch = false, referenceIndex = null, registry = null, blueprint = null) {
     let result;
-    const refDigest = shouldMatch && blueprint && APEX_FEATURES_V22.canonicalDigestEnforce
-      ? apxV22_digest(blueprint)
-      : '';
-
-    this.apxV22_setRng(refDigest || '');
 
     if (this.config && this.config.compressedMath) {
       if (shouldMatch && referenceIndex !== null && registry) {
@@ -3236,9 +2722,9 @@ class CanonicalPremiseGenerator {
         result = this.generateMathNew();
       }
     } else if (shouldMatch && referenceIndex !== null && registry) {
-      result = this.generateMatching(referenceIndex, registry, blueprint, statementIndex, refDigest);
+      result = this.generateMatching(referenceIndex, registry);
     } else {
-      result = this.generateNew(statementIndex);
+      result = this.generateNew();
     }
 
     let attempts = 0;
@@ -3251,8 +2737,8 @@ class CanonicalPremiseGenerator {
         result = this.generateMathNew();
       } else {
         result = shouldMatch
-          ? this.generateMatching(referenceIndex, registry, blueprint, statementIndex, refDigest)
-          : this.generateNew(statementIndex);
+          ? this.generateMatching(referenceIndex, registry)
+          : this.generateNew();
       }
       attempts++;
     }
@@ -3261,11 +2747,6 @@ class CanonicalPremiseGenerator {
     const normalizedPremise = this.normalizeSurface(premise);
     this.usedPremises.add(normalizedPremise);
     this.recordStats(result);
-
-    if (result.verbToken) {
-      this.apxV22_commitVerb(result.verbToken.toUpperCase());
-    }
-    this.apxV22_commitSurface(premise, result.templateId || null);
 
     if (this.usedPremises.size > 100) {
       const premises = Array.from(this.usedPremises);
@@ -3284,146 +2765,113 @@ class CanonicalPremiseGenerator {
 
   shouldIncludeDelayed() {
     const ratio = this.stats.total > 0 ? this.stats.delayed / this.stats.total : 0;
-    if (ratio < 0.30) return this.apxV22_random() < 0.65;
-    if (ratio > 0.45) return this.apxV22_random() < 0.2;
-    return this.apxV22_random() < 0.35;
+    if (ratio < 0.30) return Math.random() < 0.65;
+    if (ratio > 0.45) return Math.random() < 0.2;
+    return Math.random() < 0.35;
   }
 
   shouldIncludeRecursive() {
     const ratio = this.stats.total > 0 ? this.stats.recursive / this.stats.total : 0;
-    if (ratio < 0.20) return this.apxV22_random() < 0.5;
-    if (ratio > 0.35) return this.apxV22_random() < 0.1;
-    return this.apxV22_random() < 0.25;
+    if (ratio < 0.20) return Math.random() < 0.5;
+    if (ratio > 0.35) return Math.random() < 0.1;
+    return Math.random() < 0.25;
   }
 
   shouldIncludeAxisEvent() {
     const ratio = this.stats.total > 0 ? this.stats.axis / this.stats.total : 0;
-    if (ratio < 0.25) return this.apxV22_random() < 0.7;
-    if (ratio > 0.40) return this.apxV22_random() < 0.2;
-    return this.apxV22_random() < 0.33;
+    if (ratio < 0.25) return Math.random() < 0.7;
+    if (ratio > 0.40) return Math.random() < 0.2;
+    return Math.random() < 0.33;
   }
 
   choosePattern() {
     const patterns = ['push', 'split', 'merge', 'cascade', 'resonate', 'transform', 'oscillate'];
-    return this.apxV22_pickFromArray(patterns);
+    return patterns[Math.floor(Math.random() * patterns.length)];
   }
 
-  generateNew(statementIndex = 0) {
-    let attempts = 0;
-    while (attempts < 80) {
-      attempts++;
-      const includeRecursive = this.shouldIncludeRecursive();
-      const includeDelayed = includeRecursive || this.shouldIncludeDelayed();
-      const includeAxis = this.shouldIncludeAxisEvent();
+  generateNew() {
+    const includeRecursive = this.shouldIncludeRecursive();
+    const includeDelayed = includeRecursive || this.shouldIncludeDelayed();
+    const includeAxis = this.shouldIncludeAxisEvent();
 
-      const tailWord = includeRecursive ? this.randomFrom(this.recursiveTiming)
-                       : includeDelayed ? this.randomFrom(this.delayedTiming)
-                       : this.randomFrom(this.directionPool);
-      const axisToken = includeAxis ? this.randomFrom(this.axisEvents) : null;
+    const tailWord = includeRecursive ? this.randomFrom(this.recursiveTiming)
+                     : includeDelayed ? this.randomFrom(this.delayedTiming)
+                     : this.randomFrom(this.directionPool);
+    const axisToken = includeAxis ? this.randomFrom(this.axisEvents) : null;
 
-      const pattern = this.choosePattern();
-      let tokens = [];
-      let verbToken = '';
+    const pattern = this.choosePattern();
+    let tokens = [];
 
-      switch(pattern) {
-        case 'push': {
-          const subject = this.randomFrom(this.words.subjects);
-          const verb = this.randomFrom(['pushes','presses','shoves','nudges','drives','pulls','drags','spins','rotates']);
-          const object = this.randomFrom(this.words.objects);
-          const modifier = axisToken || this.randomFrom(['toward','creating','forming','into','aligning','initiating']);
-          tokens = [subject, verb, object, modifier, tailWord];
-          verbToken = verb.toUpperCase();
-          break;
-        }
-        case 'split': {
-          const subject = this.randomFrom(this.words.subjects);
-          const objA = this.randomFrom(this.words.objects);
-          const objB = this.randomFrom(this.words.objects);
-          const verb = this.randomFrom(['splits','breaks','divides','separates']);
-          const modifier = axisToken || this.randomFrom(['forming','creating','toward']);
-          tokens = [subject, verb, `${objA}-OBJECT-${objB}`, modifier, tailWord];
-          verbToken = verb.toUpperCase();
-          break;
-        }
-        case 'merge': {
-          const subj1 = this.randomFrom(this.words.subjects);
-          const subj2 = this.randomFrom(this.words.subjects);
-          const object = this.randomFrom(this.words.objects);
-          const verb = this.randomFrom(['merges','joins','combines','fuses']);
-          const modifier = axisToken || 'creating';
-          tokens = [`${subj1}-OBJECT-${subj2}`, verb, object, modifier, tailWord];
-          verbToken = verb.toUpperCase();
-          break;
-        }
-        case 'cascade': {
-          const subject = this.randomFrom(this.words.subjects);
-          const verb = this.randomFrom(['triggers','activates','starts','launches','causes']);
-          const object = this.randomFrom(this.words.objects);
-          const modifier = axisToken || this.randomFrom(['initiating','causing','starting','driving']);
-          tokens = [subject, verb, object, modifier, tailWord];
-          verbToken = verb.toUpperCase();
-          break;
-        }
-        case 'resonate': {
-          const subject = this.randomFrom(this.words.subjects);
-          const object = this.randomFrom(this.words.objects);
-          const verb = this.randomFrom(['resonates','tunes','matches','locks']);
-          const modifier = axisToken || 'with';
-          tokens = [subject, verb, object, modifier, tailWord];
-          verbToken = verb.toUpperCase();
-          break;
-        }
-        case 'transform': {
-          const subject = this.randomFrom(this.words.subjects);
-          const object = this.randomFrom(this.words.objects);
-          const verb = this.randomFrom(['transforms','changes','shifts','remaps']);
-          const modifier = axisToken || this.randomFrom(['into','toward','becoming']);
-          tokens = [subject, verb, object, modifier, tailWord];
-          verbToken = verb.toUpperCase();
-          break;
-        }
-        case 'oscillate':
-        default: {
-          const subject = this.randomFrom(this.words.subjects);
-          const object = this.randomFrom(this.words.objects);
-          const verb = this.randomFrom(['oscillates','vibrates','pulses','waves']);
-          const modifier = axisToken || this.randomFrom(['around','across','along']);
-          tokens = [subject, verb, object, modifier, tailWord];
-          verbToken = verb.toUpperCase();
-          break;
-        }
+    switch(pattern) {
+      case 'push': {
+        const subject = this.randomFrom(this.words.subjects);
+        const verb = this.randomFrom(['pushes','presses','shoves','nudges','drives','pulls','drags','spins','rotates']);
+        const object = this.randomFrom(this.words.objects);
+        const modifier = axisToken || this.randomFrom(['toward','creating','forming','into','aligning','initiating']);
+        tokens = [subject, verb, object, modifier, tailWord];
+        break;
       }
-
-      const premise = tokens.join(' ').toUpperCase();
-      if (typeof game !== 'undefined' && game && game._v22_cross && game._v22_cross.has(premise)) {
-        continue;
+      case 'split': {
+        const subject = this.randomFrom(this.words.subjects);
+        const objA = this.randomFrom(this.words.objects);
+        const objB = this.randomFrom(this.words.objects);
+        const verb = this.randomFrom(['splits','breaks','divides','separates']);
+        const modifier = axisToken || this.randomFrom(['forming','creating','toward']);
+        tokens = [subject, verb, `${objA}-OBJECT-${objB}`, modifier, tailWord];
+        break;
       }
-      if (this.apxV2_recentSet.has(premise)) continue;
-      if (this.isRecent(premise)) continue;
-      if (!this.apxV22_canUseVerb(verbToken)) continue;
-
-      let candCanon = null;
-      try {
-        candCanon = this.compileToCanonical(premise);
-      } catch (err) {
-        candCanon = null;
+      case 'merge': {
+        const subj1 = this.randomFrom(this.words.subjects);
+        const subj2 = this.randomFrom(this.words.subjects);
+        const object = this.randomFrom(this.words.objects);
+        const verb = this.randomFrom(['merges','joins','combines','fuses']);
+        const modifier = axisToken || 'creating';
+        tokens = [`${subj1}-OBJECT-${subj2}`, verb, object, modifier, tailWord];
+        break;
       }
-      if (APEX_FEATURES_V22.cbsBandsHard && candCanon && typeof game !== 'undefined' && game.difficultyLevel === 1) {
-        game._beginnerTier = game._beginnerTier || 1;
-        const cbs = apxV22_cbs(candCanon);
-        if (!apxV22_cbsWithinTier(cbs, game._beginnerTier)) {
-          continue;
-        }
+      case 'cascade': {
+        const subject = this.randomFrom(this.words.subjects);
+        const verb = this.randomFrom(['triggers','activates','starts','launches','causes']);
+        const object = this.randomFrom(this.words.objects);
+        const modifier = axisToken || this.randomFrom(['initiating','causing','starting','driving']);
+        tokens = [subject, verb, object, modifier, tailWord];
+        break;
       }
-
-      const inferred = this.inferFeatures(premise);
-      inferred.templateId = null;
-      inferred.verbToken = verbToken;
-      this.rememberSurface(premise);
-      return { premise, ...inferred };
+      case 'resonate': {
+        const subject = this.randomFrom(this.words.subjects);
+        const object = this.randomFrom(this.words.objects);
+        const verb = this.randomFrom(['resonates','tunes','matches','locks']);
+        const modifier = axisToken || 'with';
+        tokens = [subject, verb, object, modifier, tailWord];
+        break;
+      }
+      case 'transform': {
+        const subject = this.randomFrom(this.words.subjects);
+        const object = this.randomFrom(this.words.objects);
+        const verb = this.randomFrom(['transforms','changes','shifts','remaps']);
+        const modifier = axisToken || this.randomFrom(['into','toward','becoming']);
+        tokens = [subject, verb, object, modifier, tailWord];
+        break;
+      }
+      case 'oscillate':
+      default: {
+        const subject = this.randomFrom(this.words.subjects);
+        const object = this.randomFrom(this.words.objects);
+        const verb = this.randomFrom(['oscillates','vibrates','pulses','waves']);
+        const modifier = axisToken || this.randomFrom(['around','across','along']);
+        tokens = [subject, verb, object, modifier, tailWord];
+        break;
+      }
     }
 
-    throw new Error('APEX V2.2: failed to generate new premise');
+    let premise = tokens.join(' ').toUpperCase();
+    let attempts = 0;
+    while (this.isRecent(premise) && attempts < 50) {
+      attempts++;
+      return this.generateNew();
+    }
+    this.rememberSurface(premise);
+    return { premise, includeDelayed, includeRecursive, includeAxis };
   }
 
   generateMathNew() {
@@ -3439,7 +2887,7 @@ class CanonicalPremiseGenerator {
     tokens.push('=');
     tokens.push(this.randomMathOperand());
 
-    if (this.apxV22_random() < 0.5) {
+    if (Math.random() < 0.5) {
       tokens.push(this.randomFrom(this.mathOperators));
       tokens.push(this.randomMathOperand());
     }
@@ -3483,80 +2931,103 @@ class CanonicalPremiseGenerator {
     return { premise, includeDelayed: false, includeRecursive: false, includeAxis: false };
   }
 
-  generateMatching(referenceIndex, registry, blueprint = null, statementIndex = 0, refDigestOverride = '') {
+  generateMatching(referenceIndex, registry) {
     const reference = this.premiseHistory[referenceIndex];
-    if (!reference) return this.generateNew(statementIndex);
+    if (!reference) return this.generateNew();
 
-    const refSurface = Array.isArray(reference)
-      ? (reference[statementIndex] || reference[0])
-      : reference;
-
-    const referenceStates = window.game?.stateHistory?.[referenceIndex] || [];
-    const refStateObj = blueprint
-      ? { parsed: blueprint }
-      : referenceStates[statementIndex] || referenceStates[0] || null;
-
-    if (!refSurface || !refStateObj || !refStateObj.parsed) {
-      const fallback = this.generateMatchingFallback(refSurface || '', registry);
-      fallback.templateId = fallback.templateId || null;
-      fallback.verbToken = fallback.premise ? fallback.premise.split(' ')[1]?.toUpperCase() : null;
-      return fallback;
+    const refString = Array.isArray(reference) ? reference[0] : reference;
+    const refTokens = this.tokenize(refString || '');
+    if (refTokens.length < 5) {
+      return this.generateNew();
     }
 
-    const digest = refDigestOverride || apxV22_digest(refStateObj.parsed);
-    this.apxV22_setRng(digest || '');
+    const [t0, t1, t2, t3, t4] = refTokens;
 
-    const refTplEntry = this.historyTemplateIds?.[referenceIndex];
-    const refTemplateId = Array.isArray(refTplEntry)
-      ? (refTplEntry[statementIndex] ?? refTplEntry[0] ?? null)
-      : (refTplEntry || null);
+    const swapSubject = (tok) => {
+      const parts = tok.includes('-OBJECT-') ? tok.split('-OBJECT-') : [tok];
+      const mapped = parts.map(part => {
+        const syns = registry.findSynonyms(part) || [];
+        const canonicalId = registry.surfaceToId.get(part) || null;
+        const sameId = syns.filter(s => {
+          const upper = s.toUpperCase();
+          if (!registry.surfaceToId.has(upper)) return true;
+          return registry.surfaceToId.get(upper) === canonicalId;
+        });
+        const options = sameId.filter(s => this.normalizeSurface(s) !== part.toUpperCase());
+        return options.length > 0
+          ? this.normalizeSurface(this.randomFrom(options))
+          : part.toUpperCase();
+      });
+      return mapped.join('-OBJECT-');
+    };
 
-    const refRoles = apxV22_rolesFromPremise((refSurface || '').toUpperCase());
-    const recentSet = this.apxV2_recentSet;
-    const crossSet = (typeof game !== 'undefined' && game && game._v22_cross) ? game._v22_cross : new Set();
+    const verbSyn = (verb) => {
+      const v = verb.toLowerCase();
+      const op = this.engineVerbToOp[v] || v;
+      const banks = {
+        'PUSH': ['pushes','presses','shoves','nudges','drives'],
+        'PULL': ['pulls','drags','tugs','yanks'],
+        'ROTATE': ['rotates','spins','turns','twists'],
+        'MERGE': ['merges','joins','combines','fuses'],
+        'SPLIT': ['splits','breaks','divides','separates'],
+        'CASCADE': ['triggers','activates','starts','launches','causes'],
+        'OSCILLATE': ['oscillates','vibrates','pulses','waves'],
+        'TRANSFORM': ['transforms','changes','shifts','remaps'],
+        'COLLIDE': ['collides','hits','crashes','smashes'],
+        'BOUNCE': ['bounces','rebounds'],
+        'ABSORB': ['absorbs','soaks','takes-in'],
+        'EMIT': ['emits','gives','sends'],
+        'RESONATE': ['resonates','tunes','matches','locks']
+      };
+      const pool = banks[op.toUpperCase?.() ? op.toUpperCase() : op.toUpperCase()] || [verb];
+      const choice = pool.filter(w => this.normalizeSurface(w) !== verb.toUpperCase());
+      const pick = choice.length > 0 ? this.randomFrom(choice) : verb;
+      return this.normalizeSurface(pick);
+    };
 
-    let attempts = 0;
-    while (attempts < 80) {
-      attempts++;
-      const candidateInfo = apxV22_resynthesizeSurfaceSameCanonical(refStateObj, registry, this, refTemplateId, refRoles);
-      let candidate = (candidateInfo.surface || '').toUpperCase();
-      const verbToken = (candidateInfo.verb || '').toUpperCase();
-      if (!candidate || candidate.trim().split(/\s+/).length !== 5) continue;
-      if (!this.apxV22_canUseVerb(verbToken)) continue;
-      if (crossSet.has(candidate)) continue;
-      if (apxV22_isTooSimilar(refSurface, candidate, recentSet)) continue;
+    const swapRel = (tok) => {
+      const relations = ['FORMING','CREATING','INTO','TOWARD','BECOMING','GENERATING'];
+      if (!relations.includes(tok)) return tok;
+      const alts = relations.filter(r => r !== tok);
+      return alts.length > 0 ? this.randomFrom(alts) : tok;
+    };
 
-      let candCanon = null;
-      try {
-        candCanon = this.compileToCanonical(candidate);
-      } catch (err) {
-        candCanon = null;
-      }
-      if (!candCanon) continue;
+    const swapTail = (tok) => {
+      const dirs = this.symbols.directionPool.map(s => s.toUpperCase());
+      const delayed = this.symbols.delayedTiming.map(s => s.toUpperCase());
+      const recursive = this.symbols.recursiveTiming.map(s => s.toUpperCase());
+      const bank = [...dirs, ...delayed, ...recursive];
+      const list = dirs.includes(tok)
+        ? dirs
+        : delayed.includes(tok)
+          ? delayed
+          : recursive.includes(tok)
+            ? recursive
+            : bank;
+      const alts = list.filter(option => option !== tok);
+      return alts.length > 0 ? this.randomFrom(alts) : tok;
+    };
 
-      if (APEX_FEATURES_V22.cbsBandsHard && typeof game !== 'undefined' && game.difficultyLevel === 1) {
-        game._beginnerTier = game._beginnerTier || 1;
-        const cbs = apxV22_cbs(candCanon);
-        if (!apxV22_cbsWithinTier(cbs, game._beginnerTier)) {
-          continue;
-        }
-      }
+    const buildCandidate = () => [
+      swapSubject(t0),
+      verbSyn(t1),
+      swapSubject(t2),
+      swapRel(t3),
+      swapTail(t4)
+    ].join(' ').toUpperCase();
 
-      const candDigest = apxV22_digest(candCanon);
-      if (APEX_FEATURES_V22.canonicalDigestEnforce && candDigest !== digest) {
-        continue;
-      }
-
-      const inferred = this.inferFeatures(candidate);
-      inferred.templateId = candidateInfo.templateId || null;
-      inferred.verbToken = verbToken;
-      return { premise: candidate, ...inferred };
+    let candidate = buildCandidate();
+    let tries = 0;
+    while (
+      (this.isRecent(candidate) || this.tokenDiffCount(candidate, refString) < this.policy.minTokenDiff) &&
+      tries < 50
+    ) {
+      candidate = buildCandidate();
+      tries++;
     }
 
-    const fallback = this.generateMatchingFallback(refSurface || '', registry);
-    fallback.templateId = fallback.templateId || null;
-    fallback.verbToken = fallback.premise ? fallback.premise.split(' ')[1]?.toUpperCase() : null;
-    return fallback;
+    const inferred = this.inferFeatures(candidate);
+    return { premise: candidate, ...inferred };
   }
 
   generateMatchingFallback(reference, registry) {
@@ -3585,12 +3056,12 @@ class CanonicalPremiseGenerator {
               !registry.surfaceToId.has(s) || registry.surfaceToId.get(s) === id
             );
 
-        if (validSynonyms.length > 0 && this.apxV22_random() > 0.4) {
-          const newWord = this.randomFrom(validSynonyms);
-          registry.surfaceToId.set(newWord, id);
-          newParts.push(newWord);
-        } else {
-          newParts.push(part);
+            if (validSynonyms.length > 0 && Math.random() > 0.4) {
+              const newWord = this.randomFrom(validSynonyms);
+              registry.surfaceToId.set(newWord, id);
+              newParts.push(newWord);
+            } else {
+              newParts.push(part);
             }
           } else {
             newParts.push(part);
@@ -3605,7 +3076,7 @@ class CanonicalPremiseGenerator {
           !registry.surfaceToId.has(s) || registry.surfaceToId.get(s) === id
         );
 
-        if (validSynonyms.length > 0 && this.apxV22_random() > 0.5) {
+        if (validSynonyms.length > 0 && Math.random() > 0.5) {
           const newWord = this.randomFrom(validSynonyms);
           registry.surfaceToId.set(newWord, id);
           newWords.push(newWord);
@@ -3617,35 +3088,9 @@ class CanonicalPremiseGenerator {
       }
     }
 
-    const premise = newWords.join(' ').toUpperCase();
+    const premise = newWords.join(' ');
     const inferred = this.inferFeatures(premise);
     return { premise, ...inferred };
-  }
-
-  compileToCanonical(surface) {
-    if (!surface || typeof window === 'undefined') return null;
-    if (!window.game || !window.game.engine) return null;
-    const engine = window.game.engine;
-    const savedTrial = engine.currentTrial;
-    const savedTraceRef = Array.isArray(engine.proofTrace) ? engine.proofTrace : [];
-    const savedTrace = savedTraceRef.slice();
-    try {
-      engine.currentTrial = window.game?.currentTrial || 0;
-      engine.proofTrace = [];
-      const parsed = engine.parsePremise(surface);
-      if (!parsed) return null;
-      const canonical = engine.canonicalize(parsed);
-      return canonical;
-    } finally {
-      engine.currentTrial = savedTrial;
-      if (engine.proofTrace !== savedTraceRef) {
-        engine.proofTrace = savedTraceRef;
-      }
-      if (Array.isArray(engine.proofTrace)) {
-        engine.proofTrace.length = 0;
-        engine.proofTrace.push(...savedTrace);
-      }
-    }
   }
 
   renderMathFromPlan(plan, registry, forbidTokens = []) {
@@ -3656,11 +3101,7 @@ class CanonicalPremiseGenerator {
     }
 
     const idList = Array.from(ids);
-    const letters = [...SURFACE_RULES.mathAliases];
-    for (let i = letters.length - 1; i > 0; i--) {
-      const j = Math.floor(this.apxV22_random() * (i + 1));
-      [letters[i], letters[j]] = [letters[j], letters[i]];
-    }
+    const letters = [...SURFACE_RULES.mathAliases].sort(() => Math.random() - 0.5);
     const idToLetter = new Map();
 
     registry.beginAliasEpoch();
@@ -3679,12 +3120,12 @@ class CanonicalPremiseGenerator {
       if (delay > 0) {
         token = `${token}${Math.min(delay, 9)}`;
         suffixApplied = true;
-      } else if (allowNoOp && SURFACE_RULES.allowNoOp.zeroSuffix && this.apxV22_random() < 0.35) {
+      } else if (allowNoOp && SURFACE_RULES.allowNoOp.zeroSuffix && Math.random() < 0.35) {
         token = `${token}0`;
         suffixApplied = true;
       }
 
-      if (!suffixApplied && allowNoOp && SURFACE_RULES.allowNoOp.holdPercent && this.apxV22_random() < 0.35) {
+      if (!suffixApplied && allowNoOp && SURFACE_RULES.allowNoOp.holdPercent && Math.random() < 0.35) {
         token = `${token}%`;
         suffixApplied = true;
       }
@@ -3694,7 +3135,7 @@ class CanonicalPremiseGenerator {
 
     const partsLeft = [];
     const partsRight = [];
-    const leftFirst = this.apxV22_random() < 0.5;
+    const leftFirst = Math.random() < 0.5;
     const bucket = leftFirst ? [partsLeft, partsRight] : [partsRight, partsLeft];
     let which = 0;
 
@@ -3724,7 +3165,7 @@ class CanonicalPremiseGenerator {
 
     const permutePlus = (arr) => {
       for (let i = 0; i < arr.length - 2; i++) {
-        if (arr[i + 1] === '+' && this.apxV22_random() < 0.5) {
+        if (arr[i + 1] === '+' && Math.random() < 0.5) {
           const tmp = arr[i];
           arr[i] = arr[i + 2];
           arr[i + 2] = tmp;
@@ -3737,7 +3178,7 @@ class CanonicalPremiseGenerator {
 
     const left = partsLeft.join(' ');
     const right = partsRight.join(' ');
-    let premise = this.apxV22_random() < 0.5 ? `${left} = ${right}` : `${right} = ${left}`;
+    let premise = Math.random() < 0.5 ? `${left} = ${right}` : `${right} = ${left}`;
 
     premise = premise.split(/\s+/).slice(0, 9).join(' ');
     return premise;
@@ -3785,9 +3226,6 @@ class CanonicalPremiseGenerator {
       ? premises.map(p => this.normalizeSurface(p))
       : [this.normalizeSurface(premises)];
     this.premiseHistory[trialIndex] = normalized;
-    const count = normalized.length;
-    const templates = this.apxV2_templateSequence.slice(-count);
-    this.historyTemplateIds[trialIndex] = templates;
   }
 
   isMathSurface(text) {
@@ -3974,22 +3412,22 @@ class CanonicalPremiseGenerator {
       ? SURFACE_RULES.mathAliases
       : this.mathOperands;
     const base = this.randomFrom(pool);
-    const prefix = this.apxV22_random() < 0.25 ? '√' : '';
+    const prefix = Math.random() < 0.25 ? '√' : '';
     let suffix = '';
 
-    if (SURFACE_RULES.allowNoOp?.holdPercent && this.apxV22_random() < 0.25) {
+    if (SURFACE_RULES.allowNoOp?.holdPercent && Math.random() < 0.25) {
       suffix = '%';
-    } else if (SURFACE_RULES.allowNoOp?.zeroSuffix && this.apxV22_random() < 0.25) {
+    } else if (SURFACE_RULES.allowNoOp?.zeroSuffix && Math.random() < 0.25) {
       suffix = '0';
-    } else if (this.apxV22_random() < 0.5) {
-      suffix = String(Math.floor(this.apxV22_random() * 3) + 1);
+    } else if (Math.random() < 0.5) {
+      suffix = String(Math.floor(Math.random() * 3) + 1);
     }
 
     return `${prefix}${base}${suffix}`;
   }
 
   randomFrom(array) {
-    return this.apxV22_pickFromArray(array);
+    return array[Math.floor(Math.random() * array.length)];
   }
 }
 /* ===== GAME CONTROLLER ===== */
@@ -4034,15 +3472,6 @@ class CanonicalStateVectorNBack {
     
     // Timing
     this.trialStartTime = 0;
-
-    this.sessionId = Date.now();
-    try {
-      const history = apxV22_loadHistory();
-      this._v22_cross = new Set((history || []).map(s => (s || '').toUpperCase()));
-    } catch (e) {
-      this._v22_cross = new Set();
-    }
-    this._beginnerTier = 1;
   }
   
   initialize(settings) {
@@ -4076,15 +3505,6 @@ class CanonicalStateVectorNBack {
     this.registry = new CanonicalRegistry();
     this.engine = new StateVectorEngine(this.registry, this.config);
     this.generator = new CanonicalPremiseGenerator(this.config);
-
-    try {
-      const history = apxV22_loadHistory();
-      this._v22_cross = new Set((history || []).map(s => (s || '').toUpperCase()));
-    } catch (e) {
-      this._v22_cross = new Set();
-    }
-    this.sessionId = Date.now();
-    this._beginnerTier = 1;
     
     this.history = [];
     this.stateHistory = [];
@@ -4114,10 +3534,6 @@ class CanonicalStateVectorNBack {
     
     this.awaitingResponse = true;
     const shouldMatch = this.schedule[this.currentTrial];
-
-    if (APEX_FEATURES_V22.beginnerSublevels && this.difficultyLevel === 1) {
-      this._beginnerTier = Math.min(5, Math.floor(this.currentTrial / 8) + 1);
-    }
     
     const premises = [];
     const states = [];
@@ -4699,8 +4115,6 @@ class CanonicalStateVectorNBack {
 /* ===== MAIN GAME INSTANCE ===== */
 const game = new CanonicalStateVectorNBack();
 window.game = game;
-game.v22_windowSize = 50;
-game.v21_maxVerbRatio = 0.20;
 
 // UI Event Handlers
 function start() {
@@ -4867,6 +4281,3 @@ document.addEventListener('DOMContentLoaded', () => {
 </script>
 </body>
 </html>
-
-
-
