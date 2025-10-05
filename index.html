@@ -460,15 +460,28 @@ input[type=range]::-moz-range-thumb {
     
     <div class="panel">
       <div class="panel-title">🎮 Controls</div>
-      
+
       <div style="display:flex; gap:10px; margin-bottom:20px">
         <button id="startBtn" class="btn" style="flex:1">▶ Start</button>
-        <button id="pauseBtn" class="btn" style="flex:1" disabled>⏸ Pause</button>
-        <button id="resetBtn" class="btn" style="flex:1" disabled>🔄 Reset</button>
+        <button id="stopBtn" class="btn" style="flex:1" disabled>⏹ Stop</button>
+        <button id="restartBtn" class="btn" style="flex:1" disabled>🔄 Restart</button>
       </div>
-      
+
+      <label class="inline" title="Let the session play without responses" style="margin-bottom:10px">
+        <input id="listenOnlyToggle" type="checkbox" />
+        Listen-Only (Auto-Advance)
+      </label>
+      <small id="listenOnlyHint" aria-live="polite" hidden>
+        Listening mode: scoring disabled; session will auto-advance to completion.
+      </small>
+
       <div style="padding:15px; background:rgba(0,200,255,0.1); border-radius:8px; text-align:center; margin-bottom:15px">
-        <strong>Press <span class="kbd">SPACEBAR</span> when you detect a match!</strong>
+        <strong>Use the controls below or press <span class="kbd">SPACEBAR</span> for Match and <span class="kbd">→</span> for No Match.</strong>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-bottom:15px">
+        <button id="matchBtn" class="btn" style="flex:1">✅ Match</button>
+        <button id="noMatchBtn" class="btn" style="flex:1">❌ No Match</button>
       </div>
       
       <div class="status-display">
@@ -769,6 +782,559 @@ const $ = id => document.getElementById(id);
 const setText = (id, text) => { const el = $(id); if(el) el.textContent = text; };
 
 let currentNumTrialsSetting = 20;
+
+const AdvancePolicy = Object.freeze({ ACTIVE: 'active', LISTEN: 'listen' });
+const LISTEN_ONLY_KEY = 'listenOnly';
+
+function loadListenOnly() {
+  try {
+    return localStorage.getItem(LISTEN_ONLY_KEY) === '1';
+  } catch (e) {
+    return false;
+  }
+}
+
+function persistListenOnly(on) {
+  try {
+    localStorage.setItem(LISTEN_ONLY_KEY, on ? '1' : '0');
+  } catch (e) {
+    /* ignore persistence errors */
+  }
+  const hint = $('listenOnlyHint');
+  if (hint) {
+    hint.hidden = !on;
+  }
+}
+
+let session = null;
+let heartbeat = null;
+const timerRegistry = new Map();
+let currentCountdownInterval = null;
+let currentTimeoutResolver = null;
+
+function trackTimeout(fn, delay) {
+  const id = setTimeout(() => {
+    timerRegistry.delete(id);
+    fn();
+  }, delay);
+  timerRegistry.set(id, 'timeout');
+  return id;
+}
+
+function trackInterval(fn, delay) {
+  const id = setInterval(fn, delay);
+  timerRegistry.set(id, 'interval');
+  return id;
+}
+
+function clearTracked(id) {
+  if (!timerRegistry.has(id)) return;
+  const type = timerRegistry.get(id);
+  if (type === 'interval') {
+    clearInterval(id);
+  } else {
+    clearTimeout(id);
+  }
+  timerRegistry.delete(id);
+}
+
+function clearAllEngineTimers() {
+  for (const [id, type] of timerRegistry.entries()) {
+    if (type === 'interval') {
+      clearInterval(id);
+    } else {
+      clearTimeout(id);
+    }
+  }
+  timerRegistry.clear();
+  if (currentCountdownInterval) {
+    clearInterval(currentCountdownInterval);
+    currentCountdownInterval = null;
+  }
+}
+
+function cancelSpeechImmediately() {
+  if (typeof window === 'undefined') return;
+  if (!window.speechSynthesis) return;
+  try {
+    window.speechSynthesis.cancel();
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function estimateUtteranceMs(text, rate) {
+  const cps = 12 * (rate || 0.95);
+  const base = text ? String(text).length : 0;
+  return Math.min(8000, Math.max(800, Math.round((base / cps) * 1000) + 300));
+}
+
+let lockedVoice = null;
+
+function getLockedVoice() {
+  if (lockedVoice) return lockedVoice;
+  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+  const voices = window.speechSynthesis.getVoices();
+  lockedVoice = voices.find(v => (v.lang || '').toLowerCase().startsWith('en')) || voices[0] || null;
+  return lockedVoice;
+}
+
+function getAngelicRate() {
+  return 0.9;
+}
+
+function getAngelicPitch() {
+  return 1.0;
+}
+
+function formatPremiseForSpeech(premise) {
+  if (Array.isArray(premise)) {
+    return premise.filter(Boolean).join('; ');
+  }
+  return String(premise || '');
+}
+
+function valid(token, sig) {
+  return session && token === session.trialToken && !(sig?.aborted);
+}
+
+function onAbort(sig, fn) {
+  if (!sig) return;
+  if (sig.aborted) {
+    try { fn(); } catch (e) {}
+    return;
+  }
+  sig.addEventListener('abort', () => {
+    try { fn(); } catch (e) {}
+  }, { once: true });
+}
+
+async function speakPremiseSafe(sess, premise, token, sig) {
+  const text = formatPremiseForSpeech(premise);
+  window.currentPremiseText = text;
+  return new Promise(resolve => {
+    cancelSpeechImmediately();
+    if (typeof window === 'undefined' || !window.speechSynthesis || !sess || sig?.aborted) {
+      resolve({ fallback: false });
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voice = getLockedVoice();
+    if (voice) {
+      utterance.voice = voice;
+      utterance.lang = voice.lang;
+    } else {
+      utterance.lang = 'en-US';
+    }
+    utterance.rate = getAngelicRate();
+    utterance.pitch = getAngelicPitch();
+    utterance.volume = 1.0;
+
+    let finished = false;
+    let usedFallback = false;
+    const cleanup = (fromFallback = false) => {
+      if (finished) return;
+      finished = true;
+      usedFallback = usedFallback || fromFallback;
+      clearTracked(fallbackTimer);
+      resolve({ fallback: usedFallback });
+    };
+
+    const ok = () => valid(token, sig);
+    utterance.onend = () => { if (ok()) cleanup(false); };
+    utterance.onerror = () => { if (ok()) cleanup(false); };
+
+    const fallbackMs = estimateUtteranceMs(text, utterance.rate) + 400;
+    const fallbackTimer = trackTimeout(() => {
+      if (ok()) {
+        usedFallback = true;
+        cleanup(true);
+      }
+    }, fallbackMs);
+
+    trackTimeout(() => {
+      if (!ok()) return;
+      try {
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {
+        cleanup(false);
+      }
+    }, 120);
+  });
+}
+
+function dwellSafe(seconds, token, sig) {
+  return new Promise(resolve => {
+    const delay = Math.max(0, seconds * 1000);
+    const timer = trackTimeout(() => { if (valid(token, sig)) resolve(); }, delay);
+    onAbort(sig, () => clearTracked(timer));
+  });
+}
+
+let activeResponseCleanup = null;
+
+function bindTrialButtons(onMatch, onNo) {
+  const matchBtn = $('matchBtn');
+  const noMatchBtn = $('noMatchBtn');
+  const handleMatch = (e) => { e?.preventDefault?.(); onMatch(); };
+  const handleNo = (e) => { e?.preventDefault?.(); onNo(); };
+  const handleKey = (e) => {
+    if (e.code === 'Space') {
+      e.preventDefault();
+      onMatch();
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      onNo();
+    }
+  };
+
+  matchBtn?.addEventListener('click', handleMatch);
+  noMatchBtn?.addEventListener('click', handleNo);
+  window.addEventListener('keydown', handleKey);
+
+  activeResponseCleanup = () => {
+    matchBtn?.removeEventListener('click', handleMatch);
+    noMatchBtn?.removeEventListener('click', handleNo);
+    window.removeEventListener('keydown', handleKey);
+  };
+}
+
+function unbindTrialButtons() {
+  if (activeResponseCleanup) {
+    activeResponseCleanup();
+    activeResponseCleanup = null;
+  }
+}
+
+function collectResponseSafe(seconds, token, sig) {
+  return new Promise(resolve => {
+    let settled = false;
+    const settle = (payload) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(payload);
+    };
+
+    const timeoutMs = Math.max(0, seconds * 1000);
+    const deadline = Date.now() + timeoutMs;
+
+    const updateCountdown = () => {
+      if (!valid(token, sig)) return;
+      const remaining = Math.max(0, deadline - Date.now());
+      setText('countdown', (remaining / 1000).toFixed(1) + 's');
+      if (remaining <= 0) {
+        settle({ type: 'timeout' });
+      }
+    };
+
+    if (currentCountdownInterval) {
+      clearInterval(currentCountdownInterval);
+      currentCountdownInterval = null;
+    }
+
+    setText('countdown', (timeoutMs / 1000).toFixed(1) + 's');
+    currentCountdownInterval = setInterval(updateCountdown, 100);
+    timerRegistry.set(currentCountdownInterval, 'interval');
+
+    const timeoutTimer = trackTimeout(() => { if (valid(token, sig)) settle({ type: 'timeout' }); }, timeoutMs);
+    currentTimeoutResolver = () => settle({ type: 'timeout', forced: true });
+
+    bindTrialButtons(
+      () => { if (valid(token, sig)) settle({ type: 'answer', choice: 'match', timestamp: Date.now() }); },
+      () => { if (valid(token, sig)) settle({ type: 'answer', choice: 'nomatch', timestamp: Date.now() }); }
+    );
+
+    function cleanup() {
+      unbindTrialButtons();
+      clearTracked(timeoutTimer);
+      if (currentCountdownInterval) {
+        clearInterval(currentCountdownInterval);
+        timerRegistry.delete(currentCountdownInterval);
+        currentCountdownInterval = null;
+      }
+      currentTimeoutResolver = null;
+    }
+
+    onAbort(sig, cleanup);
+  });
+}
+
+function synthesizeTimeoutAnswer() {
+  if (typeof currentTimeoutResolver === 'function') {
+    currentTimeoutResolver();
+  }
+}
+
+if (typeof window !== 'undefined') {
+  window.forceCurrentTrialTimeout = synthesizeTimeoutAnswer;
+}
+
+function secondsPerTrial() {
+  return (game?.responseWindow || 0) / 1000;
+}
+
+function clearHeartbeat() {
+  if (heartbeat) {
+    clearInterval(heartbeat);
+    timerRegistry.delete(heartbeat);
+    heartbeat = null;
+  }
+}
+
+function wireHeartbeat(sess) {
+  clearHeartbeat();
+  if (!sess) return;
+  let lastTick = performance.now();
+  let lastObservedTrial = -1;
+  heartbeat = setInterval(() => {
+    if (!session || sess.epoch !== session.epoch) {
+      clearHeartbeat();
+      return;
+    }
+    const now = performance.now();
+    if (session.trialIndex !== lastObservedTrial) {
+      lastObservedTrial = session.trialIndex;
+      lastTick = now;
+      return;
+    }
+    const budget = estimateUtteranceMs(window.currentPremiseText || 'Reference state engaged.', getAngelicRate()) +
+      (secondsPerTrial() * 1000) + 1500;
+    if (now - lastTick > budget) {
+      console.warn('Watchdog: advancing after stall');
+      cancelSpeechImmediately();
+      if (session.policy === AdvancePolicy.ACTIVE) {
+        synthesizeTimeoutAnswer();
+      }
+      lastTick = now;
+    }
+  }, 500);
+  timerRegistry.set(heartbeat, 'interval');
+}
+
+function newSession(policy) {
+  const seed = (typeof crypto !== 'undefined' && crypto?.getRandomValues)
+    ? crypto.getRandomValues(new Uint32Array(1))[0]
+    : Date.now();
+  const epoch = seed + Math.floor(Math.random() * 1e6);
+  return {
+    epoch,
+    trialIndex: 0,
+    numTrials: game.sessionNumTrials,
+    policy,
+    abort: new AbortController(),
+    consecutiveOmissions: 0,
+    trialToken: 0
+  };
+}
+
+function collectSettings(desiredTrials) {
+  return {
+    difficultyLevel: parseInt($('difficultyLevel')?.value || '1', 10),
+    nLevel: parseInt($('nbackLevel')?.value || '1', 10),
+    totalTrials: desiredTrials,
+    numTrials: desiredTrials,
+    matchProbability: parseInt($('matchProbability')?.value || '30', 10) / 100,
+    responseWindow: parseFloat($('responseWindow')?.value || '15') * 1000,
+    statementsPerTrial: parseInt($('statementsPerTrial')?.value || '1', 10),
+    voiceEnabled: !!$('voiceEnabled')?.checked,
+    showProofTraces: !!$('proofTraces')?.checked,
+    useCounterfactuals: !!$('counterfactuals')?.checked,
+    compressedMath: !!$('compressedMath')?.checked
+  };
+}
+
+function prepareUIForSessionStart(settings, policy) {
+  setText('currentGLoad', game.config.gLoad.toFixed(2));
+  apxV4_updateDifficultyUI(game.visibleLevel);
+  setText('totalTrials', String(settings.totalTrials));
+  setText('currentTrial', '0');
+  setText('correctHits', '0');
+  setText('falseAlarms', '0');
+  setText('misses', '0');
+  setText('noResponses', '0');
+  setText('accuracy', '—');
+  setText('avgResponse', '—');
+  setText('progress', '0%');
+  setText('confidence', '—');
+  setText('countdown', '—');
+  $('feedbackArea').innerHTML = '';
+  $('stateTracker').classList.remove('active');
+  $('scheduledEffects').style.display = 'none';
+  $('canonicalMappings').innerHTML = '';
+  const hint = $('listenOnlyHint');
+  if (hint) hint.hidden = policy !== AdvancePolicy.LISTEN;
+}
+
+function setControlsRunning(running) {
+  $('startBtn').disabled = running;
+  $('stopBtn').disabled = !running;
+  $('restartBtn').disabled = false;
+  const matchBtn = $('matchBtn');
+  const noMatchBtn = $('noMatchBtn');
+  if (matchBtn) matchBtn.disabled = !running;
+  if (noMatchBtn) noMatchBtn.disabled = !running;
+}
+
+function presentIdleScreen() {
+  $('premiseDisplay').innerHTML = `
+    <div style="text-align:center; color:var(--mut); font-size:20px; font-weight:normal">
+      Press START to begin canonical state-vector tracking
+    </div>
+  `;
+  $('feedbackArea').innerHTML = '';
+  $('stateTracker').classList.remove('active');
+  $('scheduledEffects').style.display = 'none';
+  $('canonicalMappings').innerHTML = '';
+
+  setText('currentTrial', '0');
+  setText('totalTrials', String(currentNumTrialsSetting));
+  setText('correctHits', '0');
+  setText('falseAlarms', '0');
+  setText('misses', '0');
+  setText('noResponses', '0');
+  setText('accuracy', '—');
+  setText('avgResponse', '—');
+  setText('progress', '0%');
+  setText('countdown', '—');
+  setText('confidence', '—');
+  setText('totalEnergy', '100');
+  setText('totalMomentum', '(0,0,0)');
+  setText('totalInfo', '50');
+  setText('activeSymbols', '0');
+}
+
+function startSession() {
+  stopSession();
+
+  const desiredTrials = syncNumTrialsControls(
+    $('numTrialsInput') ? $('numTrialsInput').value : currentNumTrialsSetting,
+    { updateInput: true, updateSlider: true, persist: true }
+  );
+
+  const settings = collectSettings(desiredTrials);
+  const policy = $('listenOnlyToggle')?.checked ? AdvancePolicy.LISTEN : AdvancePolicy.ACTIVE;
+
+  game.initialize(settings);
+  game.sessionPolicy = policy;
+  if (game.sessionLog) {
+    game.sessionLog.mode = policy;
+    if (game.sessionLog.settings) {
+      game.sessionLog.settings.listenOnly = policy === AdvancePolicy.LISTEN;
+    }
+  }
+  game.isRunning = true;
+  game.isPaused = false;
+
+  prepareUIForSessionStart(settings, policy);
+  setControlsRunning(true);
+
+  lockedVoice = null;
+  if (typeof window !== 'undefined' && window.speechSynthesis) {
+    try {
+      window.speechSynthesis.onvoiceschanged = () => {
+        lockedVoice = null;
+        getLockedVoice();
+      };
+    } catch (e) {}
+  }
+
+  session = newSession(policy);
+  wireHeartbeat(session);
+  runLoop(session).catch(err => console.error('runLoop error', err));
+}
+
+function stopSession() {
+  if (session) {
+    try { session.abort.abort(); } catch (e) {}
+  }
+  session = null;
+  clearHeartbeat();
+  clearAllEngineTimers();
+  cancelSpeechImmediately();
+  unbindTrialButtons();
+  currentTimeoutResolver = null;
+  if (game.isRunning) {
+    game.stopSession(true);
+  }
+  game.isRunning = false;
+  setControlsRunning(false);
+  setText('countdown', '—');
+  presentIdleScreen();
+}
+
+function restartSession() {
+  stopSession();
+  startSession();
+}
+
+async function runLoop(sess) {
+  const sig = sess.abort.signal;
+  while (!sig.aborted && sess.trialIndex < sess.numTrials) {
+    sess.trialToken++;
+    await runSingleTrial(sess, sess.trialIndex, sess.trialToken, sig);
+    sess.trialIndex++;
+  }
+  if (!sig.aborted) {
+    await endSessionNonintrusive(sess);
+  }
+}
+
+async function runSingleTrial(sess, t, token, sig) {
+  if (sig.aborted) return;
+  game.currentTrial = t;
+  game.trialIndex = t;
+
+  const plan = game.planTrialSafe(t);
+  const trialData = await game.generatePremiseGuaranteed(plan);
+  if (sig.aborted || !valid(token, sig)) return;
+
+  game.commitTrialData(t, trialData.premises, trialData.states);
+  window.currentPremiseText = formatPremiseForSpeech(trialData.premises);
+  let speechResult = { fallback: false };
+  if (game.voiceEnabled) {
+    speechResult = await speakPremiseSafe(sess, trialData.premises, token, sig);
+  } else {
+    cancelSpeechImmediately();
+  }
+  trialData.ttsFallback = !!speechResult?.fallback;
+
+  if (sig.aborted || !valid(token, sig)) return;
+
+  if (sess.policy === AdvancePolicy.LISTEN) {
+    await dwellSafe(secondsPerTrial(), token, sig);
+    if (!sig.aborted && valid(token, sig)) {
+      game.handlePassiveAdvance(plan, trialData);
+    }
+    return;
+  }
+
+  const responseStart = performance.now();
+  const res = await collectResponseSafe(secondsPerTrial(), token, sig);
+  if (!valid(token, sig)) return;
+
+  if (res.type === 'timeout') {
+    sess.consecutiveOmissions++;
+    game.handleTimeout(plan, trialData);
+  } else {
+    sess.consecutiveOmissions = 0;
+    const verification = game.verifyMatch();
+    const responseTimeMs = Math.max(0, (res.timestamp || Date.now()) - responseStart);
+    game.handleActiveAnswer(plan, res.choice, responseTimeMs, verification, trialData);
+  }
+}
+
+async function endSessionNonintrusive(sess) {
+  if (!session || sess.epoch !== session.epoch) return;
+  session = null;
+  clearHeartbeat();
+  clearAllEngineTimers();
+  cancelSpeechImmediately();
+  unbindTrialButtons();
+  game.endSession();
+  setControlsRunning(false);
+}
 
 function clampNumTrialsValue(value, fallback = 20) {
   const num = typeof value === 'number' ? value : parseInt(value, 10);
@@ -4000,6 +4566,7 @@ class CanonicalStateVectorNBack {
     this.config = apxV4_getActiveProfile(this.visibleLevel);
     // ===== APEX-PROTECT-END (v4-apply-visible-level) =====
     this.difficultyLevel = this.visibleLevel;
+    this.sessionPolicy = AdvancePolicy.ACTIVE;
     this.nLevel = settings.nLevel;
     const requestedTrials = typeof settings.numTrials === 'number'
       ? settings.numTrials
@@ -4064,12 +4631,254 @@ class CanonicalStateVectorNBack {
     }
   }
 
+  planTrialSafe(trialIndex) {
+    const shouldMatch = !!this.schedule[trialIndex];
+    const canEvaluate = trialIndex >= this.nLevel;
+    return {
+      trialIndex,
+      shouldMatch,
+      canEvaluate,
+      wantMatch: canEvaluate && shouldMatch,
+      planner_flip: false
+    };
+  }
+
+  async generatePremiseGuaranteed(plan) {
+    const attempt = async (wantMatch) => {
+      const premises = [];
+      const states = [];
+      for (let i = 0; i < this.statementsPerTrial; i++) {
+        let generated = null;
+        let state = null;
+        for (let tries = 0; tries < 30 && !generated; tries++) {
+          try {
+            if (wantMatch) {
+              const referenceIndex = plan.trialIndex - this.nLevel;
+              const referenceStates = this.stateHistory[referenceIndex] || [];
+              const refState = referenceStates[i] || referenceStates[0] || null;
+              const blueprint = refState?.parsed || null;
+              generated = this.generator.generate(true, referenceIndex, this.registry, blueprint);
+            } else {
+              generated = this.generator.generate(false);
+            }
+            if (!generated || typeof generated !== 'string') {
+              generated = null;
+              continue;
+            }
+            state = this.engine.parseAndSimulate(generated, plan.trialIndex);
+          } catch (err) {
+            generated = null;
+            state = null;
+          }
+        }
+        if (!generated) {
+          return null;
+        }
+        premises.push(generated);
+        states.push(state);
+      }
+      return { premises, states };
+    };
+
+    let plannerFlip = false;
+    let result = await attempt(plan.wantMatch);
+
+    if (!result && plan.wantMatch) {
+      plannerFlip = true;
+      result = await attempt(false);
+    }
+
+    if (!result) {
+      result = this.buildNeutralNonMatch(plan.trialIndex);
+      result.fallback = true;
+    }
+
+    if (!result) {
+      result = { premises: ['ALPHA pushes BETA forward'], states: [this.engine.parseAndSimulate('ALPHA pushes BETA forward', plan.trialIndex)], fallback: true };
+    }
+
+    if (!Array.isArray(result.premises)) {
+      result.premises = [result.premises];
+    }
+    if (!Array.isArray(result.states)) {
+      result.states = [result.states];
+    }
+
+    result.planner_flip = plannerFlip;
+    return result;
+  }
+
+  buildNeutralNonMatch(trialIndex) {
+    const premises = [];
+    const states = [];
+    for (let i = 0; i < this.statementsPerTrial; i++) {
+      let text;
+      try {
+        text = this.generator.generate(false);
+      } catch (err) {
+        text = `NODE-${String.fromCharCode(65 + (i % 5))} drifts past POINT-${String.fromCharCode(70 + (i % 5))}`;
+      }
+      let state = null;
+      try {
+        state = this.engine.parseAndSimulate(text, trialIndex);
+      } catch (err) {
+        state = { violations: [], scheduledCount: 0, parsed: null };
+      }
+      premises.push(text);
+      states.push(state);
+    }
+    return { premises, states, fallback: true };
+  }
+
+  commitTrialData(trialIndex, premises, states) {
+    this.history[trialIndex] = premises;
+    this.stateHistory[trialIndex] = states;
+    this.generator.recordTrialPremises(trialIndex, premises);
+    setText('currentTrial', String(trialIndex + 1));
+    setText('totalTrials', String(this.sessionNumTrials));
+    setText('progress', Math.round(((trialIndex + 1) / this.sessionNumTrials) * 100) + '%');
+    this.updateStateTracker();
+    this.updateConservationDisplay();
+    this.updateScheduledEffects();
+    this.updateCanonicalMappings();
+  }
+
+  handlePassiveAdvance(plan, trialData) {
+    $('feedbackArea').innerHTML = '';
+    setText('countdown', '—');
+    this.recordTrialLog({
+      trialIndex: plan.trialIndex,
+      mode: this.sessionPolicy,
+      inputExpected: false,
+      passiveAdvance: true,
+      responded: false,
+      timeout: false,
+      response: null,
+      responseTimeMs: null,
+      correctness: null,
+      verification: null,
+      statements: trialData.premises,
+      ttsFallback: !!trialData.ttsFallback,
+      planner_flip: !!trialData.planner_flip,
+      groundTruthMatch: plan.shouldMatch,
+      result: 'passive'
+    });
+  }
+
+  handleTimeout(plan, trialData) {
+    const canEvaluate = plan.canEvaluate;
+    const shouldHaveResponded = plan.shouldMatch && canEvaluate;
+
+    if (canEvaluate) {
+      this.noResponses++;
+    }
+
+    let message;
+    if (!canEvaluate) {
+      message = 'No response recorded. Reference window not yet established for comparison.';
+    } else if (shouldHaveResponded) {
+      this.misses++;
+      message = 'No response recorded. Scheduled match requires explicit confirmation.';
+    } else {
+      message = 'No response recorded. Match status withheld without participant feedback.';
+    }
+
+    this.showFeedback('missed', message, null);
+    setText('countdown', '—');
+
+    this.recordTrialLog({
+      trialIndex: plan.trialIndex,
+      mode: this.sessionPolicy,
+      inputExpected: true,
+      passiveAdvance: false,
+      responded: false,
+      timeout: true,
+      response: null,
+      responseTimeMs: null,
+      correctness: canEvaluate ? false : null,
+      verification: null,
+      statements: trialData?.premises || this.history[plan.trialIndex] || [],
+      ttsFallback: !!trialData?.ttsFallback,
+      planner_flip: !!trialData?.planner_flip,
+      groundTruthMatch: plan.shouldMatch,
+      result: 'timeout'
+    });
+  }
+
+  handleActiveAnswer(plan, choice, responseTimeMs, verification, trialData) {
+    const canEvaluate = plan.canEvaluate;
+    const shouldHaveResponded = plan.shouldMatch && canEvaluate;
+    let resultType = 'no-eval';
+    let correctness = null;
+    let feedbackType = 'missed';
+    let message = 'Reference window not yet established for comparison.';
+
+    if (canEvaluate) {
+      const answeredMatch = choice === 'match';
+      const isMatch = !!verification?.isMatch;
+      if (isMatch && answeredMatch) {
+        this.correctHits++;
+        feedbackType = 'correct';
+        message = 'Correct! State trajectories match.';
+        resultType = 'hit';
+        correctness = true;
+      } else if (!isMatch && !answeredMatch) {
+        this.correctHits++;
+        feedbackType = 'correct';
+        message = 'Correct! No match detected.';
+        resultType = 'correct-rejection';
+        correctness = true;
+      } else if (isMatch && !answeredMatch) {
+        this.misses++;
+        feedbackType = 'missed';
+        message = 'Missed! The state trajectories matched.';
+        resultType = 'miss';
+        correctness = false;
+      } else {
+        this.falseAlarms++;
+        feedbackType = 'incorrect';
+        message = 'Incorrect. Different state evolution.';
+        resultType = 'false-alarm';
+        correctness = false;
+      }
+
+      this.responseTimes.push(responseTimeMs);
+      if (verification && typeof verification.confidence === 'number') {
+        this.confidenceScores.push(verification.confidence);
+      }
+    } else {
+      correctness = null;
+    }
+
+    this.showFeedback(feedbackType, message, verification || null);
+    setText('countdown', '—');
+
+    this.recordTrialLog({
+      trialIndex: plan.trialIndex,
+      mode: this.sessionPolicy,
+      inputExpected: true,
+      passiveAdvance: false,
+      responded: true,
+      timeout: false,
+      response: choice,
+      responseTimeMs: canEvaluate ? responseTimeMs : null,
+      correctness,
+      verification: verification || null,
+      statements: trialData?.premises || this.history[plan.trialIndex] || [],
+      ttsFallback: !!trialData?.ttsFallback,
+      planner_flip: !!trialData?.planner_flip,
+      groundTruthMatch: plan.shouldMatch,
+      result: resultType
+    });
+  }
+
   createSessionLog(settings) {
     const sessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     return {
       sessionId,
       startedAt: new Date().toISOString(),
       numTrials: this.sessionNumTrials,
+      mode: this.sessionPolicy,
       terminatedEarly: false,
       settings: {
         difficultyLevel: this.difficultyLevel,
@@ -4089,23 +4898,35 @@ class CanonicalStateVectorNBack {
   recordTrialLog(entry) {
     if (!this.sessionLog) return;
 
-    const shouldMatch = !!this.schedule[this.currentTrial];
-    const trialIndex = this.currentTrial + 1;
-    const statements = Array.isArray(this.history[this.currentTrial])
-      ? [...this.history[this.currentTrial]]
-      : [];
+    const idx = typeof entry.trialIndex === 'number' ? entry.trialIndex : this.currentTrial;
+    const shouldMatch = entry.groundTruthMatch ?? !!this.schedule[idx];
+    const statements = Array.isArray(entry.statements)
+      ? [...entry.statements]
+      : (Array.isArray(this.history[idx]) ? [...this.history[idx]] : []);
 
     this.sessionLog.trials.push({
-      trialIndex,
+      trialIndex: idx + 1,
       timestamp: new Date().toISOString(),
+      numTrials: this.sessionNumTrials,
+      mode: entry.mode || this.sessionPolicy || AdvancePolicy.ACTIVE,
       shouldMatch,
+      groundTruthMatch: shouldMatch,
+      inputExpected: !!entry.inputExpected,
+      passiveAdvance: !!entry.passiveAdvance,
+      timeout: !!entry.timeout,
       responded: !!entry.responded,
+      response: entry.response ?? null,
       responseTimeMs: typeof entry.responseTimeMs === 'number' ? entry.responseTimeMs : null,
+      correctness: typeof entry.correctness === 'boolean' ? entry.correctness : null,
       result: entry.result || null,
+      ttsFallback: !!entry.ttsFallback,
+      planner_flip: !!entry.planner_flip,
       verification: entry.verification
         ? {
             isMatch: !!entry.verification.isMatch,
-            confidence: entry.verification.confidence ?? null
+            confidence: typeof entry.verification.confidence === 'number'
+              ? entry.verification.confidence
+              : null
           }
         : null,
       statements
@@ -4784,9 +5605,8 @@ class CanonicalStateVectorNBack {
     $('scheduledEffects').style.display = 'none';
     $('canonicalMappings').innerHTML = '';
     $('startBtn').disabled = false;
-    $('pauseBtn').disabled = true;
-    $('pauseBtn').textContent = '⏸ Pause';
-    $('resetBtn').disabled = true;
+    $('stopBtn').disabled = true;
+    $('restartBtn').disabled = false;
 
     this.finalizeSessionLog({ terminatedEarly: false });
   }
@@ -4829,113 +5649,6 @@ const game = new CanonicalStateVectorNBack();
 window.game = game;
 window.exportSessionLogJSON = () => game.exportSessionLog('json');
 window.exportSessionLogCSV = () => game.exportSessionLog('csv');
-
-// UI Event Handlers
-function start() {
-  const desiredTrials = syncNumTrialsControls(
-    $('numTrialsInput') ? $('numTrialsInput').value : currentNumTrialsSetting,
-    { updateInput: true, updateSlider: true, persist: true }
-  );
-
-  const terminateEarly = game.isRunning && game.trialIndex < game.sessionNumTrials;
-  if (game.isRunning || game.sessionLog) {
-    game.stopSession(terminateEarly);
-  }
-
-  const settings = {
-    difficultyLevel: parseInt($('difficultyLevel').value),
-    nLevel: parseInt($('nbackLevel').value),
-    totalTrials: desiredTrials,
-    numTrials: desiredTrials,
-    matchProbability: parseInt($('matchProbability').value) / 100,
-    responseWindow: parseFloat($('responseWindow').value) * 1000,
-    statementsPerTrial: parseInt($('statementsPerTrial').value),
-    voiceEnabled: $('voiceEnabled').checked,
-    showProofTraces: $('proofTraces').checked,
-    useCounterfactuals: $('counterfactuals').checked,
-    compressedMath: $('compressedMath').checked
-  };
-  
-  game.initialize(settings);
-  game.isRunning = true;
-  game.isPaused = false;
-
-  setText('currentGLoad', game.config.gLoad.toFixed(2));
-  apxV4_updateDifficultyUI(game.visibleLevel);
-  setText('totalTrials', String(settings.totalTrials));
-  setText('correctHits', '0');
-  setText('falseAlarms', '0');
-  setText('misses', '0');
-  setText('noResponses', '0');
-  setText('accuracy', '—');
-  setText('avgResponse', '—');
-  setText('progress', '0%');
-  setText('confidence', '—');
-  setText('countdown', '—');
-
-  $('startBtn').disabled = true;
-  $('pauseBtn').disabled = false;
-  $('pauseBtn').textContent = '⏸ Pause';
-  $('resetBtn').disabled = false;
-
-  game.runTrial();
-}
-
-function pause() {
-  if (game.isPaused) {
-    game.resume();
-    $('pauseBtn').textContent = '⏸ Pause';
-  } else {
-    game.pause();
-    $('pauseBtn').textContent = '▶ Resume';
-  }
-}
-
-function reset() {
-  const terminatedEarly = game.isRunning && game.trialIndex < game.sessionNumTrials;
-  game.stopSession(terminatedEarly);
-  game.reset();
-
-  $('premiseDisplay').innerHTML = `
-    <div style="text-align:center; color:var(--mut); font-size:20px; font-weight:normal">
-      Press START to begin canonical state-vector tracking
-    </div>
-  `;
-  $('feedbackArea').innerHTML = '';
-  $('stateTracker').classList.remove('active');
-  $('scheduledEffects').style.display = 'none';
-  $('canonicalMappings').innerHTML = '';
-
-  setText('currentTrial', '0');
-  setText('correctHits', '0');
-  setText('falseAlarms', '0');
-  setText('misses', '0');
-  setText('noResponses', '0');
-  setText('accuracy', '—');
-  setText('avgResponse', '—');
-  setText('progress', '0%');
-  setText('countdown', '—');
-  setText('confidence', '—');
-  setText('totalEnergy', '100');
-  setText('totalMomentum', '(0,0,0)');
-  setText('totalInfo', '50');
-  setText('activeSymbols', '0');
-  syncNumTrialsControls(currentNumTrialsSetting, { persist: false });
-
-  $('startBtn').disabled = false;
-  $('pauseBtn').disabled = true;
-  $('resetBtn').disabled = true;
-  $('pauseBtn').textContent = '⏸ Pause';
-
-  if (window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-  }
-
-  const diffSlider = $('difficultyLevel');
-  if (diffSlider) {
-    apxV4_updateDifficultyUI(diffSlider.value);
-  }
-}
 
 // ===== APEX-PROTECT-BEGIN (v4-self-checks) =====
 function apxV4_devAssertDiversity(ref, cand, minDiff){
@@ -5065,18 +5778,37 @@ document.addEventListener('DOMContentLoaded', () => {
     n.style.display = (n.style.display === 'none' || !n.style.display) ? 'block' : 'none';
   };
 
-  $('startBtn').onclick = start;
-  $('pauseBtn').onclick = pause;
-  $('resetBtn').onclick = reset;
-  
-  // Spacebar handler
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'Space' && game.isRunning && !game.isPaused) {
-      e.preventDefault();
-      game.registerResponse();
-    }
-  });
-  
+  const listenOnlyToggle = $('listenOnlyToggle');
+  if (listenOnlyToggle) {
+    const initialListen = loadListenOnly();
+    listenOnlyToggle.checked = initialListen;
+    persistListenOnly(initialListen);
+    listenOnlyToggle.addEventListener('change', () => {
+      persistListenOnly(listenOnlyToggle.checked);
+    });
+  }
+
+  const debounce = (fn, delay = 250) => {
+    let locked = false;
+    return (...args) => {
+      if (locked) return;
+      locked = true;
+      try {
+        fn(...args);
+      } finally {
+        setTimeout(() => { locked = false; }, delay);
+      }
+    };
+  };
+
+  const startHandler = debounce(() => startSession());
+  const stopHandler = debounce(() => stopSession());
+  const restartHandler = debounce(() => restartSession());
+
+  $('startBtn').onclick = startHandler;
+  $('stopBtn').onclick = stopHandler;
+  $('restartBtn').onclick = restartHandler;
+
   // Modal handlers
   const modal = $('instructionsModal');
   const btn = $('instructionsBtn');
@@ -5098,6 +5830,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setText('totalMomentum', '(0,0,0)');
   setText('totalInfo', '50');
   setText('activeSymbols', '0');
+  presentIdleScreen();
+  setControlsRunning(false);
 });
 </script>
 </body>
